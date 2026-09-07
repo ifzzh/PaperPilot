@@ -3,7 +3,8 @@ import json
 import os
 import threading
 import time
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from functools import partial
 from typing import Optional
 
@@ -15,7 +16,11 @@ import requests
 from flask import Flask, g, jsonify, make_response, redirect, render_template, request
 
 from paperpilot.core.base_paper import Paper
-from paperpilot.auth import AuthConfig, AuthConfigurationError
+from paperpilot.auth import (
+    AuthConfig,
+    AuthConfigurationError,
+    FixedWindowRateLimiter,
+)
 from paperpilot.core.paper_store import paper_store
 from paperpilot.core.search_index import SearchIndex
 from paperpilot.database.connection import DB_PATH
@@ -83,6 +88,7 @@ _auth_cache: dict[str, tuple[float, str]] = {}
 _auth_cache_lock = threading.Lock()
 AUTH_CONFIG: Optional[AuthConfig] = None
 AUTH_COOKIE_NAME = "paperpilot_access_token"
+_rate_limiter = FixedWindowRateLimiter()
 
 
 def _verify_supabase_access_token(access_token: str) -> str | None:
@@ -128,18 +134,58 @@ def _bearer_token() -> str | None:
 
 def _authenticate_token(access_token: str | None):
     if not access_token:
+        g.audit_reason = "missing_token"
         return None, (jsonify({"error": "未登录"}), 401)
     email = _verify_supabase_access_token(access_token)
     if not email:
+        g.audit_reason = "invalid_token"
         return None, (jsonify({"error": "登录已失效"}), 401)
     if AUTH_CONFIG is None or email not in AUTH_CONFIG.allowed_emails:
+        g.audit_reason = "email_not_allowed"
         return None, (jsonify({"error": "无权访问"}), 403)
     g.user_email = email
     return email, None
 
 
+def _rate_limit_response(bucket: str, identity: str, limit: int, window: int):
+    result = _rate_limiter.check(
+        bucket,
+        identity,
+        limit=limit,
+        window_seconds=window,
+    )
+    if result.allowed:
+        return None
+    g.audit_reason = f"rate_limit:{bucket}"
+    response = jsonify({"error": "请求过于频繁，请稍后重试"})
+    response.status_code = 429
+    response.headers["Retry-After"] = str(result.retry_after)
+    return response
+
+
+def _sensitive_rate_policy():
+    path = request.path
+    if path in {
+        "/api/paper/analyze",
+        "/api/paper/translate",
+        "/api/paper/chat",
+        "/api/daily-arxiv/extract-affiliations",
+        "/api/daily-arxiv/generate-summary",
+    }:
+        return "ai", 30, 3600
+    if (
+        path in {"/api/upload", "/api/upload/arxiv", "/api/export/start"}
+        or path.startswith("/api/import/")
+    ):
+        return "data_transfer", 20, 3600
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        return "mutation", 60, 3600
+    return None
+
+
 @app.before_request
 def _require_auth_for_api():
+    g.request_id = uuid.uuid4().hex
     protects_api = request.path.startswith("/api/")
     protects_viewer = request.path.startswith("/viewer/")
     if not protects_api and not protects_viewer:
@@ -152,6 +198,7 @@ def _require_auth_for_api():
         return None
 
     if AUTH_CONFIG is None:
+        g.audit_reason = "auth_not_configured"
         return jsonify({"error": "鉴权服务未配置"}), 503
     if not AUTH_CONFIG.enabled:
         return None
@@ -160,12 +207,46 @@ def _require_auth_for_api():
     if request.method in {"GET", "HEAD"} and not access_token:
         access_token = request.cookies.get(AUTH_COOKIE_NAME)
 
-    _email, failure = _authenticate_token(access_token)
-    if failure is None:
-        return None
-    if protects_viewer:
-        return redirect("/")
-    return failure
+    email, failure = _authenticate_token(access_token)
+    if failure is not None:
+        if protects_viewer:
+            return redirect("/")
+        return failure
+
+    policy = _sensitive_rate_policy()
+    if policy is not None:
+        bucket, limit, window = policy
+        limited = _rate_limit_response(bucket, email, limit, window)
+        if limited is not None:
+            return limited
+    return None
+
+
+@app.after_request
+def _audit_sensitive_request(response):
+    request_id = getattr(g, "request_id", uuid.uuid4().hex)
+    response.headers["X-Request-ID"] = request_id
+    is_api = request.path.startswith("/api/")
+    should_audit = is_api and (
+        request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        or response.status_code in {401, 403, 429, 503}
+    )
+    if should_audit:
+        record = {
+            "event": "api_audit",
+            "request_id": request_id,
+            "method": request.method,
+            "endpoint": request.endpoint or "unmatched",
+            "status": response.status_code,
+            "user": getattr(g, "user_email", "anonymous"),
+            "remote_addr": request.remote_addr or "unknown",
+            "reason": getattr(g, "audit_reason", "completed"),
+            "timestamp": datetime.now(timezone.utc)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z"),
+        }
+        app.logger.info(json.dumps(record, ensure_ascii=True, sort_keys=True))
+    return response
 
 # Configuration file storage path (will be set in main function according to parameters)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -494,6 +575,16 @@ def auth_session():
             samesite="Lax",
         )
         return response
+
+    if request.method == "POST":
+        limited = _rate_limit_response(
+            "auth_session",
+            request.remote_addr or "unknown",
+            10,
+            300,
+        )
+        if limited is not None:
+            return limited
 
     access_token = _bearer_token()
     if request.method in {"GET", "HEAD"} and not access_token:

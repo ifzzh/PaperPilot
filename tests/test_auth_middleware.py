@@ -26,11 +26,13 @@ class TestAuthMiddleware(unittest.TestCase):
             }
         )
         app_module._auth_cache.clear()
+        app_module._rate_limiter.clear()
         self.client = app_module.app.test_client()
 
     def tearDown(self):
         app_module.AUTH_CONFIG = None
         app_module._auth_cache.clear()
+        app_module._rate_limiter.clear()
 
     def test_health_endpoint_is_public(self):
         response = self.client.get("/healthz")
@@ -126,6 +128,35 @@ class TestAuthMiddleware(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(f"{app_module.AUTH_COOKIE_NAME}=", response.headers["Set-Cookie"])
         self.assertIn("Max-Age=0", response.headers["Set-Cookie"])
+
+    def test_auth_session_is_rate_limited_by_ip(self):
+        with patch.object(
+            app_module,
+            "_verify_supabase_access_token",
+            return_value="admin@example.com",
+        ):
+            responses = [
+                self.client.post(
+                    "/api/auth/session",
+                    headers={"Authorization": "Bearer valid"},
+                )
+                for _ in range(11)
+            ]
+        self.assertTrue(all(response.status_code == 200 for response in responses[:10]))
+        self.assertEqual(responses[10].status_code, 429)
+        self.assertGreaterEqual(int(responses[10].headers["Retry-After"]), 1)
+
+    def test_audit_log_does_not_include_bearer_token(self):
+        with self.assertLogs(app_module.app.logger.name, level="INFO") as captured:
+            response = self.client.post(
+                "/api/test-auth-protected",
+                headers={"Authorization": "Bearer super-secret-token"},
+            )
+        self.assertEqual(response.status_code, 401)
+        combined = "\n".join(captured.output)
+        self.assertIn('"event": "api_audit"', combined)
+        self.assertIn('"reason": "invalid_token"', combined)
+        self.assertNotIn("super-secret-token", combined)
 
     def test_explicit_development_mode_can_bypass_auth(self):
         app_module.AUTH_CONFIG = AuthConfig.from_environ(

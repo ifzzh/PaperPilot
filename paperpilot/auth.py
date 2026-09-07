@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import os
+import math
+import threading
+import time
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Mapping
 from urllib.parse import urlparse
@@ -99,3 +103,43 @@ class AuthConfig:
             allowed_emails=allowed_emails,
             cookie_secure=cookie_secure,
         )
+
+
+@dataclass(frozen=True)
+class RateLimitResult:
+    allowed: bool
+    retry_after: int = 0
+
+
+class FixedWindowRateLimiter:
+    """Small thread-safe limiter for PaperPilot's single-process deployment."""
+
+    def __init__(self):
+        self._events: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def check(
+        self,
+        bucket: str,
+        identity: str,
+        *,
+        limit: int,
+        window_seconds: int,
+        now: float | None = None,
+    ) -> RateLimitResult:
+        current = time.monotonic() if now is None else now
+        cutoff = current - window_seconds
+        key = (bucket, identity)
+        with self._lock:
+            events = self._events[key]
+            while events and events[0] <= cutoff:
+                events.popleft()
+            if len(events) >= limit:
+                retry_after = max(1, math.ceil(events[0] + window_seconds - current))
+                return RateLimitResult(False, retry_after)
+            events.append(current)
+        return RateLimitResult(True)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._events.clear()
