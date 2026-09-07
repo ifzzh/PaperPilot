@@ -1,3 +1,8 @@
+const paperPilotSecurity = window.PaperPilotSecurity;
+if (!paperPilotSecurity) {
+    throw new Error('PaperPilot content security helpers failed to load');
+}
+
 // Global state
 let categories = {};
 let hasLoadedCategories = false; // Whether the category has been loaded
@@ -648,17 +653,23 @@ function createCategoryElement(category, level = 0) {
 
     // Get icon color: custom color > Othersgrey > Default purple
     const isOthers = category.name === 'Others';
-    const folderColor = category.iconColor || (isOthers ? '#8b949e' : '#7d4a9d');
+    const folderColor = paperPilotSecurity.safeColor(
+        category.iconColor,
+        isOthers ? '#8b949e' : '#7d4a9d'
+    );
 
     // Pin icon
     const pinIcon = category.pinned ? '<i class="fas fa-thumbtack pin-icon"></i>' : '';
 
     div.innerHTML = `
         ${hasChildren ? '<button class="category-toggle"><i class="fas fa-chevron-right"></i></button>' : '<span class="category-toggle-placeholder"></span>'}
-        <i class="fas fa-folder" style="margin-right: 6px; color: ${folderColor}; font-size: 12px;"></i>
-        <span class="category-name">${category.name}</span>${pinIcon}
-        <span class="pdf-count">${category.pdf_count || 0}</span>
+        <i class="fas fa-folder" style="margin-right: 6px; font-size: 12px;"></i>
+        <span class="category-name"></span>${pinIcon}
+        <span class="pdf-count"></span>
     `;
+    div.querySelector('.fa-folder').style.color = folderColor;
+    paperPilotSecurity.setText(div.querySelector('.category-name'), category.name);
+    paperPilotSecurity.setText(div.querySelector('.pdf-count'), Number(category.pdf_count) || 0);
 
     // click event - Support multiple selection
     div.addEventListener('click', (e) => {
@@ -1097,6 +1108,7 @@ async function removeFromReadingList(paperId, event) {
 // generate thesis itemsHTML（table layout）
 function generatePaperItemHTML(paper, showCheckbox = false) {
     const isSelected = selectedPaperIds.has(paper.id);
+    const paperTitle = paperPilotSecurity.asText(paper.title || paper.filename);
 
     // icon column
     const iconCol = `
@@ -1109,8 +1121,8 @@ function generatePaperItemHTML(paper, showCheckbox = false) {
     // title bar（Includes reading time）
     const readTimeText = getTotalReadTimeText(paper);
     const titleCol = `
-        <div class="paper-col-title" title="${paper.title || paper.filename}">
-            ${paper.title || paper.filename}${readTimeText}
+        <div class="paper-col-title" title="${escapeHtml(paperTitle)}">
+            ${escapeHtml(paperTitle)}${readTimeText}
         </div>
     `;
 
@@ -1365,6 +1377,7 @@ function renderPaperInfo(paper) {
 
     // Helper function: Create expandable text blocks
     const createExpandableTextBlock = (label, content, field, multiline = false, defaultExpanded = false, editable = true) => {
+        content = paperPilotSecurity.asText(content);
         if (!content) return '';
 
         // Simple judgment whether expansion is needed: check the text length or the number of line breaks
@@ -1409,12 +1422,15 @@ function renderPaperInfo(paper) {
     };
 
     // HTMLescape function
-    const escapeHtml = (text) => {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    };
+    const escapeHtml = paperPilotSecurity.escapeHtml;
+    const rawArxivUrl = paperPilotSecurity.asText(paper.arxiv_url);
+    const arxivUrl = rawArxivUrl
+        ? paperPilotSecurity.safeHttpUrl(rawArxivUrl)
+        : (paper.arxiv_id ? `https://arxiv.org/abs/${encodeURIComponent(paper.arxiv_id)}` : null);
+    const githubText = paperPilotSecurity.asText(paper.github);
+    const githubUrl = githubText ? paperPilotSecurity.safeHttpUrl(githubText) : null;
+    const homepageText = paperPilotSecurity.asText(paper.homepage);
+    const homepageUrl = homepageText ? paperPilotSecurity.safeHttpUrl(homepageText) : null;
 
     paperInfo.innerHTML = `
         <div class="paper-info-container compact-mode">
@@ -1428,15 +1444,13 @@ function renderPaperInfo(paper) {
                 </div>
                 <div class="info-content">
                     <div class="info-value">
-                        ${paper.arxiv_url ? `
-                        <a href="${paper.arxiv_url}" target="_blank" rel="noopener noreferrer" class="paper-url-link">
-                            <i class="fas fa-external-link-alt"></i> ${paper.arxiv_url}
+                        ${arxivUrl ? `
+                        <a href="${escapeHtml(arxivUrl)}" target="_blank" rel="noopener noreferrer" class="paper-url-link">
+                            <i class="fas fa-external-link-alt"></i> ${escapeHtml(rawArxivUrl || arxivUrl)}
                         </a>
-                        ` : paper.arxiv_id ? `
-                        <a href="https://arxiv.org/abs/${paper.arxiv_id}" target="_blank" rel="noopener noreferrer" class="paper-url-link">
-                            <i class="fas fa-external-link-alt"></i> https://arxiv.org/abs/${paper.arxiv_id}
-                        </a>
-                        ` : '<span style="color: #999; font-style: italic;">none URL</span>'}
+                        ` : rawArxivUrl
+                            ? `<span class="paper-url-invalid">${escapeHtml(rawArxivUrl)}</span>`
+                            : '<span style="color: #999; font-style: italic;">none URL</span>'}
                     </div>
                 </div>
             </div>
@@ -1446,12 +1460,14 @@ function renderPaperInfo(paper) {
                     <span class="info-label">Github</span>
                 </div>
                 <div class="info-content">
-                    <div class="info-value editable" contenteditable="true" data-field="github" data-url-field="true" data-full-text="${escapeHtml(paper.github || '')}">
-                        ${paper.github ? `
-                            <a href="${paper.github.startsWith('http') ? paper.github : 'https://' + paper.github}" target="_blank" rel="noopener noreferrer" class="paper-url-link" onclick="event.stopPropagation();">
-                                <i class="fab fa-github"></i> ${paper.github}
+                    <div class="info-value editable" contenteditable="true" data-field="github" data-url-field="true" data-full-text="${escapeHtml(githubText)}">
+                        ${githubUrl ? `
+                            <a href="${escapeHtml(githubUrl)}" target="_blank" rel="noopener noreferrer" class="paper-url-link" onclick="event.stopPropagation();">
+                                <i class="fab fa-github"></i> ${escapeHtml(githubText)}
                             </a>
-                        ` : '<span style="color: #999; font-style: italic;">Click to add GitHub repository URL</span>'}
+                        ` : githubText
+                            ? `<span class="paper-url-invalid">${escapeHtml(githubText)}</span>`
+                            : '<span style="color: #999; font-style: italic;">Click to add GitHub repository URL</span>'}
                     </div>
                 </div>
             </div>
@@ -1460,12 +1476,14 @@ function renderPaperInfo(paper) {
                     <span class="info-label">Homepage</span>
                 </div>
                 <div class="info-content">
-                    <div class="info-value editable" contenteditable="true" data-field="homepage" data-url-field="true" data-full-text="${escapeHtml(paper.homepage || '')}">
-                        ${paper.homepage ? `
-                            <a href="${paper.homepage.startsWith('http') ? paper.homepage : 'https://' + paper.homepage}" target="_blank" rel="noopener noreferrer" class="paper-url-link" onclick="event.stopPropagation();">
-                                <i class="fas fa-home"></i> ${paper.homepage}
+                    <div class="info-value editable" contenteditable="true" data-field="homepage" data-url-field="true" data-full-text="${escapeHtml(homepageText)}">
+                        ${homepageUrl ? `
+                            <a href="${escapeHtml(homepageUrl)}" target="_blank" rel="noopener noreferrer" class="paper-url-link" onclick="event.stopPropagation();">
+                                <i class="fas fa-home"></i> ${escapeHtml(homepageText)}
                             </a>
-                        ` : '<span style="color: #999; font-style: italic;">Click to add project homepage URL</span>'}
+                        ` : homepageText
+                            ? `<span class="paper-url-invalid">${escapeHtml(homepageText)}</span>`
+                            : '<span style="color: #999; font-style: italic;">Click to add project homepage URL</span>'}
                     </div>
                 </div>
             </div>
@@ -1478,8 +1496,8 @@ function renderPaperInfo(paper) {
                 </div>
                 <div class="info-content">
                     <div class="info-value compact-text">
-                        ${paper.arxiv_published_date ? `<span><i class="fas fa-clock"></i> arXiv: ${formatArxivDate(paper.arxiv_published_date)}</span>` : ''}
-                        ${paper.year && !paper.arxiv_published_date ? `<span><i class="fas fa-calendar"></i> ${paper.year}</span>` : ''}
+                        ${paper.arxiv_published_date ? `<span><i class="fas fa-clock"></i> arXiv: ${escapeHtml(formatArxivDate(paper.arxiv_published_date))}</span>` : ''}
+                        ${paper.year && !paper.arxiv_published_date ? `<span><i class="fas fa-calendar"></i> ${escapeHtml(paper.year)}</span>` : ''}
                     </div>
                 </div>
             </div>
@@ -2287,7 +2305,7 @@ function showRenameCategoryModal(categoryId) {
     modalBody.innerHTML = `
         <div class="form-group">
             <label for="category-name">Category name</label>
-            <input type="text" id="category-name" value="${category.name}">
+            <input type="text" id="category-name" value="${escapeHtml(category.name)}">
         </div>
     `;
 
@@ -3091,11 +3109,15 @@ function setupCategoryDrag(categoryElement, category) {
         dragImage.style.alignItems = 'center';
         dragImage.style.gap = '6px';
 
-        if (draggedCategories.length > 0) {
-            dragImage.innerHTML = `<i class="fas fa-folder" style="color: #7d4a9d;"></i> ${draggedCategories.length} directories`;
-        } else {
-            dragImage.innerHTML = `<i class="fas fa-folder" style="color: #7d4a9d;"></i> ${category.name}`;
-        }
+        const dragIcon = document.createElement('i');
+        dragIcon.className = 'fas fa-folder';
+        dragIcon.style.color = '#7d4a9d';
+        const dragLabel = document.createElement('span');
+        dragLabel.textContent = draggedCategories.length > 0
+            ? `${draggedCategories.length} directories`
+            : paperPilotSecurity.asText(category.name);
+        dragImage.appendChild(dragIcon);
+        dragImage.appendChild(dragLabel);
 
         document.body.appendChild(dragImage);
 
@@ -3579,33 +3601,70 @@ function setupGlobalSearch() {
 }
 
 function renderSearchResults(panel, q, results) {
-    if (!results.length) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
-    const esc = (s) => (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-    const hi = (text) => esc(text).replace(new RegExp(`(${escapeRegExp(q)})`, 'ig'), '<mark>$1</mark>');
-    panel.innerHTML = results.map(r => {
-        const fields = (r.matched_fields || []).map(f => `<span class="search-field-tag">${f}</span>`).join('');
-        const authors = r.authors ? `<div class="search-meta">${hi(r.authors)}</div>` : '';
-        // Prioritize context snippets for matching fields（notes first, then abstract）
-        // If there are no matching fragments, display the summary before200character
-        let abs = '';
-        if (r.notes_snippet) {
-            // If the match is notes,show notes context fragment
-            abs = `<div class="search-meta"><strong>Remark:</strong> ${hi(r.notes_snippet)}</div>`;
-        } else if (r.abstract_snippet) {
-            // If the match is abstract,show abstract context fragment
-            abs = `<div class="search-meta">${hi(r.abstract_snippet)}</div>`;
-        } else if (r.abstract) {
-            // If there is no context fragment, display the summary before200character
-            abs = `<div class="search-meta">${hi(r.abstract.slice(0, 200))}...</div>`;
+    panel.replaceChildren();
+    if (!results.length) { panel.style.display = 'none'; return; }
+
+    const addHighlightedText = (element, value) => {
+        const text = paperPilotSecurity.asText(value);
+        const query = paperPilotSecurity.asText(q);
+        if (!query) {
+            element.textContent = text;
+            return;
         }
-        // Add to category_id Attribute, used to switch categories when clicked
-        const categoryId = r.category_id || '';
-        return `<div class="search-item" data-paper-id="${r.id}" data-category-id="${categoryId}">
-            <div class="search-title">${hi(r.title || r.filename || '')} ${fields}</div>
-            ${authors}
-            ${abs}
-        </div>`;
-    }).join('');
+        const expression = new RegExp(escapeRegExp(query), 'ig');
+        let cursor = 0;
+        let match;
+        while ((match = expression.exec(text)) !== null) {
+            element.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+            const mark = document.createElement('mark');
+            mark.textContent = match[0];
+            element.appendChild(mark);
+            cursor = match.index + match[0].length;
+            if (match[0].length === 0) expression.lastIndex += 1;
+        }
+        element.appendChild(document.createTextNode(text.slice(cursor)));
+    };
+
+    results.forEach(r => {
+        const item = document.createElement('div');
+        item.className = 'search-item';
+        item.dataset.paperId = paperPilotSecurity.asText(r.id);
+        item.dataset.categoryId = paperPilotSecurity.asText(r.category_id);
+
+        const title = document.createElement('div');
+        title.className = 'search-title';
+        addHighlightedText(title, r.title || r.filename);
+        (Array.isArray(r.matched_fields) ? r.matched_fields : []).forEach(field => {
+            title.appendChild(document.createTextNode(' '));
+            const tag = document.createElement('span');
+            tag.className = 'search-field-tag';
+            tag.textContent = paperPilotSecurity.asText(field);
+            title.appendChild(tag);
+        });
+        item.appendChild(title);
+
+        if (r.authors) {
+            const authors = document.createElement('div');
+            authors.className = 'search-meta';
+            addHighlightedText(authors, r.authors);
+            item.appendChild(authors);
+        }
+
+        const abstractText = paperPilotSecurity.asText(r.abstract);
+        const snippet = r.notes_snippet || r.abstract_snippet || (abstractText ? `${abstractText.slice(0, 200)}...` : '');
+        if (snippet) {
+            const summary = document.createElement('div');
+            summary.className = 'search-meta';
+            if (r.notes_snippet) {
+                const label = document.createElement('strong');
+                label.textContent = 'Remark: ';
+                summary.appendChild(label);
+            }
+            addHighlightedText(summary, snippet);
+            item.appendChild(summary);
+        }
+        panel.appendChild(item);
+    });
     panel.style.display = 'block';
     panel.querySelectorAll('.search-item').forEach(item => {
         item.addEventListener('click', async () => {
@@ -3874,27 +3933,27 @@ async function editPaper(paperId, event) {
         modalBody.innerHTML = `
             <div class="form-group">
                 <label for="paper-title">Paper title</label>
-                <input type="text" id="paper-title" value="${paper.title || ''}" placeholder="Paper title">
+                <input type="text" id="paper-title" value="${escapeHtml(paper.title || '')}" placeholder="Paper title">
             </div>
             <div class="form-group">
                 <label for="paper-authors">author</label>
-                <input type="text" id="paper-authors" value="${paper.authors || ''}" placeholder="Author name, multiple authors separated by commas">
+                <input type="text" id="paper-authors" value="${escapeHtml(paper.authors || '')}" placeholder="Author name, multiple authors separated by commas">
             </div>
             <div class="form-group">
                 <label for="paper-affiliation">unit/mechanism</label>
-                <input type="text" id="paper-affiliation" value="${paper.affiliation || ''}" placeholder="Author's unit or institution">
+                <input type="text" id="paper-affiliation" value="${escapeHtml(paper.affiliation || '')}" placeholder="Author's unit or institution">
             </div>
             <div class="form-group">
                 <label for="paper-year">year of publication</label>
-                <input type="number" id="paper-year" value="${paper.year || ''}" placeholder="year of publication" min="1900" max="2030">
+                <input type="number" id="paper-year" value="${escapeHtml(paper.year || '')}" placeholder="year of publication" min="1900" max="2030">
             </div>
             <div class="form-group">
                 <label for="paper-journal">Journal/Meeting</label>
-                <input type="text" id="paper-journal" value="${paper.journal || ''}" placeholder="Journal or conference name">
+                <input type="text" id="paper-journal" value="${escapeHtml(paper.journal || '')}" placeholder="Journal or conference name">
             </div>
             <div class="form-group">
                 <label for="paper-abstract">summary</label>
-                <textarea id="paper-abstract" rows="4" placeholder="Paper abstract">${paper.abstract || ''}</textarea>
+                <textarea id="paper-abstract" rows="4" placeholder="Paper abstract">${escapeHtml(paper.abstract || '')}</textarea>
             </div>
         `;
 
