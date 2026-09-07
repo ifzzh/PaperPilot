@@ -4092,8 +4092,8 @@ function renderCategorySelectTree(root, container) {
         item.innerHTML = `
             ${hasChildren ? '<button class="category-toggle"><i class="fas fa-chevron-right"></i></button>' : '<span style="width: 16px; margin-right: 5px;"></span>'}
             <i class="fas fa-folder" style="margin-right: 8px; color: ${folderColor};"></i>
-            <span class="category-name">${node.name || 'Root'}</span>
-            ${node.id ? `<input type="radio" name="target-category" value="${node.id}" style="margin-left:auto; margin-right:10px;">` : ''}
+            <span class="category-name">${escapeHtml(node.name || 'Root')}</span>
+            ${node.id ? `<input type="radio" name="target-category" value="${escapeHtml(node.id)}" style="margin-left:auto; margin-right:10px;">` : ''}
         `;
 
         // Expand/fold
@@ -5290,6 +5290,31 @@ async function testLLMAPICore(llmModel, llmBaseUrl, llmApiKey, llmConfigType = n
     }
 }
 
+function showConnectionTestResult(resultDiv, status, message, details = []) {
+    const variants = {
+        warning: { background: '#fff3cd', border: '#ffc107', color: '#856404', icon: 'fas fa-exclamation-triangle' },
+        loading: { background: '#e7f3ff', border: '#2196F3', color: '#0d47a1', icon: 'fas fa-spinner fa-spin' },
+        success: { background: '#d4edda', border: '#28a745', color: '#155724', icon: 'fas fa-check-circle' },
+        error: { background: '#f8d7da', border: '#dc3545', color: '#721c24', icon: 'fas fa-times-circle' }
+    };
+    const variant = variants[status] || variants.error;
+    const box = document.createElement('div');
+    box.style.cssText = `padding:12px;background:${variant.background};border:1px solid ${variant.border};border-radius:6px;color:${variant.color};`;
+    const icon = document.createElement('i');
+    icon.className = variant.icon;
+    const title = document.createElement(status === 'success' || status === 'error' ? 'strong' : 'span');
+    title.textContent = paperPilotSecurity.asText(message);
+    box.append(icon, document.createTextNode(' '), title);
+    details.filter(Boolean).forEach(detail => {
+        const detailElement = document.createElement('div');
+        detailElement.style.cssText = 'margin-top:8px;font-size:13px;';
+        detailElement.textContent = paperPilotSecurity.asText(detail);
+        box.appendChild(detailElement);
+    });
+    resultDiv.replaceChildren(box);
+    resultDiv.style.display = 'block';
+}
+
 async function testLLMAPIByScenario(scenarioKey) {
     const btn = document.getElementById(`test-llm-api-${scenarioKey}`);
     const resultDiv = document.getElementById(`llm-test-result-${scenarioKey}`);
@@ -5307,41 +5332,21 @@ async function testLLMAPIByScenario(scenarioKey) {
     const llmApiKey = apiKeyEl.value.trim();
 
     if (!llmModel || !llmBaseUrl || !llmApiKey) {
-        resultDiv.innerHTML = `
-            <div style="padding: 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; color: #856404;">
-                <i class="fas fa-exclamation-triangle"></i> Please fill in the complete LLM API Configuration
-            </div>
-        `;
-        resultDiv.style.display = 'block';
+        showConnectionTestResult(resultDiv, 'warning', 'Please fill in the complete LLM API Configuration');
         return;
     }
 
     const originalHTML = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Under test...';
-    resultDiv.style.display = 'block';
-    resultDiv.innerHTML = `
-        <div style="padding: 12px; background: #e7f3ff; border: 1px solid #2196F3; border-radius: 6px; color: #0d47a1;">
-            <i class="fas fa-spinner fa-spin"></i> Testing LLM API connect...
-        </div>
-    `;
+    showConnectionTestResult(resultDiv, 'loading', 'Testing LLM API connect...');
 
     const data = await testLLMAPICore(llmModel, llmBaseUrl, llmApiKey, scenarioKey);
 
     if (data.success) {
-        resultDiv.innerHTML = `
-            <div style="padding: 12px; background: #d4edda; border: 1px solid #28a745; border-radius: 6px; color: #155724;">
-                <i class="fas fa-check-circle"></i> <strong>${data.message}</strong>
-                ${data.reply ? `<div style="margin-top: 8px; font-size: 13px;">reply: "${data.reply}"</div>` : ''}
-            </div>
-        `;
+        showConnectionTestResult(resultDiv, 'success', data.message, data.reply ? [`reply: "${data.reply}"`] : []);
     } else {
-        resultDiv.innerHTML = `
-            <div style="padding: 12px; background: #f8d7da; border: 1px solid #dc3545; border-radius: 6px; color: #721c24;">
-                <i class="fas fa-times-circle"></i> <strong>test failed</strong>
-                <div style="margin-top: 8px; font-size: 13px;">${data.error || 'unknown error'}</div>
-            </div>
-        `;
+        showConnectionTestResult(resultDiv, 'error', 'test failed', [data.error || 'unknown error']);
     }
 
     btn.disabled = false;
@@ -5375,22 +5380,13 @@ async function testMineruAPI(event) {
         const mineruServerUrl = document.getElementById('mineru-server-url').value.trim();
 
         if (!mineruServerUrl) {
-            resultDiv.innerHTML = `
-                <div style="padding: 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; color: #856404;">
-                    <i class="fas fa-exclamation-triangle"></i> Please fill in first MinerU Server URL
-                </div>
-            `;
-            resultDiv.style.display = 'block';
+            showConnectionTestResult(resultDiv, 'warning', 'Please fill in first MinerU Server URL');
             btn.disabled = false;
             btn.innerHTML = originalHTML;
             return;
         }
 
-        resultDiv.innerHTML = `
-            <div style="padding: 12px; background: #e7f3ff; border: 1px solid #2196F3; border-radius: 6px; color: #0d47a1;">
-                <i class="fas fa-spinner fa-spin"></i> Testing MinerU Server connect...
-            </div>
-        `;
+        showConnectionTestResult(resultDiv, 'loading', 'Testing MinerU Server connect...');
 
         try {
             const response = await fetch('/api/settings/test/mineru', {
@@ -5404,49 +5400,25 @@ async function testMineruAPI(event) {
             const data = await response.json();
 
             if (data.success) {
-                resultDiv.innerHTML = `
-                    <div style="padding: 12px; background: #d4edda; border: 1px solid #28a745; border-radius: 6px; color: #155724;">
-                        <i class="fas fa-check-circle"></i> <strong>${data.message}</strong>
-                        ${data.tested_url ? `<div style="margin-top: 8px; font-size: 13px;">Test address: ${data.tested_url}</div>` : ''}
-                    </div>
-                `;
+                showConnectionTestResult(resultDiv, 'success', data.message, data.tested_url ? [`Test address: ${data.tested_url}`] : []);
             } else {
-                resultDiv.innerHTML = `
-                    <div style="padding: 12px; background: #f8d7da; border: 1px solid #dc3545; border-radius: 6px; color: #721c24;">
-                        <i class="fas fa-times-circle"></i> <strong>test failed</strong>
-                        <div style="margin-top: 8px; font-size: 13px;">${data.error || 'unknown error'}</div>
-                    </div>
-                `;
+                showConnectionTestResult(resultDiv, 'error', 'test failed', [data.error || 'unknown error']);
             }
         } catch (error) {
-            resultDiv.innerHTML = `
-                <div style="padding: 12px; background: #f8d7da; border: 1px solid #dc3545; border-radius: 6px; color: #721c24;">
-                    <i class="fas fa-times-circle"></i> <strong>test failed</strong>
-                    <div style="margin-top: 8px; font-size: 13px;">${error.message}</div>
-                </div>
-            `;
+            showConnectionTestResult(resultDiv, 'error', 'test failed', [error.message]);
         }
     } else {
         // Test API token
         const mineruApiToken = document.getElementById('mineru-api-token').value.trim();
 
         if (!mineruApiToken) {
-            resultDiv.innerHTML = `
-                <div style="padding: 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; color: #856404;">
-                    <i class="fas fa-exclamation-triangle"></i> Please enter API token
-                </div>
-            `;
-            resultDiv.style.display = 'block';
+            showConnectionTestResult(resultDiv, 'warning', 'Please enter API token');
             btn.disabled = false;
             btn.innerHTML = originalHTML;
             return;
         }
 
-        resultDiv.innerHTML = `
-            <div style="padding: 12px; background: #e7f3ff; border: 1px solid #2196F3; border-radius: 6px; color: #0d47a1;">
-                <i class="fas fa-spinner fa-spin"></i> Testing MinerU API Token...
-            </div>
-        `;
+        showConnectionTestResult(resultDiv, 'loading', 'Testing MinerU API Token...');
 
         try {
             const response = await fetch('/api/settings/test/mineru-api', {
@@ -5460,26 +5432,12 @@ async function testMineruAPI(event) {
             const data = await response.json();
 
             if (data.success) {
-                resultDiv.innerHTML = `
-                    <div style="padding: 12px; background: #d4edda; border: 1px solid #28a745; border-radius: 6px; color: #155724;">
-                        <i class="fas fa-check-circle"></i> <strong>${data.message}</strong>
-                    </div>
-                `;
+                showConnectionTestResult(resultDiv, 'success', data.message);
             } else {
-                resultDiv.innerHTML = `
-                    <div style="padding: 12px; background: #f8d7da; border: 1px solid #dc3545; border-radius: 6px; color: #721c24;">
-                        <i class="fas fa-times-circle"></i> <strong>test failed</strong>
-                        <div style="margin-top: 8px; font-size: 13px;">${data.error || 'unknown error'}</div>
-                    </div>
-                `;
+                showConnectionTestResult(resultDiv, 'error', 'test failed', [data.error || 'unknown error']);
             }
         } catch (error) {
-            resultDiv.innerHTML = `
-                <div style="padding: 12px; background: #f8d7da; border: 1px solid #dc3545; border-radius: 6px; color: #721c24;">
-                    <i class="fas fa-times-circle"></i> <strong>test failed</strong>
-                    <div style="margin-top: 8px; font-size: 13px;">${error.message}</div>
-                </div>
-            `;
+            showConnectionTestResult(resultDiv, 'error', 'test failed', [error.message]);
         }
     }
 
@@ -7220,9 +7178,7 @@ function getStatusText(status) {
 
 // HTMLescape
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return paperPilotSecurity.escapeHtml(text);
 }
 
 // Update translation status
@@ -9131,15 +9087,19 @@ async function viewAnalysisResult(paperId, event) {
             htmlContent = `<pre style="white-space: pre-wrap;">${escapeHtml(markdownContent)}</pre>`;
         }
 
-        // Inject toolbar + content
+        // Inject trusted structure first; sanitized Markdown is mounted separately.
         paperInfoEl.innerHTML = `
             <div class="paper-info-toolbar">
                 <div style="font-weight:600;">AI Interpretation</div>
             </div>
-            <button class="analysis-fullscreen-btn" onclick="openAnalysisFullscreen('${paperId}')" title="View full screen"><i class="fas fa-expand"></i></button>
-            <button class="analysis-close-btn" onclick="closeAnalysisView()" title="closure"><i class="fas fa-times"></i></button>
-            <div class="paper-info-content markdown-viewer">${htmlContent}</div>
+            <button class="analysis-fullscreen-btn" type="button" title="View full screen"><i class="fas fa-expand"></i></button>
+            <button class="analysis-close-btn" type="button" title="closure"><i class="fas fa-times"></i></button>
+            <div class="paper-info-content markdown-viewer"></div>
         `;
+        paperInfoEl.querySelector('.analysis-fullscreen-btn').addEventListener('click', () => openAnalysisFullscreen(paperId));
+        paperInfoEl.querySelector('.analysis-close-btn').addEventListener('click', closeAnalysisView);
+        const el = paperInfoEl.querySelector('.paper-info-content');
+        paperPilotSecurity.setSanitizedMarkdown(el, htmlContent, { paperId });
 
         // code highlighting
         if (typeof hljs !== 'undefined') {
@@ -9152,7 +9112,6 @@ async function viewAnalysisResult(paperId, event) {
         }
 
         // Mathematical formula typesetting（MathJax）
-        const el = paperInfoEl.querySelector('.paper-info-content');
         if (window.MathJax && MathJax.startup && MathJax.startup.promise) {
             MathJax.startup.promise.then(() => {
                 if (MathJax.typesetPromise) {
@@ -11116,7 +11075,7 @@ function renderDailyArxivSettingsCategoryList() {
     const ratios = dailyArxivSettings.categoryRatios || {};
     container.innerHTML = dailyArxivCategories.map(cat => {
         const normalizedCat = normalizeDailyArxivCategory(cat);
-        const ratioValue = ratios[normalizedCat] ?? '';
+        const ratioValue = Number.isFinite(Number(ratios[normalizedCat])) ? Number(ratios[normalizedCat]) : '';
         return `
         <div class="daily-arxiv-category-item">
             <span class="daily-arxiv-category-name">${escapeHtml(cat)}</span>
@@ -11128,16 +11087,22 @@ function renderDailyArxivSettingsCategoryList() {
                     step="0.1"
                     value="${ratioValue}"
                     data-category="${escapeHtml(normalizedCat)}"
-                    oninput="onDailyArxivCategoryRatioInput('${normalizedCat}', this.value)"
                     placeholder="auto" />
                 <span>%</span>
             </label>
-            <button class="remove-btn" onclick="removeDailyArxivCategory('${cat}')" title="Remove">
+            <button class="remove-btn" type="button" title="Remove">
                 <i class="fas fa-times"></i>
             </button>
         </div>
     `;
     }).join('');
+    container.querySelectorAll('.daily-arxiv-category-item').forEach((item, index) => {
+        const category = dailyArxivCategories[index];
+        const input = item.querySelector('.daily-arxiv-category-ratio-input');
+        const remove = item.querySelector('.remove-btn');
+        input?.addEventListener('input', () => onDailyArxivCategoryRatioInput(normalizeDailyArxivCategory(category), input.value));
+        remove?.addEventListener('click', () => removeDailyArxivCategory(category));
+    });
     renderDailyArxivCategoryRatioStatus();
 }
 
@@ -11153,19 +11118,26 @@ function renderDailyArxivKeywordList() {
         return;
     }
 
-    container.innerHTML = keywordList.map((keyword, index) => {
-        // Escape special characters to prevent XSS
-        const escapedKeyword = keyword.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        const escapedKeywordForAttr = keyword.replace(/'/g, "\\'").replace(/"/g, '\\"');
-        return `
-        <div class="daily-arxiv-keyword-item" data-keyword="${escapedKeyword}">
-            <span class="keyword-text">${keyword}</span>
-            <button class="remove-keyword-btn" onclick="removeDailyArxivKeyword('${escapedKeywordForAttr}')" title="delete">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        `;
-    }).join('');
+    container.replaceChildren();
+    keywordList.forEach(keyword => {
+        const item = document.createElement('div');
+        item.className = 'daily-arxiv-keyword-item';
+        item.dataset.keyword = paperPilotSecurity.asText(keyword);
+        const text = document.createElement('span');
+        text.className = 'keyword-text';
+        text.textContent = paperPilotSecurity.asText(keyword);
+        const remove = document.createElement('button');
+        remove.className = 'remove-keyword-btn';
+        remove.type = 'button';
+        remove.title = 'delete';
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-times';
+        remove.appendChild(icon);
+        remove.addEventListener('click', () => removeDailyArxivKeyword(keyword));
+        item.appendChild(text);
+        item.appendChild(remove);
+        container.appendChild(item);
+    });
 }
 
 async function renderDailyArxivStrategyHelp() {
@@ -11424,29 +11396,20 @@ function renderDailyArxivCategoryTags() {
         allCount += papers.length;
     });
 
-    // Add to"all"Label
-    const allTag = `
-        <span class="daily-arxiv-category-tag ${dailyArxivCurrentCategory === 'all' ? 'active' : ''}" 
-              onclick="switchDailyArxivCategory('all')"
-              title="${allCount ? allCount + ' papers' : 'All partitions'}">
-            all${allCount ? ' (' + allCount + ')' : ''}
-        </span>
-    `;
-
-    // Generate individual partition labels
-    const categoryTags = dailyArxivCategories.map(cat => {
-        const isActive = cat === dailyArxivCurrentCategory;
-        const count = categoryCounts[cat];
-        return `
-            <span class="daily-arxiv-category-tag ${isActive ? 'active' : ''}" 
-                  onclick="switchDailyArxivCategory('${cat}')"
-                  title="${count ? count + ' papers' : 'Click to load'}">
-                ${cat}${count ? ' (' + count + ')' : ''}
-            </span>
-        `;
-    }).join('');
-
-    container.innerHTML = allTag + categoryTags;
+    container.replaceChildren();
+    const appendTag = (category, count, fallbackTitle) => {
+        const tag = document.createElement('span');
+        tag.className = 'daily-arxiv-category-tag';
+        if (dailyArxivCurrentCategory === category) tag.classList.add('active');
+        tag.title = count ? `${count} papers` : fallbackTitle;
+        tag.textContent = `${category}${count ? ` (${count})` : ''}`;
+        tag.addEventListener('click', () => switchDailyArxivCategory(category));
+        container.appendChild(tag);
+    };
+    appendTag('all', allCount, 'All partitions');
+    dailyArxivCategories.forEach(category => {
+        appendTag(category, categoryCounts[category], 'Click to load');
+    });
 }
 
 // test LLM API（used for Daily arXiv Before crawling, reuse settings Interface testing logic）
@@ -11532,7 +11495,7 @@ function showRoundedNotification(message, type = 'error', persistent = true, not
 
     notification.innerHTML = `
         <i class="fas fa-exclamation-triangle" style="font-size: 14px;"></i>
-        <span>${message}</span>
+        <span class="notification-message"></span>
         ${actionButton || ''}
         <button onclick="removeNotificationWithAnimation('${notificationId}')" style="
             background: none;
@@ -11549,6 +11512,7 @@ function showRoundedNotification(message, type = 'error', persistent = true, not
             <i class="fas fa-times"></i>
         </button>
     `;
+    paperPilotSecurity.setText(notification.querySelector('.notification-message'), message);
 
     // Add animation style（if not yet）
     if (!document.getElementById('daily-arxiv-notification-style')) {
@@ -12498,6 +12462,11 @@ function renderDailyArxivGrid() {
             ? new Date(paper.announced).toLocaleDateString('en-US')
             : (paper.updated ? new Date(paper.updated).toLocaleDateString('en-US') : '');
         const authors = paper.authors ? (paper.authors.length > 50 ? paper.authors.substring(0, 50) + '...' : paper.authors) : '';
+        const homepageUrl = paperPilotSecurity.safeHttpUrl(paper.homepage);
+        const githubUrl = paperPilotSecurity.safeHttpUrl(paper.github);
+        const arxivUrl = paperPilotSecurity.safeHttpUrl(
+            `https://arxiv.org/abs/${encodeURIComponent(paperPilotSecurity.asText(paper.arxiv_id))}`
+        );
 
         // Organization information display（Complete display, gray rounded border, different colors for different units）
         let affiliationsHtml = '';
@@ -12561,7 +12530,7 @@ function renderDailyArxivGrid() {
         if (paper.thumbnail_path) {
             // fromthumbnail_pathExtract information to buildURL
             // thumbnail_pathFormat: /path/to/date/category/arxiv_id_thumbnail.jpg
-            const thumbnailUrl = `/api/daily-arxiv/thumbnail/${dailyArxivCurrentDate}/${encodeURIComponent(thumbnailCategory)}/${encodeURIComponent(paper.arxiv_id)}`;
+            const thumbnailUrl = `/api/daily-arxiv/thumbnail/${encodeURIComponent(dailyArxivCurrentDate)}/${encodeURIComponent(thumbnailCategory)}/${encodeURIComponent(paper.arxiv_id)}`;
             thumbnailHtml = `
                 <img src="${thumbnailUrl}" 
                      loading="lazy"
