@@ -25,11 +25,6 @@ COPY docker/requirements-web.txt /tmp/requirements.txt
 RUN uv venv /opt/venv \
  && uv pip sync --python /opt/venv/bin/python /tmp/requirements.txt
 
-FROM build-base AS worker-dependencies
-COPY docker/requirements-worker.txt /tmp/requirements.txt
-RUN uv venv /opt/venv \
- && uv pip sync --python /opt/venv/bin/python /tmp/requirements.txt
-
 FROM build-base AS test
 COPY docker/requirements-test.txt /tmp/requirements.txt
 RUN uv venv /opt/venv \
@@ -42,6 +37,11 @@ COPY static ./static
 COPY templates ./templates
 COPY tests ./tests
 RUN pytest -m "not integration" -q
+
+FROM build-base AS worker-dependencies
+COPY docker/requirements-worker.txt /tmp/requirements.txt
+RUN uv venv /opt/venv \
+ && uv pip sync --python /opt/venv/bin/python /tmp/requirements.txt
 
 FROM ubuntu:24.04 AS runtime-base
 
