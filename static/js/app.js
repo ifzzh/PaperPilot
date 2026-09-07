@@ -13829,14 +13829,23 @@ function renderModalVariants(variants) {
         return;
     }
 
-    listContainer.innerHTML = variants.map(variant => `
-        <div class="institution-variant-tag">
-            <span class="variant-text">${escapeHtml(variant)}</span>
-            <span class="remove-variant" onclick="removeVariantInModal('${escapeHtml(variant)}')">
-                <i class="fas fa-times"></i>
-            </span>
-        </div>
-    `).join('');
+    listContainer.replaceChildren();
+    variants.forEach(variant => {
+        const tag = document.createElement('div');
+        tag.className = 'institution-variant-tag';
+        const text = document.createElement('span');
+        text.className = 'variant-text';
+        text.textContent = paperPilotSecurity.asText(variant);
+        const remove = document.createElement('span');
+        remove.className = 'remove-variant';
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-times';
+        remove.appendChild(icon);
+        remove.addEventListener('click', () => removeVariantInModal(variant));
+        tag.appendChild(text);
+        tag.appendChild(remove);
+        listContainer.appendChild(tag);
+    });
 
     updateVariantCount();
 }
@@ -14944,10 +14953,10 @@ function renderChatMarkdown(value) {
     configureMarked();
 
     try {
-        return marked.parse(markdown);
+        return paperPilotSecurity.sanitizeMarkdownHtml(marked.parse(markdown), { paperId: currentChatPaperId });
     } catch (error) {
         console.error('Failed to render chat markdown:', error, { markdown });
-        return `<pre style="white-space: pre-wrap;">${escapeHtml(markdown)}</pre>`;
+        return `<pre>${escapeHtml(markdown)}</pre>`;
     }
 }
 
@@ -14978,11 +14987,8 @@ function configureMarked() {
         <div class="code-block-wrapper">
             <div class="code-header">
                 <span class="code-lang">${escapeHtml(langLabel)}</span>
-                <button class="copy-btn" onclick="window.copyChatCode(this)">
-                    <i class="fas fa-copy"></i> Copy
-                </button>
             </div>
-            <pre><code class="hljs ${langClass}">${highlighted}</code><textarea style="display:none">${escapeHtml(code)}</textarea></pre>
+            <pre><code class="hljs ${langClass}">${highlighted}</code></pre>
         </div>`;
     };
 
@@ -14993,21 +14999,41 @@ function configureMarked() {
     });
 }
 
-// Global copy function for chat code blocks
-window.copyChatCode = function (btn) {
-    const wrapper = btn.closest('.code-block-wrapper');
-    const textarea = wrapper.querySelector('textarea');
-
-    if (navigator.clipboard && textarea) {
-        navigator.clipboard.writeText(textarea.value).then(() => {
-            const originalHtml = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
-            setTimeout(() => {
-                btn.innerHTML = originalHtml;
-            }, 2000);
+function enhanceChatCodeBlocks(container) {
+    container.querySelectorAll('.code-block-wrapper').forEach(wrapper => {
+        const header = wrapper.querySelector('.code-header');
+        const code = wrapper.querySelector('pre code');
+        if (!header || !code || header.querySelector('.copy-btn')) return;
+        const button = document.createElement('button');
+        button.className = 'copy-btn';
+        button.type = 'button';
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-copy';
+        button.append(icon, document.createTextNode(' Copy'));
+        button.addEventListener('click', async () => {
+            if (!navigator.clipboard) return;
+            await navigator.clipboard.writeText(code.textContent || '');
+            button.replaceChildren(document.createTextNode('Copied!'));
+            setTimeout(() => button.replaceChildren(icon, document.createTextNode(' Copy')), 2000);
         });
+        header.appendChild(button);
+    });
+}
+
+function renderChatBubble(element, text, showCursor = false) {
+    if (typeof marked === 'undefined') {
+        element.textContent = stripChatThinkBlocks(text);
+        return;
     }
-};
+    element.innerHTML = renderChatMarkdown(text);
+    enhanceChatCodeBlocks(element);
+    if (showCursor) {
+        const cursor = document.createElement('span');
+        cursor.className = 'cursor-blink';
+        cursor.textContent = '|';
+        element.appendChild(cursor);
+    }
+}
 
 async function openChat(paperId, event) {
     if (event) event.stopPropagation();
@@ -15024,7 +15050,12 @@ async function openChat(paperId, event) {
     // Update modal title
     const modalTitle = document.getElementById('chat-modal-title');
     if (modalTitle) {
-        modalTitle.innerHTML = `<i class="fas fa-comments"></i> Chat with: ${paper.title || paper.filename}`;
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-comments';
+        modalTitle.replaceChildren(
+            icon,
+            document.createTextNode(` Chat with: ${paperPilotSecurity.asText(paper.title || paper.filename)}`)
+        );
     }
 
     // Show modal first
@@ -15096,14 +15127,26 @@ function createSessionElement(session) {
     const date = new Date(session.updated_at * 1000);
     const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    div.innerHTML = `
-        <span class="session-title">${session.title}</span>
-        <span class="session-preview">${session.preview || 'No messages'}</span>
-        <div class="session-date">${dateStr}</div>
-        <button class="session-delete-btn" onclick="deleteSession('${session.id}', event)" title="Delete Chat">
-            <i class="fas fa-trash"></i>
-        </button>
-    `;
+    const title = document.createElement('span');
+    title.className = 'session-title';
+    title.textContent = paperPilotSecurity.asText(session.title);
+    const preview = document.createElement('span');
+    preview.className = 'session-preview';
+    preview.textContent = paperPilotSecurity.asText(session.preview || 'No messages');
+    const dateElement = document.createElement('div');
+    dateElement.className = 'session-date';
+    dateElement.textContent = dateStr;
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'session-delete-btn';
+    deleteButton.title = 'Delete Chat';
+    const deleteIcon = document.createElement('i');
+    deleteIcon.className = 'fas fa-trash';
+    deleteButton.appendChild(deleteIcon);
+    deleteButton.addEventListener('click', event => deleteSession(session.id, event));
+    div.appendChild(title);
+    div.appendChild(preview);
+    div.appendChild(dateElement);
+    div.appendChild(deleteButton);
 
     div.onclick = () => switchSession(session.id);
     return div;
@@ -15313,6 +15356,16 @@ async function sendChatMessage() {
         const decoder = new TextDecoder();
 
         let isFirstChunk = true;
+        let renderFrame = null;
+        const scheduleRender = () => {
+            if (renderFrame !== null) return;
+            renderFrame = requestAnimationFrame(() => {
+                renderFrame = null;
+                renderChatBubble(aiBubble, fullResponse, true);
+                const chatBody = document.getElementById('chat-messages');
+                chatBody.scrollTop = chatBody.scrollHeight;
+            });
+        };
 
         while (true) {
             const { done, value } = await reader.read();
@@ -15344,21 +15397,16 @@ async function sendChatMessage() {
 
             fullResponse += contentToDisplay;
 
-            if (typeof marked !== 'undefined') {
-                // Add blinking cursor
-                aiBubble.innerHTML = renderChatMarkdown(fullResponse) + '<span class="cursor-blink">|</span>';
-            } else {
-                aiBubble.textContent = stripChatThinkBlocks(fullResponse);
-            }
-
-            // Scroll to bottom
-            const chatBody = document.getElementById('chat-messages');
-            chatBody.scrollTop = chatBody.scrollHeight;
+            scheduleRender();
         }
 
         // Final render without cursor
+        if (renderFrame !== null) {
+            cancelAnimationFrame(renderFrame);
+            renderFrame = null;
+        }
+        renderChatBubble(aiBubble, fullResponse);
         if (typeof marked !== 'undefined') {
-            aiBubble.innerHTML = renderChatMarkdown(fullResponse);
             // Trigger MathJax render if available
             if (window.MathJax && window.MathJax.typesetPromise) {
                 window.MathJax.typesetPromise([aiBubble]).catch(err => console.log('MathJax error:', err));
@@ -15374,7 +15422,10 @@ async function sendChatMessage() {
     } catch (error) {
         console.error('Chat error:', error);
         const msg = (error && error.message) ? error.message : 'Error sending message.';
-        aiBubble.innerHTML = `<span style="color: #fa5252;">${msg}</span>`;
+        const errorMessage = document.createElement('span');
+        errorMessage.style.color = '#fa5252';
+        errorMessage.textContent = msg;
+        aiBubble.replaceChildren(errorMessage);
     }
 }
 
@@ -15395,7 +15446,7 @@ function appendChatMessage(role, text, isThinking = false) {
 
     if (!isThinking) {
         if (role === 'ai' && typeof marked !== 'undefined' && text) {
-            bubbleDiv.innerHTML = renderChatMarkdown(text);
+            renderChatBubble(bubbleDiv, text);
             if (window.MathJax && window.MathJax.typesetPromise) {
                 // Defer MathJax to avoid blocking UI during initial render
                 setTimeout(() => window.MathJax.typesetPromise([bubbleDiv]), 0);

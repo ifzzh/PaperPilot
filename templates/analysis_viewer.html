@@ -549,7 +549,7 @@
                     return preserved[Number(idx)];
                 });
                 const el = document.getElementById('md');
-                el.innerHTML = html;
+                PaperPilotSecurity.setSanitizedMarkdown(el, html, { paperId });
                 if (typeof hljs !== 'undefined') {
                     document.querySelectorAll('pre code').forEach((block) => hljs.highlightElement(block));
                 }
@@ -575,7 +575,10 @@
                     }, 500);
                 }
             } else {
-                document.getElementById('md').innerHTML = `<pre style="white-space: pre-wrap;">${mdText}</pre>`;
+                const pre = document.createElement('pre');
+                pre.style.whiteSpace = 'pre-wrap';
+                pre.textContent = mdText;
+                document.getElementById('md').replaceChildren(pre);
             }
         }
 
