@@ -179,7 +179,29 @@
    | `--port` | `7191` | 服务器监听端口 |
    | `--debug` | `False` | 启用调试模式（开发用） |
 
-   维护中的 Compose 文件使用 `ifzzh520/paperpilot:0.2.0`，仅绑定 `127.0.0.1:7191`，以非 root 用户运行，并要求持久化挂载 `/app/db` 和 `/data/papers`。运行 `docker compose up -d` 前，请先把 `.env.example` 复制到部署目录并填写配置。
+   维护中的 Compose 文件使用 `ifzzh520/paperpilot:0.3.0`，仅绑定 `127.0.0.1:7191`，以非 root 用户运行，并要求持久化挂载 `/app/db` 和 `/data/papers`。运行 `docker compose up -d` 前，请先把 `.env.example` 复制到部署目录并填写配置。
+
+### 从 v0.2.0 升级
+
+v0.3.0 将分类文件存储到 `/data/papers/.categories/` 下由分类 ID 确定的目录。迁移前必须停止 PaperPilot，然后执行：
+
+```bash
+python -m paperpilot.migrations.category_storage \
+  --papers-dir /data/papers --db /app/db/paperpilot.db --dry-run
+python -m paperpilot.migrations.category_storage \
+  --papers-dir /data/papers --db /app/db/paperpilot.db \
+  --backup-dir /backups --apply
+```
+
+请保存命令输出的 manifest 路径。需要回滚时保持服务停止并执行：
+
+```bash
+python -m paperpilot.migrations.category_storage \
+  --papers-dir /data/papers --db /app/db/paperpilot.db \
+  --rollback /data/papers/.paperpilot-migrations/<manifest>.json
+```
+
+检测到旧布局、新旧布局冲突或中断迁移时，v0.3.0 会拒绝启动。
 
    **典型配置方案：**
 

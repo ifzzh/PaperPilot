@@ -180,7 +180,30 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   The maintained Compose file uses `ifzzh520/paperpilot:0.2.0`, binds only `127.0.0.1:7191`, runs as a non-root user, and expects `/app/db` and `/data/papers` to be persistent mounts. Copy `.env.example` to the deployment directory before running `docker compose up -d`.
+   The maintained Compose file uses `ifzzh520/paperpilot:0.3.0`, binds only `127.0.0.1:7191`, runs as a non-root user, and expects `/app/db` and `/data/papers` to be persistent mounts. Copy `.env.example` to the deployment directory before running `docker compose up -d`.
+
+### Upgrading from v0.2.0
+
+v0.3.0 stores category files in deterministic ID directories under
+`/data/papers/.categories/`. Stop PaperPilot before migrating, then run:
+
+```bash
+python -m paperpilot.migrations.category_storage \
+  --papers-dir /data/papers --db /app/db/paperpilot.db --dry-run
+python -m paperpilot.migrations.category_storage \
+  --papers-dir /data/papers --db /app/db/paperpilot.db \
+  --backup-dir /backups --apply
+```
+
+Keep the printed manifest path. To roll back while the service is stopped:
+
+```bash
+python -m paperpilot.migrations.category_storage \
+  --papers-dir /data/papers --db /app/db/paperpilot.db \
+  --rollback /data/papers/.paperpilot-migrations/<manifest>.json
+```
+
+Startup fails closed when a legacy, mixed, or interrupted category layout is detected.
    | `--debug` | `False` | Enable debug mode (for development) |
 
    **Typical Configuration Examples:**

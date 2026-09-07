@@ -62,7 +62,7 @@ RUN uv sync --frozen --extra test \
 
 FROM ubuntu:24.04 AS runtime
 
-ARG APP_VERSION=0.2.0
+ARG APP_VERSION=0.3.0
 ARG VCS_REF=unknown
 ARG ARXIV_PROXY=
 ARG ARXIV_API_PROXY=
