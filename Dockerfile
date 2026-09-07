@@ -31,6 +31,7 @@ RUN uv venv /opt/venv \
  && uv pip sync --python /opt/venv/bin/python /tmp/requirements.txt
 ENV PATH=/opt/venv/bin:$PATH
 WORKDIR /app
+COPY pyproject.toml ./
 COPY app.py ./
 COPY paperpilot ./paperpilot
 COPY static ./static
