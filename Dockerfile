@@ -1,115 +1,118 @@
-FROM ubuntu:24.04 AS builder
+FROM ubuntu:24.04 AS build-base
 
 ARG HTTP_PROXY=
 ARG HTTPS_PROXY=
 ARG NO_PROXY=
 ARG ALL_PROXY=
-ARG http_proxy=
-ARG https_proxy=
-ARG no_proxy=
-ARG all_proxy=
-ARG ARXIV_PROXY=
-ARG ARXIV_API_PROXY=
-ARG ARXIV_HTTP_PROXY=
-ARG ARXIV_HTTPS_PROXY=
 
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
-ENV NO_PROXY=${NO_PROXY}
-ENV ALL_PROXY=${ALL_PROXY}
-ENV http_proxy=${http_proxy}
-ENV https_proxy=${https_proxy}
-ENV no_proxy=${no_proxy}
-ENV all_proxy=${all_proxy}
-ENV ARXIV_PROXY=${ARXIV_PROXY}
-ENV ARXIV_API_PROXY=${ARXIV_API_PROXY}
-ENV ARXIV_HTTP_PROXY=${ARXIV_HTTP_PROXY}
-ENV ARXIV_HTTPS_PROXY=${ARXIV_HTTPS_PROXY}
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY} \
+    ALL_PROXY=${ALL_PROXY} \
+    DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-RUN apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" update && \
-    apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    build-essential \
-    python3 \
-    python3-dev \
-    python3-pip \
-    python3-venv \
-  && rm -rf /var/lib/apt/lists/*
+RUN apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" update \
+ && apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" install -y --no-install-recommends \
+      build-essential ca-certificates python3 python3-dev python3-pip python3-venv \
+ && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install --break-system-packages --no-cache-dir uv
 
-WORKDIR /app
+FROM build-base AS web-dependencies
+COPY docker/requirements-web.txt /tmp/requirements.txt
+RUN uv venv /opt/venv \
+ && uv pip sync --python /opt/venv/bin/python /tmp/requirements.txt
 
-COPY pyproject.toml uv.lock README.md README_zh.md ./
+FROM build-base AS worker-dependencies
+COPY docker/requirements-worker.txt /tmp/requirements.txt
+RUN uv venv /opt/venv \
+ && uv pip sync --python /opt/venv/bin/python /tmp/requirements.txt
+
+FROM build-base AS test
+COPY docker/requirements-test.txt /tmp/requirements.txt
+RUN uv venv /opt/venv \
+ && uv pip sync --python /opt/venv/bin/python /tmp/requirements.txt
+ENV PATH=/opt/venv/bin:$PATH
+WORKDIR /app
 COPY app.py ./
 COPY paperpilot ./paperpilot
 COPY static ./static
 COPY templates ./templates
-
-RUN uv sync --frozen --no-dev
-
-FROM builder AS test
-
 COPY tests ./tests
+RUN pytest -m "not integration" -q
 
-RUN uv sync --frozen --extra test \
-  && uv run pytest -m "not integration" -q
+FROM ubuntu:24.04 AS runtime-base
 
-FROM ubuntu:24.04 AS runtime
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH=/opt/venv/bin:$PATH
 
-ARG APP_VERSION=0.3.0
+RUN apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" update \
+ && apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" install -y --no-install-recommends \
+      ca-certificates libglib2.0-0 libgl1 libgomp1 libx11-6 libxcb1 libxext6 libxrender1 python3 \
+ && rm -rf /var/lib/apt/lists/*
+
+FROM runtime-base AS translation-worker
+
+ARG APP_VERSION=0.4.0
+ARG VCS_REF=unknown
+
+WORKDIR /app
+COPY --from=worker-dependencies /opt/venv /opt/venv
+COPY paperpilot /app/paperpilot
+
+RUN groupadd --gid 1001 paperpilot \
+ && useradd --uid 10002 --gid 1001 --no-create-home --home-dir /app --shell /usr/sbin/nologin paperpilot-worker \
+ && mkdir -p /work/jobs \
+ && chown 10002:1001 /work/jobs
+
+LABEL org.opencontainers.image.title="PaperPilot Translation Worker" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.source="https://github.com/ifzzh/PaperPilot"
+
+USER 10002:1001
+EXPOSE 7192
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=30s \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7192/healthz', timeout=4).read()"
+CMD ["python", "-m", "paperpilot.translation_worker"]
+
+FROM runtime-base AS runtime
+
+ARG APP_VERSION=0.4.0
 ARG VCS_REF=unknown
 ARG ARXIV_PROXY=
 ARG ARXIV_API_PROXY=
 ARG ARXIV_HTTP_PROXY=
 ARG ARXIV_HTTPS_PROXY=
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV PATH=/opt/venv/bin:$PATH
-ENV ARXIV_PROXY=${ARXIV_PROXY}
-ENV ARXIV_API_PROXY=${ARXIV_API_PROXY}
-ENV ARXIV_HTTP_PROXY=${ARXIV_HTTP_PROXY}
-ENV ARXIV_HTTPS_PROXY=${ARXIV_HTTPS_PROXY}
+ENV ARXIV_PROXY=${ARXIV_PROXY} \
+    ARXIV_API_PROXY=${ARXIV_API_PROXY} \
+    ARXIV_HTTP_PROXY=${ARXIV_HTTP_PROXY} \
+    ARXIV_HTTPS_PROXY=${ARXIV_HTTPS_PROXY}
+
+WORKDIR /app
+COPY --from=web-dependencies /opt/venv /opt/venv
+COPY app.py /app/app.py
+COPY paperpilot /app/paperpilot
+COPY static /app/static
+COPY templates /app/templates
+
+RUN groupadd --gid 1001 paperpilot \
+ && useradd --uid 10001 --gid 1001 --no-create-home --home-dir /app --shell /usr/sbin/nologin paperpilot \
+ && mkdir -p /app/db /data/papers /work/jobs \
+ && chown -R 10001:1001 /app /data/papers /work/jobs
 
 LABEL org.opencontainers.image.title="PaperPilot" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.source="https://github.com/ifzzh/PaperPilot"
 
-RUN apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" update && \
-    apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" install -y --no-install-recommends \
-    ca-certificates \
-    libglib2.0-0 \
-    libgl1 \
-    libgomp1 \
-    python3 \
-  && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-COPY --from=builder /opt/venv /opt/venv
-COPY --from=builder /app/app.py /app/app.py
-COPY --from=builder /app/paperpilot /app/paperpilot
-COPY --from=builder /app/static /app/static
-COPY --from=builder /app/templates /app/templates
-
-RUN groupadd --gid 1001 paperpilot \
-  && useradd --uid 10001 --gid 1001 --no-create-home --home-dir /app --shell /usr/sbin/nologin paperpilot \
-  && mkdir -p /app/db /data/papers \
-  && chown -R 10001:1001 /app /data/papers
-
 USER 10001:1001
-
 EXPOSE 7191
-
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=30s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7191/healthz', timeout=4).read()"
-
 CMD ["python", "app.py", "--host", "0.0.0.0", "--port", "7191", "--papers-dir", "/data/papers"]
