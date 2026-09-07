@@ -120,6 +120,14 @@ class WorkerContractTests(unittest.TestCase):
         self.assertEqual(first.status_code, 202)
         self.assertEqual(second.status_code, 409)
         self.assertEqual(second.get_json()["error"], "worker_busy")
+        for _ in range(100):
+            state = client.get(
+                f"/v1/jobs/{first_id}", headers=self._headers()
+            ).get_json()
+            if state["status"] == "completed":
+                break
+            time.sleep(0.01)
+        self.assertEqual(state["status"], "completed")
 
 
 if __name__ == "__main__":
