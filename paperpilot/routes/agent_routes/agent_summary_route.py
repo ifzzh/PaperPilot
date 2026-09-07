@@ -14,6 +14,8 @@ from flask import jsonify, request, send_file
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.settings_dao import SettingsDAO
+from paperpilot.security.agentic_credentials import AgenticCredentialStore
+from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
 from paperpilot.security.paths import (
     PathSecurityError,
     ensure_confined,
@@ -41,7 +43,10 @@ def register_agent_summary_routes(
     save_paper_metadata: Callable[[str, Any], None],
     agentic_settings_file: str,
     upload_folder: str,
+    credential_store: AgenticCredentialStore | None = None,
+    outbound_policy: OutboundPolicy | None = None,
 ) -> None:
+    del agentic_settings_file
     def resolve_paper_file(paper: Paper) -> str:
         entry = paper_store.get_entry(paper.id)
         if not entry:
@@ -59,34 +64,22 @@ def register_agent_summary_routes(
     def api_analyze_paper():
         """AI InterpretationPDFpaper - Start background task"""
         try:
-            import json
-
             data = request.json or {}
+            if not isinstance(data, dict):
+                return jsonify({"success": False, "error": "invalid_request"}), 400
+            forbidden = sorted(set(data) - {"paper_id", "ai_language"})
+            if forbidden:
+                return jsonify({"success": False, "error": "forbidden_agent_overrides", "fields": forbidden}), 400
             paper_id = data.get("paper_id")
-            openai_base_url = data.get("openai_base_url")
-            openai_api_key = data.get("openai_api_key")
-            system_prompt = data.get(
-                "system_prompt", ""
-            )  # Allow empty, use default value
-
-            if not paper_id or not openai_base_url or not openai_api_key:
+            if not isinstance(paper_id, str) or not paper_id.strip():
                 return (
                     jsonify({"success": False, "error": "Missing required parameters"}),
                     400,
                 )
+            if credential_store is None or outbound_policy is None:
+                return jsonify({"success": False, "error": "agentic_security_unavailable"}), 503
 
-            agentic_settings: Dict[str, Any] = {}
-            try:
-                agentic_settings = SettingsDAO.get_setting("agentic_settings", {}) or {}
-            except Exception:
-                agentic_settings = {}
-
-            if not agentic_settings and os.path.exists(agentic_settings_file):
-                try:
-                    with open(agentic_settings_file, "r", encoding="utf-8") as f:
-                        agentic_settings = json.load(f) or {}
-                except Exception:
-                    agentic_settings = {}
+            agentic_settings = SettingsDAO.get_setting("agentic_settings", {}) or {}
 
             use_api = agentic_settings.get("mineruUseApi", False)
             mineru_config = {
@@ -95,7 +88,7 @@ def register_agent_summary_routes(
                     agentic_settings.get("mineruServerUrl", "") if not use_api else ""
                 ),
                 "apiToken": (
-                    agentic_settings.get("mineruApiToken", "") if use_api else ""
+                    credential_store.get("mineru") if use_api else ""
                 ),
             }
 
@@ -123,36 +116,29 @@ def register_agent_summary_routes(
                         400,
                     )
 
-            # Test before starting a task API connect
-            # test LLM API - If no model name is provided in the request, read from the configuration file
-            llm_model = data.get("openai_model", "").strip()
-            if not llm_model and agentic_settings_file:
-                try:
-                    llm_configs = agentic_settings.get("llmConfigs")
-                    if isinstance(llm_configs, dict) and isinstance(
-                        llm_configs.get("interpret"), dict
-                    ):
-                        llm_model = (llm_configs.get("interpret") or {}).get(
-                            "llmModel", ""
-                        ).strip()
-                    else:
-                        llm_model = (agentic_settings.get("llmModel") or "").strip()
-                except Exception:
-                    pass
+            llm_configs = agentic_settings.get("llmConfigs") or {}
+            llm_config = llm_configs.get("interpret") or {}
+            llm_model = (llm_config.get("llmModel") or "").strip()
+            openai_base_url = (llm_config.get("llmBaseUrl") or "").strip()
+            openai_api_key = credential_store.get("interpret")
+            system_prompt = ""
 
             if not llm_model:
                 return (
                     jsonify(
                         {
                             "success": False,
-                            "error": "Lack LLM Model name, please provide it in the request openai_model Or configure in settings llmModel",
+                            "error": "interpret_settings_not_configured",
                         }
                     ),
                     400,
                 )
 
+            if not openai_base_url or not openai_api_key:
+                return jsonify({"success": False, "error": "interpret_settings_not_configured"}), 400
+            outbound_policy.validate(openai_base_url, purpose="ai")
             llm_success, llm_error = test_llm_api(
-                llm_model, openai_base_url, openai_api_key
+                llm_model, openai_base_url, openai_api_key, outbound_policy
             )
             if not llm_success:
                 return (
@@ -175,8 +161,9 @@ def register_agent_summary_routes(
                 )
             else:
                 # Test local server
+                outbound_policy.validate(mineru_config["serverUrl"], purpose="ai")
                 mineru_success, mineru_error = test_mineru_api(
-                    mineru_config["serverUrl"]
+                    mineru_config["serverUrl"], outbound_policy
                 )
 
             if not mineru_success:
@@ -278,6 +265,8 @@ def register_agent_summary_routes(
             )
 
             ai_language = data.get("ai_language", "zh")
+            if ai_language not in {"zh", "en"}:
+                ai_language = "zh"
 
             thread = threading.Thread(
                 target=analyze_paper_task,
@@ -307,18 +296,12 @@ def register_agent_summary_routes(
                 }
             )
 
-        except Exception as exc:  # noqa: BLE001
-            print(f"Failed to start interpretation task: {exc}")
-            import traceback
-
-            traceback.print_exc()
+        except OutboundPolicyError as exc:
+            return jsonify({"success": False, "error": exc.reason}), 400
+        except Exception:  # noqa: BLE001
+            print("Failed to start interpretation task")
             return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": f"Failed to start interpretation task: {str(exc)}",
-                    }
-                ),
+                jsonify({"success": False, "error": "analysis_start_failed"}),
                 500,
             )
 

@@ -11,6 +11,7 @@ from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
 from paperpilot.security.credentials import CredentialError
 from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
+from paperpilot.tools.api_test_utils import create_openai_client
 
 
 def _normalize_agentic_settings(
@@ -479,7 +480,7 @@ def register_settings_routes(
 
             # import OpenAI client
             try:
-                from openai import OpenAI
+                from openai import OpenAI  # noqa: F401
             except ImportError:
                 return (
                     jsonify(
@@ -492,11 +493,7 @@ def register_settings_routes(
                 )
 
             # Create client
-            client = OpenAI(
-                base_url=llm_base_url,
-                api_key=llm_api_key,
-                timeout=30.0,  # 30seconds timeout
-            )
+            client = create_openai_client(llm_api_key, llm_base_url, outbound_policy)
 
             # Send test message
             test_message = "Can you see my message, if you can, respond with Yes."

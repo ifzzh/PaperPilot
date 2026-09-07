@@ -23,6 +23,9 @@ class TranslationWebBoundaryTests(unittest.TestCase):
         paper_store.reset()
         self.worker = Mock()
         self.worker.run_cleanup_loop.return_value = None
+        self.credentials = Mock()
+        self.credentials.get.return_value = "server-secret"
+        self.outbound = Mock()
         app = Flask(__name__)
         with (
             patch(
@@ -41,6 +44,8 @@ class TranslationWebBoundaryTests(unittest.TestCase):
                 save_paper_metadata=Mock(),
                 agentic_settings_file="unused",
                 upload_folder=str(self.papers),
+                credential_store=self.credentials,
+                outbound_policy=self.outbound,
             )
         self.client = app.test_client()
 
@@ -48,18 +53,34 @@ class TranslationWebBoundaryTests(unittest.TestCase):
         paper_store.reset()
         self.temp.cleanup()
 
+    def test_client_credential_overrides_are_rejected(self):
+        self.worker.health.return_value = False
+        response = self.client.post(
+            "/api/paper/translate",
+            json={
+                "paper_id": "paper-1",
+                "openai_model": "fake",
+                "openai_base_url": "http://fake.invalid/v1",
+                "openai_api_key": "secret",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "forbidden_agent_overrides")
+        self.worker.health.assert_not_called()
+
     def test_worker_unavailable_returns_503_without_local_fallback(self):
         self.worker.health.return_value = False
-        with patch.object(TranslationJobDAO, "has_active_for_paper", return_value=False):
-            response = self.client.post(
-                "/api/paper/translate",
-                json={
-                    "paper_id": "paper-1",
-                    "openai_model": "fake",
-                    "openai_base_url": "http://fake.invalid/v1",
-                    "openai_api_key": "secret",
-                },
-            )
+        settings = {"llmConfigs": {"translate": {
+            "llmModel": "fake", "llmBaseUrl": "https://api.example.test/v1"
+        }}}
+        with (
+            patch.object(TranslationJobDAO, "has_active_for_paper", return_value=False),
+            patch(
+                "paperpilot.routes.agent_routes.agent_translate_route.SettingsDAO.get_setting",
+                return_value=settings,
+            ),
+        ):
+            response = self.client.post("/api/paper/translate", json={"paper_id": "paper-1"})
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.get_json()["error"], "translation_worker_unavailable")
         self.worker.stage_input.assert_not_called()

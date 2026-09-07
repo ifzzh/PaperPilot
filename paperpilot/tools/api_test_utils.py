@@ -4,8 +4,27 @@ API test utilities for testing LLM and MinerU connections
 
 import requests
 
+from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
 
-def test_llm_api(model: str, base_url: str, api_key: str) -> tuple[bool, str]:
+
+def create_openai_client(api_key: str, base_url: str, outbound_policy: OutboundPolicy):
+    from openai import DefaultHttpxClient, OpenAI
+
+    outbound_policy.validate(base_url, purpose="ai")
+    return OpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        timeout=30.0,
+        http_client=DefaultHttpxClient(follow_redirects=False),
+    )
+
+
+def test_llm_api(
+    model: str,
+    base_url: str,
+    api_key: str,
+    outbound_policy: OutboundPolicy | None = None,
+) -> tuple[bool, str]:
     """
     Test LLM API connection
 
@@ -18,9 +37,11 @@ def test_llm_api(model: str, base_url: str, api_key: str) -> tuple[bool, str]:
         (success, error_message)
     """
     try:
-        from openai import OpenAI
-
-        client = OpenAI(api_key=api_key, base_url=base_url)
+        if outbound_policy is None:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key, base_url=base_url)
+        else:
+            client = create_openai_client(api_key, base_url, outbound_policy)
 
         # Try a simple completion with the configured model. Some OpenAI-compatible
         # services support chat completions but return an empty /models list.
@@ -33,11 +54,15 @@ def test_llm_api(model: str, base_url: str, api_key: str) -> tuple[bool, str]:
         else:
             return False, "No valid response"
 
-    except Exception as e:
-        return False, str(e)
+    except OutboundPolicyError as exc:
+        return False, exc.reason
+    except Exception:
+        return False, "llm_connection_failed"
 
 
-def test_mineru_api(server_url: str) -> tuple[bool, str]:
+def test_mineru_api(
+    server_url: str, outbound_policy: OutboundPolicy | None = None
+) -> tuple[bool, str]:
     """
     Test MinerU local server connection
 
@@ -50,7 +75,11 @@ def test_mineru_api(server_url: str) -> tuple[bool, str]:
     try:
         # Test health endpoint
         test_url = f"{server_url.rstrip('/')}/health"
-        response = requests.get(test_url, timeout=10)
+        if outbound_policy is not None:
+            outbound_policy.validate(test_url, purpose="ai")
+        response = requests.get(test_url, timeout=10, allow_redirects=False)
+        if outbound_policy is not None:
+            outbound_policy.reject_redirect(response.status_code)
 
         if response.status_code == 200:
             return True, "MinerU server is accessible"
@@ -58,11 +87,13 @@ def test_mineru_api(server_url: str) -> tuple[bool, str]:
             return False, f"Server returned status {response.status_code}"
 
     except requests.exceptions.ConnectionError:
-        return False, f"Cannot connect to {server_url}"
+        return False, "mineru_connection_failed"
     except requests.exceptions.Timeout:
         return False, "Connection timeout"
-    except Exception as e:
-        return False, str(e)
+    except OutboundPolicyError as exc:
+        return False, exc.reason
+    except Exception:
+        return False, "mineru_connection_failed"
 
 
 def test_mineru_api_token(api_token: str) -> tuple[bool, str]:
@@ -91,6 +122,7 @@ def test_mineru_api_token(api_token: str) -> tuple[bool, str]:
                 "model_version": "vlm",
             },
             timeout=10,
+            allow_redirects=False,
         )
 
         if response.status_code == 200:
@@ -108,11 +140,11 @@ def test_mineru_api_token(api_token: str) -> tuple[bool, str]:
         elif response.status_code == 403:
             return False, "Access forbidden - check your token permissions"
         else:
-            return False, f"HTTP {response.status_code}: {response.text}"
+            return False, "mineru_api_rejected"
 
     except requests.exceptions.ConnectionError:
         return False, "Cannot connect to MinerU API server"
     except requests.exceptions.Timeout:
         return False, "Connection timeout"
-    except Exception as e:
-        return False, f"Connection failed: {str(e)}"
+    except Exception:
+        return False, "mineru_api_connection_failed"

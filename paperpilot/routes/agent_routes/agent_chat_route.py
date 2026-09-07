@@ -7,11 +7,12 @@ import threading
 from typing import Any, Callable, Dict, List, Generator
 
 from flask import Response, jsonify, request, stream_with_context
-from openai import OpenAI
-
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.settings_dao import SettingsDAO
+from paperpilot.security.agentic_credentials import AgenticCredentialStore
+from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
+from paperpilot.tools.api_test_utils import create_openai_client
 from paperpilot.tools.basic_tools.chat_history_manager import ChatHistoryManager
 
 CategoryPath = List[str]
@@ -135,7 +136,10 @@ def register_agent_chat_routes(
     get_category_path: Callable[[dict, str], CategoryPath | None],
     get_papers_in_category: Callable[[str, CategoryPath], List[Paper]],
     agentic_settings_file: str,
+    credential_store: AgenticCredentialStore | None = None,
+    outbound_policy: OutboundPolicy | None = None,
 ) -> None:
+    del agentic_settings_file
     
     @app.route("/api/paper/chat/sessions", methods=["GET"])
     def api_get_chat_sessions():
@@ -213,6 +217,9 @@ def register_agent_chat_routes(
             paper_id = data.get("paper_id")
             messages = data.get("messages", [])
             session_id = data.get("session_id")
+            forbidden = sorted(set(data) - {"paper_id", "messages", "session_id"})
+            if forbidden:
+                return jsonify({"success": False, "error": "forbidden_agent_overrides", "fields": forbidden}), 400
             
             if not paper_id or not messages:
                 missing: List[str] = []
@@ -252,13 +259,6 @@ def register_agent_chat_routes(
             except Exception:
                 agentic_settings = {}
 
-            if not agentic_settings and os.path.exists(agentic_settings_file):
-                try:
-                    with open(agentic_settings_file, "r", encoding="utf-8") as f:
-                        agentic_settings = json.load(f) or {}
-                except Exception:
-                    agentic_settings = {}
-
             llm_cfg: Dict[str, Any] = {}
             llm_configs = agentic_settings.get("llmConfigs")
             if isinstance(llm_configs, dict) and isinstance(
@@ -269,8 +269,10 @@ def register_agent_chat_routes(
                 llm_cfg = agentic_settings
 
             openai_base_url = (llm_cfg.get("llmBaseUrl") or "").strip()
-            openai_api_key = (llm_cfg.get("llmApiKey") or "").strip()
             llm_model = (llm_cfg.get("llmModel") or "").strip()
+            if credential_store is None or outbound_policy is None:
+                return jsonify({"success": False, "error": "agentic_security_unavailable"}), 503
+            openai_api_key = credential_store.get("interpret")
 
             if not openai_base_url or not openai_api_key or not llm_model:
                 return (
@@ -282,6 +284,7 @@ def register_agent_chat_routes(
                     ),
                     400,
                 )
+            outbound_policy.validate(openai_base_url, purpose="ai")
 
             # 2. Find Paper
             entry = paper_store.get_entry(paper_id)
@@ -428,7 +431,7 @@ If the user asks for details that require the paper text, say you don't know and
             chat_messages.extend(messages)
 
             # 5. Call OpenAI and Stream
-            client = OpenAI(api_key=openai_api_key, base_url=openai_base_url)
+            client = create_openai_client(openai_api_key, openai_base_url, outbound_policy)
 
             def generate():
                 full_response = ""
@@ -465,13 +468,13 @@ If the user asks for details that require the paper text, say you don't know and
                         strip_think_blocks(full_response),
                     )
                             
-                except Exception as e:
-                    yield f"Error: {str(e)}"
+                except Exception:
+                    yield "Error: llm_request_failed"
 
             return Response(stream_with_context(generate()), mimetype='text/plain')
 
-        except Exception as e:
-            print(f"Chat error: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({"success": False, "error": str(e)}), 500
+        except OutboundPolicyError as exc:
+            return jsonify({"success": False, "error": exc.reason}), 400
+        except Exception:
+            print("Chat request failed")
+            return jsonify({"success": False, "error": "chat_request_failed"}), 500

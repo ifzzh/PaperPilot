@@ -693,18 +693,24 @@ def register_routes():
                 llm_configs.get("dailyArxiv"), dict
             ):
                 picked = llm_configs.get("dailyArxiv") or {}
-                return {
+                result = {
                     "llmModel": (picked.get("llmModel") or "").strip(),
                     "llmBaseUrl": (picked.get("llmBaseUrl") or "").strip(),
                     "llmApiKey": AGENTIC_CREDENTIAL_STORE.get("dailyArxiv")
                     if AGENTIC_CREDENTIAL_STORE else "",
                 }
-            return {
+                if result["llmBaseUrl"] and OUTBOUND_POLICY:
+                    OUTBOUND_POLICY.validate(result["llmBaseUrl"], purpose="ai")
+                return result
+            result = {
                 "llmModel": (cfg.get("llmModel") or "").strip(),
                 "llmBaseUrl": (cfg.get("llmBaseUrl") or "").strip(),
                 "llmApiKey": AGENTIC_CREDENTIAL_STORE.get("dailyArxiv")
                 if AGENTIC_CREDENTIAL_STORE else "",
             }
+            if result["llmBaseUrl"] and OUTBOUND_POLICY:
+                OUTBOUND_POLICY.validate(result["llmBaseUrl"], purpose="ai")
+            return result
         except Exception:
             return {}
 
@@ -758,6 +764,8 @@ def register_routes():
         reading_list_file=READING_LIST_FILE,
         reading_list_temp_dir=READING_LIST_TEMP_DIR,
         agentic_settings_file=AGENTIC_SETTINGS_FILE,
+        credential_store=AGENTIC_CREDENTIAL_STORE,
+        outbound_policy=OUTBOUND_POLICY,
     )
 
     register_settings_routes(
@@ -819,6 +827,8 @@ def register_routes():
         save_paper_metadata=save_paper_metadata,
         agentic_settings_file=AGENTIC_SETTINGS_FILE,
         upload_folder=UPLOAD_FOLDER,
+        credential_store=AGENTIC_CREDENTIAL_STORE,
+        outbound_policy=OUTBOUND_POLICY,
     )
 
     register_agent_chat_routes(
@@ -827,6 +837,8 @@ def register_routes():
         get_category_path=get_category_path,
         get_papers_in_category=get_papers_in_category,
         agentic_settings_file=AGENTIC_SETTINGS_FILE,
+        credential_store=AGENTIC_CREDENTIAL_STORE,
+        outbound_policy=OUTBOUND_POLICY,
     )
 
     register_agent_translate_routes(
@@ -839,6 +851,8 @@ def register_routes():
         save_paper_metadata=save_paper_metadata,
         agentic_settings_file=AGENTIC_SETTINGS_FILE,
         upload_folder=UPLOAD_FOLDER,
+        credential_store=AGENTIC_CREDENTIAL_STORE,
+        outbound_policy=OUTBOUND_POLICY,
     )
 
     register_import_routes(

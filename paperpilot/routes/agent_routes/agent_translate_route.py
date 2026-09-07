@@ -10,6 +10,9 @@ from flask import jsonify, request, send_file
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.translation_job_dao import TranslationJobDAO
+from paperpilot.database.dao.settings_dao import SettingsDAO
+from paperpilot.security.agentic_credentials import AgenticCredentialStore
+from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
 from paperpilot.security.paths import PathSecurityError, paper_asset_paths, verified_paper_path
 from paperpilot.tools.agent_tools.translate_pdf import (
     TranslationDependencies,
@@ -37,6 +40,8 @@ def register_agent_translate_routes(
     save_paper_metadata: Callable[[str, Any], None],
     agentic_settings_file: str,
     upload_folder: str,
+    credential_store: AgenticCredentialStore | None = None,
+    outbound_policy: OutboundPolicy | None = None,
 ) -> None:
     del agentic_settings_file
     worker_client = TranslationWorkerClient()
@@ -91,18 +96,35 @@ def register_agent_translate_routes(
     @app.post("/api/paper/translate")
     def api_translate_paper():
         data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify({"success": False, "error": "invalid_request"}), 400
+        forbidden = sorted(set(data) - {"paper_id"})
+        if forbidden:
+            return jsonify({"success": False, "error": "forbidden_agent_overrides", "fields": forbidden}), 400
         paper_id = data.get("paper_id")
-        model = data.get("openai_model")
-        base_url = data.get("openai_base_url")
-        api_key = data.get("openai_api_key")
-        if not all(isinstance(value, str) and value.strip() for value in (paper_id, model, base_url, api_key)):
+        if not isinstance(paper_id, str) or not paper_id.strip():
             return jsonify({"success": False, "error": "Missing required parameters"}), 400
+        if credential_store is None or outbound_policy is None:
+            return jsonify({"success": False, "error": "agentic_security_unavailable"}), 503
+        settings = SettingsDAO.get_setting("agentic_settings", {}) or {}
+        config = ((settings.get("llmConfigs") or {}).get("translate") or {})
+        model = (config.get("llmModel") or "").strip()
+        base_url = (config.get("llmBaseUrl") or "").strip()
+        try:
+            api_key = credential_store.get("translate")
+            outbound_policy.validate(base_url, purpose="ai")
+        except OutboundPolicyError as exc:
+            return jsonify({"success": False, "error": exc.reason}), 400
+        except Exception:
+            return jsonify({"success": False, "error": "credential_decryption_failed"}), 503
+        if not model or not base_url or not api_key:
+            return jsonify({"success": False, "error": "translation_settings_not_configured"}), 400
         if TranslationJobDAO.has_active_for_paper(paper_id):
             return jsonify({"success": False, "error": "There is already a translation task running for this paper"}), 400
         if not worker_client.health():
             return jsonify({"success": False, "error": "translation_worker_unavailable"}), 503
 
-        llm_success, llm_error = test_llm_api(model, base_url, api_key)
+        llm_success, llm_error = test_llm_api(model, base_url, api_key, outbound_policy)
         if not llm_success:
             return jsonify({"success": False, "error": f"LLM API test failed: {llm_error}"}), 400
         paper = find_paper(paper_id)

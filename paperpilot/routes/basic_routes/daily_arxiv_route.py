@@ -18,6 +18,8 @@ from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.user_data_dao import DailyArxivReadDAO, ReadingListDAO
 from paperpilot.database.dao.settings_dao import SettingsDAO
+from paperpilot.security.agentic_credentials import AgenticCredentialStore
+from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
 from paperpilot.security.paths import PathSecurityError, ensure_confined, safe_join
 from paperpilot.tools.basic_tools.daily_arxiv import (
     DailyArxivManager,
@@ -49,6 +51,8 @@ def register_daily_arxiv_routes(
     reading_list_file: str,
     reading_list_temp_dir: str,
     agentic_settings_file: str = None,
+    credential_store: AgenticCredentialStore | None = None,
+    outbound_policy: OutboundPolicy | None = None,
 ) -> None:
     """
     register Daily arXiv Related routes
@@ -106,17 +110,21 @@ def register_daily_arxiv_routes(
             if isinstance(llm_configs, dict) and isinstance(
                 llm_configs.get("dailyArxiv"), dict
             ):
-                return llm_configs.get("dailyArxiv") or {}
+                picked = dict(llm_configs.get("dailyArxiv") or {})
+                picked["llmApiKey"] = credential_store.get("dailyArxiv") if credential_store else ""
+                return picked
             return {
                 "llmModel": (cfg.get("llmModel") or "").strip(),
                 "llmBaseUrl": (cfg.get("llmBaseUrl") or "").strip(),
-                "llmApiKey": (cfg.get("llmApiKey") or "").strip(),
+                "llmApiKey": credential_store.get("dailyArxiv") if credential_store else "",
             }
 
         try:
             settings = SettingsDAO.get_setting("agentic_settings", {}) or {}
             picked = pick(settings)
             if picked:
+                if outbound_policy and picked.get("llmBaseUrl"):
+                    outbound_policy.validate(picked["llmBaseUrl"], purpose="ai")
                 return picked
         except Exception:
             pass
@@ -860,12 +868,11 @@ def register_daily_arxiv_routes(
                 }
             )
 
-        except Exception as exc:
-            print(f"Failed to extract organization information: {exc}")
-            import traceback
-
-            traceback.print_exc()
-            return jsonify({"success": False, "error": f"Failed to extract: {str(exc)}"}), 500
+        except OutboundPolicyError as exc:
+            return jsonify({"success": False, "error": exc.reason}), 400
+        except Exception:
+            print("Failed to extract organization information")
+            return jsonify({"success": False, "error": "affiliation_extraction_failed"}), 500
 
     # ========================================
     # Generate Brief Summary
@@ -967,12 +974,11 @@ def register_daily_arxiv_routes(
                 }
             )
 
-        except Exception as exc:
-            print(f"Failed to generate Daily arXiv summary: {exc}")
-            import traceback
-
-            traceback.print_exc()
-            return jsonify({"success": False, "error": f"Failed to generate summary: {str(exc)}"}), 500
+        except OutboundPolicyError as exc:
+            return jsonify({"success": False, "error": exc.reason}), 400
+        except Exception:
+            print("Failed to generate Daily arXiv summary")
+            return jsonify({"success": False, "error": "daily_summary_failed"}), 500
 
     # ========================================
     # Get Thumbnail
