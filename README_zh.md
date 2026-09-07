@@ -179,15 +179,36 @@
    | `--port` | `7191` | 服务器监听端口 |
    | `--debug` | `False` | 启用调试模式（开发用） |
 
-   维护中的 Compose 文件使用 v0.5.0 Web 与翻译 Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192` 只在 Compose 网络内开放；两个容器都以非 root 用户运行。启动前请复制 `.env.example`、创建随机 Worker token 文件并创建 staging 目录：
+   维护中的 Compose 文件使用 v0.6.0 Web 与翻译 Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192` 只在 Compose 网络内开放；两个容器都以非 root 用户运行。启动前请复制 `.env.example`、创建相互独立的 Worker token 与设置加密主密钥，并创建 staging 目录：
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
    openssl rand -hex 32 > /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+   openssl rand -out /mnt/raid1/projects/paperpilot/deploy/paperpilot-settings.key 32
    chmod 0640 /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+   chmod 0640 /mnt/raid1/projects/paperpilot/deploy/paperpilot-settings.key
    ```
 
    Worker 只挂载 `/work/jobs` 和 token secret，不挂载论文库、SQLite、`.env` 或 Docker Socket。翻译成功后由 Web 校验输出并原子写入论文库。
+
+### 从 v0.5.0 升级
+
+v0.6.0 不再向浏览器返回已保存的 LLM/MinerU 密钥，并使用独立主密钥在 SQLite 中进行 AES-256-GCM 加密。密钥输入框加载后为空：留空保存会保留原密钥，填写新值会替换，清除只能通过单独按钮并再次确认。主密钥丢失后无法找回已加密的 API Key，必须在数据库备份之外另行安全备份主密钥。
+
+升级前停止 PaperPilot，先 dry-run，再执行离线迁移：
+
+```bash
+python -m paperpilot.migrations.agentic_secrets \
+  --db /app/db/paperpilot.db --dry-run
+python -m paperpilot.migrations.agentic_secrets \
+  --db /app/db/paperpilot.db \
+  --key-file /run/secrets/paperpilot_settings_key \
+  --backup-dir /backups --apply
+```
+
+迁移会先创建权限受限的 SQLite 备份，并生成不包含密钥、密文或配置值的 manifest。需要回滚时保持应用停止，执行同一工具的 `--rollback <manifest>`。升级前数据库备份可能仍含旧明文密钥，必须按敏感备份保护。
+
+所有可配置 LLM 与本地 MinerU origin 必须精确列入 `PAPERPILOT_AI_ALLOWED_ORIGINS` 或 `PAPERPILOT_AI_PRIVATE_ALLOWED_ORIGINS`；MinerU 预签名传输地址使用独立的 `PAPERPILOT_MINERU_TRANSFER_ALLOWED_ORIGINS`。公网仅允许 HTTPS，私网 HTTP(S) 只有显式列入时才允许；重定向、loopback、link-local 和云元数据目标始终拒绝。
 
 ### 从 v0.4.0 升级
 
