@@ -25,6 +25,10 @@ test('normalizes user-facing http URLs and rejects active schemes', () => {
     assert.equal(security.safeHttpUrl('https://user:secret@example.com'), null);
     assert.equal(security.safeHttpUrl('https://example.com/\nattack'), null);
     assert.equal(security.safeHttpUrl('https:\\example.com'), null);
+    assert.equal(
+        security.safeHttpUrl('https://paperpilot.test.evil/path', { baseUrl: 'https://paperpilot.test' }),
+        'https://paperpilot.test.evil/path'
+    );
 });
 
 test('allows only fixed CSS color syntax', () => {

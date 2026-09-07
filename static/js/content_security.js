@@ -132,7 +132,13 @@
                 return;
             }
             anchor.setAttribute('href', href);
-            if (/^https?:/i.test(href) && !href.startsWith(origin)) {
+            let isExternal = false;
+            try {
+                isExternal = new URL(href, origin).origin !== origin;
+            } catch (_) {
+                isExternal = true;
+            }
+            if (/^https?:/i.test(href) && isExternal) {
                 anchor.setAttribute('target', '_blank');
                 anchor.setAttribute('rel', 'noopener noreferrer');
             } else {
@@ -142,9 +148,9 @@
         });
     }
 
-    function sanitizeImages(container, options, origin) {
+    function sanitizeImages(container, options, origin, originalSources) {
         container.querySelectorAll('img').forEach(function (image) {
-            const rawSource = image.getAttribute('src') || '';
+            const rawSource = (originalSources && originalSources.get(image)) || image.getAttribute('src') || '';
             const safeSource = safeInternalImageUrl(rawSource, {
                 paperId: options.paperId,
                 baseUrl: origin
@@ -180,19 +186,32 @@
             return escapeHtml(value);
         }
 
-        const fragment = purifier.sanitize(asText(value), {
-            USE_PROFILES: { html: true },
-            RETURN_DOM_FRAGMENT: true,
-            ALLOW_DATA_ATTR: false,
-            ALLOW_ARIA_ATTR: true,
-            FORBID_TAGS: MARKDOWN_FORBIDDEN_TAGS,
-            FORBID_ATTR: MARKDOWN_FORBIDDEN_ATTRIBUTES
-        });
+        const originalImageSources = new WeakMap();
+        const stripImageSource = function (node, attribute) {
+            if (node && node.nodeName === 'IMG' && attribute.attrName === 'src') {
+                originalImageSources.set(node, attribute.attrValue);
+                attribute.keepAttr = false;
+            }
+        };
+        purifier.addHook('uponSanitizeAttribute', stripImageSource);
+        let fragment;
+        try {
+            fragment = purifier.sanitize(asText(value), {
+                USE_PROFILES: { html: true },
+                RETURN_DOM_FRAGMENT: true,
+                ALLOW_DATA_ATTR: false,
+                ALLOW_ARIA_ATTR: true,
+                FORBID_TAGS: MARKDOWN_FORBIDDEN_TAGS,
+                FORBID_ATTR: MARKDOWN_FORBIDDEN_ATTRIBUTES
+            });
+        } finally {
+            purifier.removeHook('uponSanitizeAttribute');
+        }
         const container = documentRef.createElement('div');
         container.appendChild(fragment);
         const origin = baseOrigin(settings.baseUrl);
         sanitizeLinks(container, origin);
-        sanitizeImages(container, settings, origin);
+        sanitizeImages(container, settings, origin, originalImageSources);
         return container.innerHTML;
     }
 

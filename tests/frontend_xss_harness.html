@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>PaperPilot frontend content safety harness</title>
+</head>
+<body>
+    <main id="results"></main>
+    <div id="fixture" hidden></div>
+    <script src="../static/vendor/dompurify/purify.min.js"></script>
+    <script src="../static/js/content_security.js"></script>
+    <script>
+        (async function () {
+            const failures = [];
+            const fixture = document.getElementById('fixture');
+            const cases = await fetch('./frontend_xss_cases.json').then(response => response.json());
+
+            for (const item of cases) {
+                fixture.replaceChildren();
+                PaperPilotSecurity.setText(fixture, item.payload);
+                if (fixture.textContent !== item.plain_text || fixture.children.length !== 0) {
+                    failures.push(`${item.name}: plain-text rendering changed or created markup`);
+                }
+
+                PaperPilotSecurity.setSanitizedMarkdown(fixture, item.payload, {
+                    paperId: 'paper-1',
+                    baseUrl: location.origin
+                });
+                for (const selector of item.forbidden_selectors) {
+                    if (fixture.querySelector(selector)) failures.push(`${item.name}: retained ${selector}`);
+                }
+            }
+
+            const regression = `
+                <h2>Heading</h2><blockquote>Quote</blockquote>
+                <table><thead><tr><th>A</th></tr></thead><tbody><tr><td>B</td></tr></tbody></table>
+                <pre><code class="language-js">const x = 1;</code></pre><strong>Bold</strong>
+                <a href="https://example.test/docs">Docs</a>
+                <img src="https://tracker.invalid/pixel.png" alt="remote chart">
+                <img src="/api/paper/paper-1/analysis/image?path=figure.png" alt="local chart">
+                <span>$x^2$</span>`;
+            PaperPilotSecurity.setSanitizedMarkdown(fixture, regression, {
+                paperId: 'paper-1',
+                baseUrl: location.origin
+            });
+            for (const selector of ['h2', 'blockquote', 'table', 'pre code', 'strong']) {
+                if (!fixture.querySelector(selector)) failures.push(`markdown regression: missing ${selector}`);
+            }
+            const externalImageLink = fixture.querySelector('a.markdown-external-image');
+            if (!externalImageLink || externalImageLink.textContent !== '[External image: remote chart]') {
+                failures.push('external image did not degrade to a labelled link');
+            }
+            if (!externalImageLink || externalImageLink.target !== '_blank' || externalImageLink.rel !== 'noopener noreferrer') {
+                failures.push('external image link isolation attributes are missing');
+            }
+            const images = fixture.querySelectorAll('img');
+            if (images.length !== 1 || !images[0].src.includes('/api/paper/paper-1/analysis/image')) {
+                failures.push('controlled analysis image policy failed');
+            }
+            if (fixture.querySelector('[onerror], [onclick], script, iframe, svg, math, style, form')) {
+                failures.push('forbidden active content survived sanitization');
+            }
+            if (window.__paperpilotXss) failures.push(`payload executed: ${window.__paperpilotXss}`);
+
+            const results = document.getElementById('results');
+            results.dataset.status = failures.length ? 'failed' : 'passed';
+            const heading = document.createElement('h1');
+            heading.textContent = failures.length ? 'FAIL' : 'PASS';
+            results.appendChild(heading);
+            failures.forEach(failure => {
+                const row = document.createElement('div');
+                row.className = 'failure';
+                row.textContent = failure;
+                results.appendChild(row);
+            });
+        })().catch(error => {
+            const results = document.getElementById('results');
+            results.dataset.status = 'failed';
+            results.textContent = `FAIL: ${error.message}`;
+        });
+    </script>
+</body>
+</html>

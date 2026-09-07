@@ -37,3 +37,23 @@ def test_sanitizer_is_self_hosted_and_loaded_before_application_code():
 
     index = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
     assert index.index("js/content_security.js") < index.index("js/auth.js")
+
+
+def test_markdown_and_plain_text_sinks_use_security_layer():
+    app_source = (ROOT / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    viewer_source = (ROOT / "templates" / "analysis_viewer.html").read_text(encoding="utf-8")
+
+    assert "sanitizeMarkdownHtml(marked.parse(markdown)" in app_source
+    assert "renderChatMarkdown(fullResponse) +" not in app_source
+    assert "<textarea style=\"display:none\">" not in app_source
+    assert "setSanitizedMarkdown(el, html, { paperId })" in viewer_source
+    assert "document.getElementById('md').innerHTML = html" not in viewer_source
+
+
+def test_browser_harness_covers_markdown_compatibility_and_image_policy():
+    harness = (ROOT / "tests" / "frontend_xss_harness.html").read_text(encoding="utf-8")
+
+    for selector in ("h2", "blockquote", "table", "pre code", "strong"):
+        assert selector in harness
+    assert "markdown-external-image" in harness
+    assert "/api/paper/paper-1/analysis/image" in harness
