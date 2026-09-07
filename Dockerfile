@@ -53,6 +53,13 @@ COPY templates ./templates
 
 RUN uv sync --frozen --no-dev
 
+FROM builder AS test
+
+COPY tests ./tests
+
+RUN uv sync --frozen --extra test \
+  && uv run pytest -m "not integration" -q
+
 FROM ubuntu:24.04 AS runtime
 
 ARG APP_VERSION=0.2.0

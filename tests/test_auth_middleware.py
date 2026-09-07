@@ -8,8 +8,12 @@ from paperpilot.auth import AuthConfig
 
 
 if "test_auth_protected" not in app_module.app.view_functions:
-    @app_module.app.route("/api/test-auth-protected", methods=["GET", "POST"])
-    def test_auth_protected():
+    @app_module.app.route(
+        "/api/test-auth-protected",
+        methods=["GET", "POST"],
+        endpoint="test_auth_protected",
+    )
+    def auth_protected_probe():
         return jsonify({"email": getattr(g, "user_email", None)})
 
 
