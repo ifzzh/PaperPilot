@@ -85,4 +85,20 @@ CREATE TABLE IF NOT EXISTS daily_arxiv_reads (
     arxiv_id TEXT PRIMARY KEY,
     read_at INTEGER
 );
+
+-- Isolated translation worker jobs. Credentials are deliberately never stored.
+CREATE TABLE IF NOT EXISTS translation_jobs (
+    job_id TEXT PRIMARY KEY,
+    paper_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    progress INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    error TEXT,
+    FOREIGN KEY(paper_id) REFERENCES papers(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_translation_jobs_paper_status
+    ON translation_jobs(paper_id, status);
 """
