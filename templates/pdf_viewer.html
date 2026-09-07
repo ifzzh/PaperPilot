@@ -351,31 +351,13 @@
             const url = `/api/paper/{{ paper_id }}/read-time`;
             const data = JSON.stringify({ increment: seconds });
             
-            if (useBeacon && navigator.sendBeacon) {
-                // Use sendBeacon for reliable delivery during page unload
-                const blob = new Blob([data], { type: 'application/json' });
-                const sent = navigator.sendBeacon(url, blob);
-                if (sent) {
-                    console.log('Reading time sent via sendBeacon:', seconds, 'seconds');
-                } else {
-                    console.warn('sendBeacon failed, falling back to fetch');
-                    // Fallback to fetch with keepalive
-                    fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: data,
-                        keepalive: true
-                    }).catch(err => console.error('Failed to record reading time:', err));
-                }
-            } else {
-                // Normal fetch request
-                fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: data,
-                    keepalive: useBeacon // Use keepalive if requested
-                }).catch(err => console.error('Failed to record reading time:', err));
-            }
+            // sendBeacon cannot attach the required Authorization header.
+            fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: data,
+                keepalive: useBeacon
+            }).catch(err => console.error('Failed to record reading time:', err));
         }
         
         // Record daily reading time to server (and localStorage as backup)

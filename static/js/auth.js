@@ -23,12 +23,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const { data: { session } } = await supabaseClient.auth.getSession();
-    currentSession = session;
-    updateAuthUI(session);
+    await applyAuthSession(session);
 
     supabaseClient.auth.onAuthStateChange((_event, session) => {
-        currentSession = session;
-        updateAuthUI(session);
+        applyAuthSession(session);
     });
 });
 
@@ -51,14 +49,38 @@ function bindAuthUIHandlers() {
         });
     }
 
-    const toggleAuthModeBtn = document.getElementById('toggle-auth-mode');
-    if (toggleAuthModeBtn) {
-        toggleAuthModeBtn.addEventListener('click', toggleAuthMode);
-    }
 }
 
 function getAccessToken() {
     return currentSession?.access_token || null;
+}
+
+async function syncServerSession(session) {
+    if (!session?.access_token) {
+        await fetch('/api/auth/session', { method: 'DELETE' });
+        return;
+    }
+
+    const response = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || 'Unable to establish a secure session');
+    }
+}
+
+async function applyAuthSession(session) {
+    currentSession = session;
+    try {
+        await syncServerSession(session);
+        updateAuthUI(session);
+    } catch (error) {
+        currentSession = null;
+        showLoginOverlay();
+        setAuthError(error.message || 'Unable to establish a secure session');
+    }
 }
 
 function showLoginOverlay() {
@@ -172,34 +194,6 @@ function patchFetchWithAuth() {
     };
 }
 
-let isSignUp = false;
-
-function syncAuthModeUI() {
-    const title = document.getElementById('auth-title');
-    const submitBtn = document.getElementById('auth-submit');
-    const toggleBtn = document.getElementById('toggle-auth-mode');
-    const toggleText = document.getElementById('auth-toggle-text');
-
-    if (isSignUp) {
-        if (title) title.textContent = 'Sign Up';
-        if (submitBtn) submitBtn.textContent = 'Sign Up';
-        if (toggleText) toggleText.textContent = 'Already have an account?';
-        if (toggleBtn) toggleBtn.textContent = 'Log In';
-    } else {
-        if (title) title.textContent = 'Log In';
-        if (submitBtn) submitBtn.textContent = 'Log In';
-        if (toggleText) toggleText.textContent = "Don't have an account?";
-        if (toggleBtn) toggleBtn.textContent = 'Sign Up';
-    }
-}
-
-function toggleAuthMode(e) {
-    e.preventDefault();
-    clearAuthError();
-    isSignUp = !isSignUp;
-    syncAuthModeUI();
-}
-
 function setAuthError(message, color = '#ef5350') {
     const errorMsg = document.getElementById('auth-error');
     if (!errorMsg) return;
@@ -230,36 +224,21 @@ async function handleAuth(e) {
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = isSignUp ? 'Signing up...' : 'Logging in...';
+    submitBtn.textContent = 'Logging in...';
 
     try {
-        if (isSignUp) {
-            const emailRedirectTo = `${window.location.origin}/`;
-            const { error } = await supabaseClient.auth.signUp({
-                email,
-                password,
-                options: {
-                    emailRedirectTo,
-                },
-            });
-            if (error) throw error;
-            setAuthError('注册成功，请登录。', '#16a34a');
-            isSignUp = false;
-            syncAuthModeUI();
-            return;
-        }
-
         const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
         if (error) throw error;
     } catch (error) {
         setAuthError(error.message || '操作失败');
     } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = isSignUp ? 'Sign Up' : 'Log In';
+        submitBtn.textContent = 'Log In';
     }
 }
 
 async function handleLogout() {
     if (!supabaseClient) return;
+    await fetch('/api/auth/session', { method: 'DELETE' });
     await supabaseClient.auth.signOut();
 }

@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import requests
-from flask import Flask, g, jsonify, redirect, render_template, request
+from flask import Flask, g, jsonify, make_response, redirect, render_template, request
 
 from paperpilot.core.base_paper import Paper
 from paperpilot.auth import AuthConfig, AuthConfigurationError
@@ -82,6 +82,7 @@ app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max file size
 _auth_cache: dict[str, tuple[float, str]] = {}
 _auth_cache_lock = threading.Lock()
 AUTH_CONFIG: Optional[AuthConfig] = None
+AUTH_COOKIE_NAME = "paperpilot_access_token"
 
 
 def _verify_supabase_access_token(access_token: str) -> str | None:
@@ -117,6 +118,26 @@ def _verify_supabase_access_token(access_token: str) -> str | None:
         return None
 
 
+def _bearer_token() -> str | None:
+    auth = request.headers.get("Authorization", "")
+    if not auth.lower().startswith("bearer "):
+        return None
+    token = auth.split(" ", 1)[1].strip()
+    return token or None
+
+
+def _authenticate_token(access_token: str | None):
+    if not access_token:
+        return None, (jsonify({"error": "未登录"}), 401)
+    email = _verify_supabase_access_token(access_token)
+    if not email:
+        return None, (jsonify({"error": "登录已失效"}), 401)
+    if AUTH_CONFIG is None or email not in AUTH_CONFIG.allowed_emails:
+        return None, (jsonify({"error": "无权访问"}), 403)
+    g.user_email = email
+    return email, None
+
+
 @app.before_request
 def _require_auth_for_api():
     protects_api = request.path.startswith("/api/")
@@ -127,27 +148,24 @@ def _require_auth_for_api():
     if request.path == "/healthz" and request.method in {"GET", "HEAD"}:
         return None
 
+    if request.path == "/api/auth/session":
+        return None
+
     if AUTH_CONFIG is None:
         return jsonify({"error": "鉴权服务未配置"}), 503
     if not AUTH_CONFIG.enabled:
         return None
 
-    auth = request.headers.get("Authorization", "")
-    if not auth.lower().startswith("bearer "):
-        return jsonify({"error": "未登录"}), 401
+    access_token = _bearer_token()
+    if request.method in {"GET", "HEAD"} and not access_token:
+        access_token = request.cookies.get(AUTH_COOKIE_NAME)
 
-    access_token = auth.split(" ", 1)[1].strip()
-    if not access_token:
-        return jsonify({"error": "未登录"}), 401
-
-    email = _verify_supabase_access_token(access_token)
-    if not email:
-        return jsonify({"error": "登录已失效"}), 401
-    if email not in AUTH_CONFIG.allowed_emails:
-        return jsonify({"error": "无权访问"}), 403
-
-    g.user_email = email
-    return None
+    _email, failure = _authenticate_token(access_token)
+    if failure is None:
+        return None
+    if protects_viewer:
+        return redirect("/")
+    return failure
 
 # Configuration file storage path (will be set in main function according to parameters)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -457,6 +475,46 @@ def index():
 @app.route("/healthz", methods=["GET"])
 def healthz():
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/auth/session", methods=["POST", "GET", "DELETE"])
+def auth_session():
+    if AUTH_CONFIG is None:
+        return jsonify({"error": "鉴权服务未配置"}), 503
+    if not AUTH_CONFIG.enabled:
+        return jsonify({"authenticated": False, "auth_disabled": True})
+
+    if request.method == "DELETE":
+        response = make_response(jsonify({"success": True}))
+        response.delete_cookie(
+            AUTH_COOKIE_NAME,
+            path="/",
+            secure=AUTH_CONFIG.cookie_secure,
+            httponly=True,
+            samesite="Lax",
+        )
+        return response
+
+    access_token = _bearer_token()
+    if request.method in {"GET", "HEAD"} and not access_token:
+        access_token = request.cookies.get(AUTH_COOKIE_NAME)
+    email, failure = _authenticate_token(access_token)
+    if failure is not None:
+        return failure
+
+    response = make_response(
+        jsonify({"authenticated": True, "email": email})
+    )
+    if request.method == "POST":
+        response.set_cookie(
+            AUTH_COOKIE_NAME,
+            access_token,
+            path="/",
+            secure=AUTH_CONFIG.cookie_secure,
+            httponly=True,
+            samesite="Lax",
+        )
+    return response
 
 
 def register_routes():

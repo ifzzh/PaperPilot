@@ -6,10 +6,10 @@
 
   const client = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
   let accessToken = null;
+  const originalFetch = window.fetch.bind(window);
 
   if (!window.__paperpilotFetchAuthPatched) {
     window.__paperpilotFetchAuthPatched = true;
-    const originalFetch = window.fetch.bind(window);
     window.fetch = (input, init = {}) => {
       try {
         const url = typeof input === "string" ? input : input?.url;
@@ -31,12 +31,24 @@
 
   client.auth
     .getSession()
-    .then(({ data }) => {
+    .then(async ({ data }) => {
       accessToken = data?.session?.access_token || null;
+      if (accessToken) {
+        await originalFetch('/api/auth/session', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      }
     })
     .catch(() => {});
 
   client.auth.onAuthStateChange((_event, session) => {
     accessToken = session?.access_token || null;
+    if (accessToken) {
+      originalFetch('/api/auth/session', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }).catch(() => {});
+    }
   });
 })();

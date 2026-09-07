@@ -83,6 +83,50 @@ class TestAuthMiddleware(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), {"email": "admin@example.com"})
 
+    def test_session_post_sets_http_only_cookie(self):
+        with patch.object(
+            app_module,
+            "_verify_supabase_access_token",
+            return_value="admin@example.com",
+        ):
+            response = self.client.post(
+                "/api/auth/session",
+                headers={"Authorization": "Bearer valid"},
+            )
+        self.assertEqual(response.status_code, 200)
+        cookie = response.headers["Set-Cookie"]
+        self.assertIn(f"{app_module.AUTH_COOKIE_NAME}=valid", cookie)
+        self.assertIn("HttpOnly", cookie)
+        self.assertIn("Secure", cookie)
+        self.assertIn("SameSite=Lax", cookie)
+        self.assertNotIn("valid", response.get_data(as_text=True))
+
+    def test_cookie_can_authenticate_safe_request(self):
+        self.client.set_cookie(app_module.AUTH_COOKIE_NAME, "valid")
+        with patch.object(
+            app_module,
+            "_verify_supabase_access_token",
+            return_value="admin@example.com",
+        ):
+            response = self.client.get("/api/test-auth-protected")
+        self.assertEqual(response.status_code, 200)
+
+    def test_cookie_cannot_authenticate_unsafe_request(self):
+        self.client.set_cookie(app_module.AUTH_COOKIE_NAME, "valid")
+        response = self.client.post("/api/test-auth-protected")
+        self.assertEqual(response.status_code, 401)
+
+    def test_viewer_without_session_redirects_to_login(self):
+        response = self.client.get("/viewer/example")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/")
+
+    def test_session_delete_clears_cookie(self):
+        response = self.client.delete("/api/auth/session")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f"{app_module.AUTH_COOKIE_NAME}=", response.headers["Set-Cookie"])
+        self.assertIn("Max-Age=0", response.headers["Set-Cookie"])
+
     def test_explicit_development_mode_can_bypass_auth(self):
         app_module.AUTH_CONFIG = AuthConfig.from_environ(
             {
