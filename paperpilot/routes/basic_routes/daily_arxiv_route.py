@@ -694,9 +694,7 @@ def register_daily_arxiv_routes(
                 # download
                 import urllib.request
 
-                pdf_url = (
-                    paper_info.get("pdf_url") or f"https://arxiv.org/pdf/{arxiv_id}.pdf"
-                )
+                pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
                 print(f"[DailyArxiv] Download the paper to the library: {arxiv_id} -> {target_path}")
                 urllib.request.urlretrieve(pdf_url, target_path)
 

@@ -148,3 +148,21 @@ class OutboundPolicy:
     def reject_redirect(status_code: int) -> None:
         if 300 <= status_code < 400:
             raise OutboundPolicyError("outbound_redirect_blocked")
+
+
+def guarded_request(
+    policy: OutboundPolicy,
+    method: str,
+    url: str,
+    *,
+    purpose: str = "ai",
+    **kwargs,
+):
+    """Validate a destination and make one non-redirecting requests call."""
+    import requests
+
+    target = policy.validate(url, purpose=purpose)
+    kwargs["allow_redirects"] = False
+    response = requests.request(method, target.url, **kwargs)
+    policy.reject_redirect(response.status_code)
+    return response

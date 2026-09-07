@@ -10,7 +10,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
 from paperpilot.security.credentials import CredentialError
-from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
+from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError, guarded_request
 from paperpilot.tools.api_test_utils import create_openai_client
 
 
@@ -650,8 +650,9 @@ def register_settings_routes(
             # Test health endpoint
             test_url = f"{mineru_server_url.rstrip('/')}/health"
             try:
-                response = requests.get(test_url, timeout=10, allow_redirects=False)
-                outbound_policy.reject_redirect(response.status_code)
+                response = guarded_request(
+                    outbound_policy, "GET", test_url, purpose="ai", timeout=10
+                )
                 if response.status_code == 200:
                     return jsonify(
                         {

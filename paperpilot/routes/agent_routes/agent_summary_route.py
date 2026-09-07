@@ -262,6 +262,7 @@ def register_agent_summary_routes(
                 get_category_path=get_category_path,
                 get_papers_in_category=get_papers_in_category,
                 save_paper_metadata=save_paper_metadata,
+                outbound_policy=outbound_policy,
             )
 
             ai_language = data.get("ai_language", "zh")

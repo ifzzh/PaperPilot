@@ -11,11 +11,13 @@ from typing import Callable, Dict, Optional
 
 import requests
 
+from paperpilot.security.outbound import OutboundPolicy, guarded_request
+
 
 class MinerUAPIClient:
     """MinerU API client for PDF parsing via cloud API"""
 
-    def __init__(self, token: str):
+    def __init__(self, token: str, outbound_policy: OutboundPolicy | None = None):
         """
         Initialize MinerU API client
 
@@ -23,6 +25,7 @@ class MinerUAPIClient:
             token: API authentication token
         """
         self.token = token
+        self.outbound_policy = outbound_policy
         self.base_url = "https://mineru.net/api/v4"
         self.headers = {
             "Content-Type": "application/json",
@@ -63,17 +66,16 @@ class MinerUAPIClient:
         }
 
         try:
-            response = requests.post(url, headers=self.headers, json=data, timeout=30)
+            response = requests.post(url, headers=self.headers, json=data, timeout=30, allow_redirects=False)
 
             if response.status_code != 200:
                 print(f"Failed to request upload URL: HTTP {response.status_code}")
-                print(f"Response: {response.text}")
                 return None
 
             result = response.json()
 
             if result.get("code") != 0:
-                print(f"API error: {result.get('msg')}")
+                print("MinerU API rejected upload URL request")
                 return None
 
             batch_id = result["data"]["batch_id"]
@@ -81,14 +83,23 @@ class MinerUAPIClient:
 
             print(f"Got upload URL, batch_id: {batch_id}")
 
-        except Exception as e:
-            print(f"Failed to request upload URL: {e}")
+        except Exception:
+            print("Failed to request upload URL")
             return None
 
         # Step 2: Upload file
         try:
             with open(file_path, "rb") as f:
-                upload_response = requests.put(upload_url, data=f, timeout=300)
+                if self.outbound_policy is None:
+                    raise RuntimeError("outbound_policy_required")
+                upload_response = guarded_request(
+                    self.outbound_policy,
+                    "PUT",
+                    upload_url,
+                    purpose="transfer",
+                    data=f,
+                    timeout=300,
+                )
 
                 if upload_response.status_code != 200:
                     print(f"File upload failed: HTTP {upload_response.status_code}")
@@ -97,8 +108,8 @@ class MinerUAPIClient:
             print(f"File uploaded successfully")
             return batch_id
 
-        except Exception as e:
-            print(f"File upload failed: {e}")
+        except Exception:
+            print("File upload failed")
             return None
 
     def get_batch_results(self, batch_id: str) -> Optional[Dict]:
@@ -114,7 +125,7 @@ class MinerUAPIClient:
         url = f"{self.base_url}/extract-results/batch/{batch_id}"
 
         try:
-            response = requests.get(url, headers=self.headers, timeout=30)
+            response = requests.get(url, headers=self.headers, timeout=30, allow_redirects=False)
 
             if response.status_code != 200:
                 print(f"Query failed: HTTP {response.status_code}")
@@ -123,13 +134,13 @@ class MinerUAPIClient:
             result = response.json()
 
             if result.get("code") != 0:
-                print(f"API error: {result.get('msg')}")
+                print("MinerU API rejected result query")
                 return None
 
             return result["data"]
 
-        except Exception as e:
-            print(f"Query failed: {e}")
+        except Exception:
+            print("Query failed")
             return None
 
     def wait_for_completion(
@@ -228,7 +239,16 @@ class MinerUAPIClient:
             zip_filename = os.path.join(extract_dir, "result.zip")
             print(f"Downloading result ZIP...")
 
-            response = requests.get(zip_url, stream=True, timeout=300)
+            if self.outbound_policy is None:
+                raise RuntimeError("outbound_policy_required")
+            response = guarded_request(
+                self.outbound_policy,
+                "GET",
+                zip_url,
+                purpose="transfer",
+                stream=True,
+                timeout=300,
+            )
 
             if response.status_code != 200:
                 print(f"Download failed: HTTP {response.status_code}")
@@ -250,8 +270,8 @@ class MinerUAPIClient:
             print(f"Extraction completed: {extract_dir}")
             return extract_dir
 
-        except Exception as e:
-            print(f"Download/extraction failed: {e}")
+        except Exception:
+            print("Download/extraction failed")
             return None
 
     def parse_pdf_to_markdown(

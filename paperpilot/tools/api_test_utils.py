@@ -4,7 +4,7 @@ API test utilities for testing LLM and MinerU connections
 
 import requests
 
-from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
+from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError, guarded_request
 
 
 def create_openai_client(api_key: str, base_url: str, outbound_policy: OutboundPolicy):
@@ -76,10 +76,11 @@ def test_mineru_api(
         # Test health endpoint
         test_url = f"{server_url.rstrip('/')}/health"
         if outbound_policy is not None:
-            outbound_policy.validate(test_url, purpose="ai")
-        response = requests.get(test_url, timeout=10, allow_redirects=False)
-        if outbound_policy is not None:
-            outbound_policy.reject_redirect(response.status_code)
+            response = guarded_request(
+                outbound_policy, "GET", test_url, purpose="ai", timeout=10
+            )
+        else:
+            response = requests.get(test_url, timeout=10, allow_redirects=False)
 
         if response.status_code == 200:
             return True, "MinerU server is accessible"

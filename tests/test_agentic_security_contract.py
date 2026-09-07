@@ -3,7 +3,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from paperpilot.database.models import SCHEMA_SCRIPT
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
@@ -17,6 +17,7 @@ from paperpilot.security.credentials import (
 from paperpilot.security.outbound import (
     OutboundPolicy,
     OutboundPolicyError,
+    guarded_request,
 )
 
 
@@ -188,6 +189,40 @@ class OutboundPolicyTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(OutboundPolicyError, "origin_not_allowed"):
                 policy.validate("https://objects.example.test/result.zip", purpose="ai")
+
+    def test_guarded_request_never_follows_redirects(self):
+        policy = OutboundPolicy(
+            public_origins={"https://api.example.test"},
+            private_origins=set(),
+            transfer_origins=set(),
+        )
+        resolver = self._resolve({"api.example.test": ["8.8.8.8"]})
+        response = type("Response", (), {"status_code": 302})()
+        with (
+            patch("paperpilot.security.outbound.socket.getaddrinfo", resolver),
+            patch("requests.request", return_value=response) as request_mock,
+        ):
+            with self.assertRaisesRegex(OutboundPolicyError, "outbound_redirect_blocked"):
+                guarded_request(policy, "GET", "https://api.example.test/redirect")
+        self.assertFalse(request_mock.call_args.kwargs["allow_redirects"])
+
+    def test_dns_is_resolved_again_for_every_request(self):
+        policy = OutboundPolicy(
+            public_origins={"https://api.example.test"},
+            private_origins=set(),
+            transfer_origins=set(),
+        )
+        resolver = Mock(
+            side_effect=[
+                [(2, 1, 6, "", ("8.8.8.8", 0))],
+                [(2, 1, 6, "", ("10.0.0.8", 0))],
+            ]
+        )
+        with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
+            policy.validate("https://api.example.test/v1", purpose="ai")
+            with self.assertRaisesRegex(OutboundPolicyError, "private_address_forbidden"):
+                policy.validate("https://api.example.test/v1", purpose="ai")
+        self.assertEqual(resolver.call_count, 2)
 
     def test_ip_classification_matches_contract(self):
         self.assertTrue(ipaddress.ip_address("8.8.8.8").is_global)
