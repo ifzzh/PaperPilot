@@ -15,6 +15,7 @@ import requests
 from flask import Flask, g, jsonify, render_template, request
 
 from paperpilot.core.base_paper import Paper
+from paperpilot.auth import AuthConfig, AuthConfigurationError
 from paperpilot.core.paper_store import paper_store
 from paperpilot.core.search_index import SearchIndex
 from paperpilot.database.connection import DB_PATH
@@ -692,6 +693,17 @@ def analysis_viewer(paper_id):
 if __name__ == "__main__":
     # Parse command line arguments
     args = parser.parse_args()
+
+    try:
+        AUTH_CONFIG = AuthConfig.from_environ()
+    except AuthConfigurationError as exc:
+        parser.error(f"unsafe authentication configuration: {exc}")
+
+    if not AUTH_CONFIG.enabled:
+        print(
+            "WARNING: authentication is explicitly disabled for development; "
+            "do not expose this service to an untrusted network."
+        )
 
     # Initialize application (configure paper directory etc.)
     init_app(papers_dir=args.papers_dir)
