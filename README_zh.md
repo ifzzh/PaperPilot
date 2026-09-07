@@ -125,9 +125,8 @@
    uv pip install -e ".[server]"
    ```
 
-4. **Supabase Auth 鉴权（可选）**
-   PaperPilot 的登录/注册基于 Supabase Auth（邮箱+密码）。启用后，前端会在浏览器中通过 `supabase-js` 获取会话令牌，并在请求 `/api/*` 时携带 `Authorization: Bearer <access_token>`；后端会用 Supabase 的 `/auth/v1/user` 接口校验令牌有效性。
-   若未配置 `SUPABASE_URL` 与 `SUPABASE_ANON_KEY`，系统将默认关闭鉴权：前端不会显示登录界面，后端 `/api/*` 接口不要求 `Authorization` 头，直接进入管理界面。
+4. **Supabase Auth 鉴权（生产环境必需）**
+   PaperPilot 使用 Supabase 邮箱/密码鉴权。所有修改请求必须携带 Bearer Token；通过验证的浏览器会额外获得 HttpOnly Cookie，以便安全加载 PDF、缩略图和下载文件。生产环境采用 fail-closed，必须同时配置 Supabase 参数和明确的管理员邮箱允许列表。
 
    1）创建 Supabase 项目并获取密钥
    - 进入 https://supabase.com/ 创建 Project
@@ -138,7 +137,7 @@
    2）在 Supabase 控制台启用 Email 登录
    - 进入 **Authentication → Providers**
    - 启用 **Email**（Email/Password）
-   - 如仅用于本地/内网试用，可在 **Authentication → Settings** 中关闭邮箱确认（Email confirmations），避免注册后必须点邮件验证
+   - 从 Supabase 控制台创建或邀请管理员账号；PaperPilot 不再提供公开注册入口
 
    3）配置回调地址（非常重要）
    - 进入 **Authentication → URL Configuration**
@@ -149,17 +148,19 @@
    - `http://localhost:7191/`
    - `https://your-domain.com/`
 
-   4）在 PaperPilot 中启用鉴权
+   4）在 PaperPilot 中配置鉴权
    在项目根目录复制并编辑环境变量：
    ```bash
    cp .env.example .env
-   # 编辑 .env 文件填入 SUPABASE_URL 和 SUPABASE_ANON_KEY
+   # 填入 SUPABASE_URL、SUPABASE_ANON_KEY 和 PAPERPILOT_ALLOWED_EMAILS
    ```
-   重启服务后访问页面，若 Supabase 配置正确会出现登录/注册入口。
+   重启服务后访问页面。生产鉴权配置缺失或不完整时服务会拒绝启动，而不会匿名开放 API。仅在隔离的本地开发中，才可设置 `PAPERPILOT_ENV=development`、`PAPERPILOT_AUTH_MODE=disabled`，并把端口绑定在 `127.0.0.1`。
 
    **安全提示**
    - 仅使用 `anon public` key；不要把 `service_role` key 放进 `.env` 或发到前端
    - 本项目会把 `SUPABASE_URL` 与 `SUPABASE_ANON_KEY` 注入到页面中（用于浏览器侧登录），这是预期行为
+   - `PAPERPILOT_ALLOWED_EMAILS` 中的账号都是同一全局论文库的管理员，当前没有租户隔离
+   - 通过 HTTPS 提供服务时必须设置 `PAPERPILOT_COOKIE_SECURE=true`
 
 5. **启动应用**
 
@@ -177,6 +178,8 @@
    | `--host` | `0.0.0.0` | 服务器监听地址 |
    | `--port` | `7191` | 服务器监听端口 |
    | `--debug` | `False` | 启用调试模式（开发用） |
+
+   维护中的 Compose 文件使用 `ifzzh520/paperpilot:0.2.0`，仅绑定 `127.0.0.1:7191`，以非 root 用户运行，并要求持久化挂载 `/app/db` 和 `/data/papers`。运行 `docker compose up -d` 前，请先把 `.env.example` 复制到部署目录并填写配置。
 
    **典型配置方案：**
 

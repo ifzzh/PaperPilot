@@ -125,9 +125,8 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    uv pip install -e ".[server]"
    ```
 
-4. **Supabase Auth (Optional)**
-   PaperPilot’s login/sign-up is powered by Supabase Auth (Email + Password). When enabled, the frontend uses `supabase-js` in the browser to obtain a session token and attaches `Authorization: Bearer <access_token>` to `/api/*` requests; the backend validates the token via Supabase `/auth/v1/user`.
-   If `SUPABASE_URL` and `SUPABASE_ANON_KEY` are not configured, auth is disabled by default: the login overlay is hidden, and `/api/*` endpoints do not require an `Authorization` header, so you can enter the management UI directly.
+4. **Supabase Auth (Required in production)**
+   PaperPilot uses Supabase Email/Password authentication. API mutations require a Bearer token; validated browser sessions also receive an HttpOnly cookie so protected PDFs, thumbnails, and downloads can load normally. Production starts fail-closed and requires both Supabase values plus an explicit administrator email allowlist.
 
    1) Create a Supabase project and get API values
    - Create a project at https://supabase.com/
@@ -138,7 +137,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    2) Enable Email auth
    - Go to **Authentication → Providers**
    - Enable **Email** (Email/Password)
-   - For local/private deployments, you can disable email confirmations in **Authentication → Settings** to avoid requiring email verification after sign-up
+   - Create or invite administrator accounts from the Supabase dashboard. Public sign-up is not exposed by PaperPilot.
 
    3) Configure redirect URLs (important)
    - Go to **Authentication → URL Configuration**
@@ -149,17 +148,19 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    - `http://localhost:7191/`
    - `https://your-domain.com/`
 
-   4) Enable auth in PaperPilot
+   4) Configure auth in PaperPilot
    Copy and edit environment variables in the project root:
    ```bash
    cp .env.example .env
-   # Edit .env and fill in SUPABASE_URL and SUPABASE_ANON_KEY
+   # Fill in SUPABASE_URL, SUPABASE_ANON_KEY, and PAPERPILOT_ALLOWED_EMAILS
    ```
-   Restart the server. If configured correctly, you will see the login/sign-up entry on the page.
+   Restart the server. Missing or partial production auth configuration stops startup instead of opening the API anonymously. For isolated local development only, set `PAPERPILOT_ENV=development`, `PAPERPILOT_AUTH_MODE=disabled`, and bind the published port to `127.0.0.1`.
 
    **Security notes**
    - Use only the `anon public` key; never put `service_role` keys into `.env` or ship them to the browser
    - This project injects `SUPABASE_URL` and `SUPABASE_ANON_KEY` into pages for browser-side login, which is expected
+   - Every email in `PAPERPILOT_ALLOWED_EMAILS` is an administrator of the same shared library; PaperPilot does not provide tenant isolation
+   - Set `PAPERPILOT_COOKIE_SECURE=true` when the site is served over HTTPS
 
 
 5. **Run the Application**
@@ -178,6 +179,8 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--papers-dir` | `./papers` | Path to the papers directory (absolute or relative) |
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
+
+   The maintained Compose file uses `ifzzh520/paperpilot:0.2.0`, binds only `127.0.0.1:7191`, runs as a non-root user, and expects `/app/db` and `/data/papers` to be persistent mounts. Copy `.env.example` to the deployment directory before running `docker compose up -d`.
    | `--debug` | `False` | Enable debug mode (for development) |
 
    **Typical Configuration Examples:**
