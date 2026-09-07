@@ -69,7 +69,7 @@ class OutboundPolicyTests(unittest.TestCase):
             private_origins=set(),
             transfer_origins=set(),
         )
-        resolver = self._resolve({"api.example.test": ["203.0.113.10"]})
+        resolver = self._resolve({"api.example.test": ["8.8.8.8"]})
         with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
             target = policy.validate("https://api.example.test/v1/chat?x=1", purpose="ai")
             self.assertEqual(target.origin, "https://api.example.test")
@@ -79,7 +79,7 @@ class OutboundPolicyTests(unittest.TestCase):
     def test_private_origin_requires_private_allowlist(self):
         resolver = self._resolve({"mineru": ["172.20.0.4"]})
         denied = OutboundPolicy(
-            public_origins={"http://mineru:8000"},
+            public_origins={"https://mineru:8000"},
             private_origins=set(),
             transfer_origins=set(),
         )
@@ -90,7 +90,7 @@ class OutboundPolicyTests(unittest.TestCase):
         )
         with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
             with self.assertRaisesRegex(OutboundPolicyError, "private_address_forbidden"):
-                denied.validate("http://mineru:8000/health", purpose="ai")
+                denied.validate("https://mineru:8000/health", purpose="ai")
             self.assertEqual(
                 allowed.validate("http://mineru:8000/health", purpose="ai").origin,
                 "http://mineru:8000",
@@ -129,7 +129,7 @@ class OutboundPolicyTests(unittest.TestCase):
             transfer_origins=set(),
         )
         resolver = self._resolve(
-            {"api.example.test": ["203.0.113.10", "10.0.0.8"]}
+            {"api.example.test": ["8.8.8.8", "10.0.0.8"]}
         )
         with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
             cases = (
@@ -148,7 +148,7 @@ class OutboundPolicyTests(unittest.TestCase):
             private_origins=set(),
             transfer_origins={"https://objects.example.test"},
         )
-        resolver = self._resolve({"objects.example.test": ["203.0.113.20"]})
+        resolver = self._resolve({"objects.example.test": ["1.1.1.1"]})
         with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
             self.assertEqual(
                 policy.validate("https://objects.example.test/result.zip", purpose="transfer").origin,
