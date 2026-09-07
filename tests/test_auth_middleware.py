@@ -47,6 +47,38 @@ class TestAuthMiddleware(unittest.TestCase):
         response = self.client.delete("/api/categories/example")
         self.assertEqual(response.status_code, 401)
 
+    def test_sensitive_api_matrix_requires_auth(self):
+        requests = [
+            ("GET", "/api/paper/example"),
+            ("PUT", "/api/paper/example"),
+            ("DELETE", "/api/paper/example"),
+            ("PUT", "/api/paper/example/move"),
+            ("GET", "/api/paper/example/file"),
+            ("GET", "/api/paper/example/chinese/file"),
+            ("GET", "/api/paper/example/analysis/result"),
+            ("POST", "/api/paper/analyze"),
+            ("GET", "/api/paper/analyze/task/logs"),
+            ("POST", "/api/paper/translate"),
+            ("POST", "/api/paper/chat"),
+            ("DELETE", "/api/paper/chat/session"),
+            ("GET", "/api/categories"),
+            ("POST", "/api/categories"),
+            ("DELETE", "/api/categories/example"),
+            ("PUT", "/api/categories/example/move"),
+            ("GET", "/api/settings/agentic"),
+            ("POST", "/api/settings/agentic"),
+            ("POST", "/api/upload"),
+            ("POST", "/api/upload/arxiv"),
+            ("POST", "/api/import/from-export"),
+            ("POST", "/api/export/start"),
+            ("GET", "/api/export/download/task"),
+            ("GET", "/api/papers-dir"),
+        ]
+        for method, path in requests:
+            with self.subTest(method=method, path=path):
+                response = self.client.open(path, method=method)
+                self.assertEqual(response.status_code, 401)
+
     def test_missing_runtime_configuration_does_not_fail_open(self):
         app_module.AUTH_CONFIG = None
         response = self.client.get("/api/test-auth-protected")
@@ -57,6 +89,14 @@ class TestAuthMiddleware(unittest.TestCase):
             response = self.client.get(
                 "/api/test-auth-protected",
                 headers={"Authorization": "Bearer invalid"},
+            )
+        self.assertEqual(response.status_code, 401)
+
+    def test_supabase_outage_is_fail_closed(self):
+        with patch.object(app_module.requests, "get", side_effect=TimeoutError):
+            response = self.client.get(
+                "/api/test-auth-protected",
+                headers={"Authorization": "Bearer valid"},
             )
         self.assertEqual(response.status_code, 401)
 
