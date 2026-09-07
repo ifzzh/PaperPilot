@@ -13,6 +13,7 @@ from werkzeug.utils import secure_filename
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import PaperStore
 from paperpilot.database.dao.user_data_dao import ReadingListDAO
+from paperpilot.security.paths import PathSecurityError, safe_join
 from paperpilot.tools.basic_tools.upload_paper import (
     fetch_bibtex_from_dblp,
     process_uploaded_pdf_fast,
@@ -92,14 +93,14 @@ def register_upload_from_pdf_routes(
                 clean_title = _clean_filename(paper_info["title"])
                 if clean_title:
                     new_filename = f"{clean_title}.pdf"
-                    new_file_path = os.path.join(category_folder, new_filename)
+                    new_file_path = str(safe_join(category_folder, new_filename))
 
                     counter = 1
                     original_new_filename = new_filename
                     while os.path.exists(new_file_path):
                         name, ext = os.path.splitext(original_new_filename)
                         new_filename = f"{name}_{counter}{ext}"
-                        new_file_path = os.path.join(category_folder, new_filename)
+                        new_file_path = str(safe_join(category_folder, new_filename))
                         counter += 1
 
                     try:
@@ -195,7 +196,12 @@ def register_upload_from_pdf_routes(
 
         category_folder = create_category_folder(category_id)
         filename = secure_filename(file.filename)
-        file_path = os.path.join(category_folder, filename)
+        if not filename:
+            return jsonify({"success": False, "error": "Invalid file name"}), 400
+        try:
+            file_path = str(safe_join(category_folder, filename))
+        except PathSecurityError:
+            return jsonify({"success": False, "error": "Invalid file name"}), 400
 
         # Handle file name conflicts
         counter = 1
@@ -203,7 +209,7 @@ def register_upload_from_pdf_routes(
         while os.path.exists(file_path):
             name, ext = os.path.splitext(original_filename)
             filename = f"{name}_{counter}{ext}"
-            file_path = os.path.join(category_folder, filename)
+            file_path = str(safe_join(category_folder, filename))
             counter += 1
 
         # Save file now

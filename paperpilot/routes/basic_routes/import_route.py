@@ -23,7 +23,14 @@ from werkzeug.utils import secure_filename
 
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import PaperStore
-from paperpilot.security.paths import PathSecurityError, validate_category_name
+from paperpilot.security.paths import (
+    PathSecurityError,
+    ensure_confined_tree,
+    paper_asset_paths,
+    remove_confined_tree,
+    safe_join,
+    validate_category_name,
+)
 from paperpilot.tools.basic_tools.upload_paper import (
     fetch_bibtex_from_dblp,
     fetch_paper_by_arxiv_id_fast,
@@ -695,7 +702,7 @@ def register_import_routes(
                 if clean_title:
                     pdf_filename = f"{clean_title}.pdf"
 
-                file_path = os.path.join(category_folder, pdf_filename)
+                file_path = str(safe_join(category_folder, pdf_filename))
 
                 # Handle file name conflicts
                 counter = 1
@@ -703,7 +710,7 @@ def register_import_routes(
                 while os.path.exists(file_path):
                     name, ext = os.path.splitext(original_filename)
                     pdf_filename = f"{name}_{counter}{ext}"
-                    file_path = os.path.join(category_folder, pdf_filename)
+                    file_path = str(safe_join(category_folder, pdf_filename))
                     counter += 1
 
                 # keep PDF
@@ -1636,74 +1643,100 @@ def register_import_routes(
                     if not pdf_filename:
                         pdf_filename = f"{new_paper_id}.pdf"
 
-                    zip_pdf_path = os.path.join(
-                        extract_dir,
-                        "papers",
-                        "/".join(category_path_list),
-                        pdf_filename,
-                    )
-
-                    if not os.path.exists(zip_pdf_path):
-                        print(f"[Import] ⚠️ PDF File does not exist: {zip_pdf_path}")
+                    try:
+                        zip_pdf_path = str(safe_join(
+                            extract_dir,
+                            "papers",
+                            *category_path_list,
+                            pdf_filename,
+                            must_exist=True,
+                            require_file=True,
+                        ))
+                    except PathSecurityError:
+                        print("[Import] PDF file is missing or outside import root")
                         skipped_count += 1
                         continue
 
                     # copy PDF to target location
-                    dest_pdf_path = os.path.join(category_folder, pdf_filename)
+                    dest_pdf_path = str(safe_join(category_folder, pdf_filename))
                     shutil.copy2(zip_pdf_path, dest_pdf_path)
+                    destination_assets = paper_asset_paths(
+                        category_folder, dest_pdf_path
+                    )
 
                     # Copy Chinese translation (if available)
                     chinese_path = paper_metadata.get("chinese_version_path")
                     if chinese_path:
                         chinese_filename = os.path.basename(chinese_path)
-                        zip_chinese_path = os.path.join(
-                            extract_dir,
-                            "papers",
-                            "/".join(category_path_list),
-                            chinese_filename,
-                        )
-                        if os.path.exists(zip_chinese_path):
-                            dest_chinese_path = os.path.join(
-                                category_folder, chinese_filename
+                        try:
+                            zip_chinese_path = safe_join(
+                                extract_dir,
+                                "papers",
+                                *category_path_list,
+                                chinese_filename,
+                                must_exist=True,
+                                require_file=True,
                             )
-                            shutil.copy2(zip_chinese_path, dest_chinese_path)
-                            paper_metadata["chinese_version_path"] = dest_chinese_path
+                        except PathSecurityError:
+                            zip_chinese_path = None
+                        if zip_chinese_path:
+                            shutil.copy2(
+                                zip_chinese_path, destination_assets.chinese_dual
+                            )
+                            paper_metadata["chinese_version_path"] = str(
+                                destination_assets.chinese_dual
+                            )
 
                     # copy AI Interpretation (if any)
                     analysis_path = paper_metadata.get("analysis_result_path")
                     if analysis_path:
                         analysis_filename = os.path.basename(analysis_path)
-                        zip_analysis_path = os.path.join(
-                            extract_dir,
-                            "papers",
-                            "/".join(category_path_list),
-                            analysis_filename,
-                        )
-                        if os.path.exists(zip_analysis_path):
-                            dest_analysis_path = os.path.join(
-                                category_folder, analysis_filename
+                        try:
+                            zip_analysis_path = safe_join(
+                                extract_dir,
+                                "papers",
+                                *category_path_list,
+                                analysis_filename,
+                                must_exist=True,
+                                require_file=True,
                             )
-                            shutil.copy2(zip_analysis_path, dest_analysis_path)
-                            paper_metadata["analysis_result_path"] = dest_analysis_path
+                        except PathSecurityError:
+                            zip_analysis_path = None
+                        if zip_analysis_path:
+                            destination_assets.analysis_result.parent.mkdir(
+                                parents=True, exist_ok=True
+                            )
+                            shutil.copy2(
+                                zip_analysis_path, destination_assets.analysis_result
+                            )
+                            paper_metadata["analysis_result_path"] = str(
+                                destination_assets.analysis_result
+                            )
 
                             # Copy picture folder
                             images_folder_name = analysis_filename.replace(
                                 "_analysis.md", "_images"
                             )
-                            zip_images_path = os.path.join(
+                            zip_images_path = safe_join(
                                 extract_dir,
                                 "papers",
-                                "/".join(category_path_list),
+                                *category_path_list,
                                 images_folder_name,
                             )
                             if os.path.exists(zip_images_path) and os.path.isdir(
                                 zip_images_path
                             ):
-                                dest_images_path = os.path.join(
-                                    category_folder, images_folder_name
+                                zip_images_path = ensure_confined_tree(
+                                    extract_dir, zip_images_path
+                                )
+                                dest_images_path = safe_join(
+                                    destination_assets.analysis_result.parent,
+                                    images_folder_name,
                                 )
                                 if os.path.exists(dest_images_path):
-                                    shutil.rmtree(dest_images_path)
+                                    remove_confined_tree(
+                                        category_folder, dest_images_path
+                                    )
                                 shutil.copytree(zip_images_path, dest_images_path)
 
                     # create Paper object

@@ -13,6 +13,7 @@ from flask import Flask, jsonify, request
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import PaperStore
 from paperpilot.database.dao.user_data_dao import ReadingListDAO
+from paperpilot.security.paths import safe_join
 from paperpilot.tools.basic_tools.upload_paper import (
     fetch_bibtex_from_dblp, fetch_paper_by_arxiv_id_fast)
 
@@ -181,14 +182,14 @@ def register_update_from_url_routes(
                 return jsonify({"success": False, "error": "download PDF fail"}), 500
 
             pdf_content, filename = result
-            file_path = os.path.join(category_folder, filename)
+            file_path = str(safe_join(category_folder, filename))
 
             counter = 1
             original_filename = filename
             while os.path.exists(file_path):
                 name, ext = os.path.splitext(original_filename)
                 filename = f"{name}_{counter}{ext}"
-                file_path = os.path.join(category_folder, filename)
+                file_path = str(safe_join(category_folder, filename))
                 counter += 1
 
             with open(file_path, "wb") as f:
@@ -210,14 +211,14 @@ def register_update_from_url_routes(
                 clean_title = _clean_filename(metadata["title"])
                 if clean_title:
                     new_filename = f"{clean_title}.pdf"
-                    new_file_path = os.path.join(category_folder, new_filename)
+                    new_file_path = str(safe_join(category_folder, new_filename))
 
                     counter = 1
                     original_new_filename = new_filename
                     while os.path.exists(new_file_path):
                         name, ext = os.path.splitext(original_new_filename)
                         new_filename = f"{name}_{counter}{ext}"
-                        new_file_path = os.path.join(category_folder, new_filename)
+                        new_file_path = str(safe_join(category_folder, new_filename))
                         counter += 1
 
                     try:

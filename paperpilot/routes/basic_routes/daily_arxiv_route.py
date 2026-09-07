@@ -18,7 +18,7 @@ from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.user_data_dao import DailyArxivReadDAO, ReadingListDAO
 from paperpilot.database.dao.settings_dao import SettingsDAO
-from paperpilot.security.paths import PathSecurityError, ensure_confined
+from paperpilot.security.paths import PathSecurityError, ensure_confined, safe_join
 from paperpilot.tools.basic_tools.daily_arxiv import (
     DailyArxivManager,
     build_daily_arxiv_summary_prompt,
@@ -620,7 +620,7 @@ def register_daily_arxiv_routes(
             safe_title = safe_title[:100].strip()
 
             pdf_filename = f"{safe_title}.pdf"
-            target_path = os.path.join(folder_path, pdf_filename)
+            target_path = str(safe_join(folder_path, pdf_filename))
 
             # Check if it already exists: if it already exists, reuse the existing one Paper, instead of reporting an error
             if os.path.exists(target_path):
@@ -675,7 +675,13 @@ def register_daily_arxiv_routes(
             if source_pdf and os.path.exists(source_pdf):
                 import shutil
 
-                shutil.copy2(source_pdf, target_path)
+                safe_source = ensure_confined(
+                    temp_papers_dir,
+                    source_pdf,
+                    must_exist=True,
+                    require_file=True,
+                )
+                shutil.copy2(safe_source, target_path)
             else:
                 # download
                 import urllib.request
