@@ -180,7 +180,19 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   The maintained Compose file uses `ifzzh520/paperpilot:0.3.0`, binds only `127.0.0.1:7191`, runs as a non-root user, and expects `/app/db` and `/data/papers` to be persistent mounts. Copy `.env.example` to the deployment directory before running `docker compose up -d`.
+   The maintained Compose file uses the v0.4.0 Web and translation-worker images. The Web service binds only `127.0.0.1:7191`; Worker port `7192` is internal only. Both run as non-root users. Copy `.env.example` to the deployment directory, create a random Worker token file, and create the staging directory before running `docker compose up -d`.
+
+   ```bash
+   install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
+   openssl rand -hex 32 > /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+   chmod 0640 /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+   ```
+
+   The Worker receives only `/work/jobs` and its token secret. It does not mount the paper library, SQLite database, `.env`, or Docker socket. Successful output is validated and atomically copied into the paper library by the Web service.
+
+### Upgrading from v0.3.0
+
+v0.4.0 moves BabelDOC into an isolated Worker and upgrades it to 0.6.4. There is no paper-storage migration. Add the staging mount, Worker token, and Worker service shown in `docker-compose.yaml`, then start both services. The additive `translation_jobs` table is created automatically. To roll back, stop both services and pin the Web image back to the v0.3.0 digest; the extra table is backward compatible.
 
 ### Upgrading from v0.2.0
 

@@ -179,7 +179,19 @@
    | `--port` | `7191` | 服务器监听端口 |
    | `--debug` | `False` | 启用调试模式（开发用） |
 
-   维护中的 Compose 文件使用 `ifzzh520/paperpilot:0.3.0`，仅绑定 `127.0.0.1:7191`，以非 root 用户运行，并要求持久化挂载 `/app/db` 和 `/data/papers`。运行 `docker compose up -d` 前，请先把 `.env.example` 复制到部署目录并填写配置。
+   维护中的 Compose 文件使用 v0.4.0 Web 与翻译 Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192` 只在 Compose 网络内开放；两个容器都以非 root 用户运行。启动前请复制 `.env.example`、创建随机 Worker token 文件并创建 staging 目录：
+
+   ```bash
+   install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
+   openssl rand -hex 32 > /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+   chmod 0640 /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+   ```
+
+   Worker 只挂载 `/work/jobs` 和 token secret，不挂载论文库、SQLite、`.env` 或 Docker Socket。翻译成功后由 Web 校验输出并原子写入论文库。
+
+### 从 v0.3.0 升级
+
+v0.4.0 将 BabelDOC 升级至 0.6.4 并移入隔离 Worker，无需迁移论文存储。按 `docker-compose.yaml` 增加 staging 挂载、Worker token 和 Worker 服务后，同时启动两个容器。新增的 `translation_jobs` 表会自动创建且向后兼容；回滚时停止两个服务并将 Web 镜像固定回 v0.3.0 digest 即可。
 
 ### 从 v0.2.0 升级
 
