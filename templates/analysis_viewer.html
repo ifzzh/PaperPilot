@@ -13,6 +13,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"
         onerror="this.onerror=null;this.src='https://unpkg.com/marked@15.0.12/marked.min.js';"></script>
+    <script src="{{ url_for('static', filename='vendor/dompurify/purify.min.js') }}?v=3.4.14"></script>
+    <script src="{{ url_for('static', filename='js/content_security.js') }}?v=1"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>
         window.__SUPABASE_URL = {{ supabase_url | tojson }};

@@ -16,6 +16,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <!-- Marked.js (CDN) for rendering Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/marked@15.0.12/marked.min.js';"></script>
+    <script src="{{ url_for('static', filename='vendor/dompurify/purify.min.js') }}?v=3.4.14"></script>
+    <script src="{{ url_for('static', filename='js/content_security.js') }}?v=1"></script>
     <!-- Highlight.js (CDN) for code highlighting -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
