@@ -1,6 +1,6 @@
 services:
   paperpilot:
-    image: ifzzh520/paperpilot:0.5.0
+    image: ifzzh520/paperpilot:0.6.0
     container_name: paperpilot
     ports:
       - "127.0.0.1:7191:7191"
@@ -13,6 +13,10 @@ services:
       PAPERPILOT_TRANSLATION_WORKER_URL: http://paperpilot-translation-worker:7192
       PAPERPILOT_TRANSLATION_JOBS_ROOT: /work/jobs
       PAPERPILOT_WORKER_TOKEN_FILE: /run/secrets/paperpilot_worker_token
+      PAPERPILOT_SETTINGS_KEY_FILE: /run/secrets/paperpilot_settings_key
+      PAPERPILOT_AI_ALLOWED_ORIGINS: ${PAPERPILOT_AI_ALLOWED_ORIGINS:-}
+      PAPERPILOT_AI_PRIVATE_ALLOWED_ORIGINS: ${PAPERPILOT_AI_PRIVATE_ALLOWED_ORIGINS:-}
+      PAPERPILOT_MINERU_TRANSFER_ALLOWED_ORIGINS: ${PAPERPILOT_MINERU_TRANSFER_ALLOWED_ORIGINS:-}
     volumes:
       - /mnt/raid1/projects/paperpilot/deploy/.env:/app/.env:ro
       - /srv/ifserver-fast/paperpilot/runtime/db:/app/db
@@ -20,6 +24,11 @@ services:
       - /mnt/raid1/projects/paperpilot/data/staging/translation:/work/jobs
     secrets:
       - paperpilot_worker_token
+      - source: paperpilot_settings_key
+        target: paperpilot_settings_key
+        uid: "10001"
+        gid: "1001"
+        mode: 0440
     depends_on:
       paperpilot-translation-worker:
         condition: service_healthy
@@ -30,7 +39,7 @@ services:
     restart: unless-stopped
 
   paperpilot-translation-worker:
-    image: ifzzh520/paperpilot:0.5.0-worker
+    image: ifzzh520/paperpilot:0.6.0-worker
     container_name: paperpilot-translation-worker
     environment:
       PAPERPILOT_WORKER_JOBS_ROOT: /work/jobs
@@ -57,3 +66,5 @@ services:
 secrets:
   paperpilot_worker_token:
     file: /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+  paperpilot_settings_key:
+    file: /mnt/raid1/projects/paperpilot/deploy/paperpilot-settings.key

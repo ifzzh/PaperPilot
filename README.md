@@ -180,15 +180,34 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   The maintained Compose file uses the v0.5.0 Web and translation-worker images. The Web service binds only `127.0.0.1:7191`; Worker port `7192` is internal only. Both run as non-root users. Copy `.env.example` to the deployment directory, create a random Worker token file, and create the staging directory before running `docker compose up -d`.
+   The maintained Compose file uses the v0.6.0 Web and translation-worker images. The Web service binds only `127.0.0.1:7191`; Worker port `7192` is internal only. Both run as non-root users. Copy `.env.example` to the deployment directory, create separate Worker and settings-encryption key files, and create the staging directory before running `docker compose up -d`.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
    openssl rand -hex 32 > /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+   openssl rand -out /mnt/raid1/projects/paperpilot/deploy/paperpilot-settings.key 32
    chmod 0640 /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+   chmod 0640 /mnt/raid1/projects/paperpilot/deploy/paperpilot-settings.key
    ```
 
    The Worker receives only `/work/jobs` and its token secret. It does not mount the paper library, SQLite database, `.env`, or Docker socket. Successful output is validated and atomically copied into the paper library by the Web service.
+
+### Upgrading from v0.5.0
+
+v0.6.0 makes AI credentials write-only in the browser and encrypts them in SQLite with the separate settings key. Stop PaperPilot before upgrading. Generate and securely back up `paperpilot-settings.key`, then inspect and apply the offline migration using the v0.6.0 Web image or an equivalent source checkout:
+
+```bash
+python -m paperpilot.migrations.agentic_secrets \
+  --db /app/db/paperpilot.db --dry-run
+python -m paperpilot.migrations.agentic_secrets \
+  --db /app/db/paperpilot.db \
+  --key-file /run/secrets/paperpilot_settings_key \
+  --backup-dir /backups --apply
+```
+
+The generated manifest contains no credentials and supports `--rollback <manifest>`. Keep the pre-migration database backup protected because it may contain old plaintext credentials. Losing the settings key makes encrypted credentials unrecoverable.
+
+Every configurable LLM or local MinerU origin must be listed exactly in `PAPERPILOT_AI_ALLOWED_ORIGINS` or `PAPERPILOT_AI_PRIVATE_ALLOWED_ORIGINS`. MinerU pre-signed storage origins use `PAPERPILOT_MINERU_TRANSFER_ALLOWED_ORIGINS`. Public origins require HTTPS; private HTTP is allowed only for an exact explicitly approved origin. Redirects, loopback, link-local and cloud-metadata targets are rejected.
 
 ### Upgrading from v0.4.0
 
@@ -289,7 +308,7 @@ docker build --build-arg ARXIV_PROXY=http://host.docker.internal:7890 -t paperpi
 
 ### Agentic Settings
 Navigate to the **Settings** tab to configure:
-- **LLM Provider**: Set your API Key, Base URL, and Model Name (e.g., GPT-4, Qwen, DeepSeek).
+- **LLM Provider**: Set your API Key, approved Base URL, and Model Name (e.g., GPT-4, Qwen, DeepSeek). Saved keys are never displayed again; an empty key keeps the existing value and the separate Clear button removes it.
 - **MinerU**: Choose between Local instance or Cloud API.
 
 ### Daily ArXiv

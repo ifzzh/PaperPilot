@@ -58,7 +58,7 @@ RUN apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" upd
 
 FROM runtime-base AS translation-worker
 
-ARG APP_VERSION=0.5.0
+ARG APP_VERSION=0.6.0
 ARG VCS_REF=unknown
 
 ENV HOME=/tmp \
@@ -87,7 +87,7 @@ CMD ["python", "-m", "paperpilot.translation_worker"]
 
 FROM runtime-base AS runtime
 
-ARG APP_VERSION=0.5.0
+ARG APP_VERSION=0.6.0
 ARG VCS_REF=unknown
 ARG ARXIV_PROXY=
 ARG ARXIV_API_PROXY=
