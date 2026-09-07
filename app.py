@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import requests
-from flask import Flask, g, jsonify, render_template, request
+from flask import Flask, g, jsonify, redirect, render_template, request
 
 from paperpilot.core.base_paper import Paper
 from paperpilot.auth import AuthConfig, AuthConfigurationError
@@ -81,12 +81,11 @@ app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max file size
 
 _auth_cache: dict[str, tuple[float, str]] = {}
 _auth_cache_lock = threading.Lock()
+AUTH_CONFIG: Optional[AuthConfig] = None
 
 
 def _verify_supabase_access_token(access_token: str) -> str | None:
-    supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-    supabase_anon_key = os.getenv("SUPABASE_ANON_KEY", "").strip()
-    if not (supabase_url and supabase_anon_key):
+    if AUTH_CONFIG is None or not AUTH_CONFIG.enabled:
         return None
 
     now = time.time()
@@ -97,10 +96,10 @@ def _verify_supabase_access_token(access_token: str) -> str | None:
 
     try:
         resp = requests.get(
-            f"{supabase_url}/auth/v1/user",
+            f"{AUTH_CONFIG.supabase_url}/auth/v1/user",
             headers={
                 "Authorization": f"Bearer {access_token}",
-                "apikey": supabase_anon_key,
+                "apikey": AUTH_CONFIG.supabase_anon_key,
             },
             timeout=15,
         )
@@ -120,21 +119,17 @@ def _verify_supabase_access_token(access_token: str) -> str | None:
 
 @app.before_request
 def _require_auth_for_api():
-    if not request.path.startswith("/api/"):
+    protects_api = request.path.startswith("/api/")
+    protects_viewer = request.path.startswith("/viewer/")
+    if not protects_api and not protects_viewer:
         return None
 
-    # Whitelist for paths that do not require authentication (static resources, downloads)
-    if (
-        request.path.startswith("/api/daily-arxiv/thumbnail/")
-        or request.path.startswith("/api/export/download/")
-        or request.path.startswith("/api/paper/")
-        or request.path.startswith("/api/categories/")
-    ):
+    if request.path == "/healthz" and request.method in {"GET", "HEAD"}:
         return None
 
-    supabase_url = os.getenv("SUPABASE_URL", "").strip()
-    supabase_anon_key = os.getenv("SUPABASE_ANON_KEY", "").strip()
-    if not (supabase_url and supabase_anon_key):
+    if AUTH_CONFIG is None:
+        return jsonify({"error": "鉴权服务未配置"}), 503
+    if not AUTH_CONFIG.enabled:
         return None
 
     auth = request.headers.get("Authorization", "")
@@ -148,6 +143,8 @@ def _require_auth_for_api():
     email = _verify_supabase_access_token(access_token)
     if not email:
         return jsonify({"error": "登录已失效"}), 401
+    if email not in AUTH_CONFIG.allowed_emails:
+        return jsonify({"error": "无权访问"}), 403
 
     g.user_email = email
     return None
@@ -455,6 +452,11 @@ def index():
         supabase_url=os.getenv("SUPABASE_URL", ""),
         supabase_anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
     )
+
+
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    return jsonify({"status": "ok"})
 
 
 def register_routes():
