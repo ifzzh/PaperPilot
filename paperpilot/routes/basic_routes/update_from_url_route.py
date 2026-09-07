@@ -31,7 +31,7 @@ class GetCategoryPathFn(Protocol):
 
 
 class CreateCategoryFolderFn(Protocol):
-    def __call__(self, category_path: list[str]) -> str: ...
+    def __call__(self, category_id: str) -> str: ...
 
 
 class SavePaperMetadataFn(Protocol):
@@ -165,7 +165,7 @@ def register_update_from_url_routes(
                 if not category_path:
                     return jsonify({"success": False, "error": "Category not found"}), 404
 
-                category_folder = create_category_folder(category_path[1:])
+                category_folder = create_category_folder(category_id)
 
             arxiv_id = _extract_arxiv_id_from_url(arxiv_url)
             if not arxiv_id:

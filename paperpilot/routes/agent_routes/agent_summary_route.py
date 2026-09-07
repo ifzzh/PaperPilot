@@ -14,6 +14,13 @@ from flask import jsonify, request, send_file
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.settings_dao import SettingsDAO
+from paperpilot.security.paths import (
+    PathSecurityError,
+    ensure_confined,
+    paper_asset_paths,
+    safe_join,
+    verified_paper_path,
+)
 from paperpilot.tools.agent_tools.summary_pdf import (
     AnalysisDependencies,
     analyze_paper_task,
@@ -33,7 +40,21 @@ def register_agent_summary_routes(
     get_papers_in_category: Callable[[str, CategoryPath], List[Paper]],
     save_paper_metadata: Callable[[str, Any], None],
     agentic_settings_file: str,
+    upload_folder: str,
 ) -> None:
+    def resolve_paper_file(paper: Paper) -> str:
+        entry = paper_store.get_entry(paper.id)
+        if not entry:
+            raise PathSecurityError("paper_category_missing")
+        return str(
+            verified_paper_path(
+                upload_folder,
+                entry.category_id,
+                paper.filename,
+                paper.file_path,
+            )
+        )
+
     @app.route("/api/paper/analyze", methods=["POST"])
     def api_analyze_paper():
         """AI InterpretationPDFpaper - Start background task"""
@@ -221,12 +242,12 @@ def register_agent_summary_routes(
                     return jsonify({"success": False, "error": "Paper not found"}), 404
 
                 paper, category_path = result
-            pdf_path = paper.file_path
-
-            if not pdf_path or not os.path.exists(pdf_path):
+            try:
+                pdf_path = resolve_paper_file(paper)
+            except PathSecurityError:
                 return (
-                    jsonify({"success": False, "error": "PDFFile does not exist"}),
-                    404,
+                    jsonify({"success": False, "error": "unsafe_stored_path"}),
+                    409,
                 )
 
             pdf_dir = os.path.dirname(pdf_path)
@@ -418,42 +439,22 @@ def register_agent_summary_routes(
                 return jsonify({"error": "Paper not found"}), 404
 
             paper, _ = result
-        pdf_path = paper.file_path
+        try:
+            pdf_path = resolve_paper_file(paper)
+            result_file = paper_asset_paths(upload_folder, pdf_path).analysis_result
+        except PathSecurityError:
+            return jsonify({"error": "unsafe_stored_path"}), 409
 
-        if not pdf_path or not os.path.exists(pdf_path):
-            return jsonify({"error": "PDFFile does not exist"}), 404
-
-        pdf_dir = os.path.dirname(pdf_path)
-        base_name = os.path.splitext(os.path.basename(pdf_path))[0]
-        outputs_dir = os.path.join(pdf_dir, "outputs")
-
-        result_file = None
-        if os.path.exists(outputs_dir):
-            exact_result = os.path.join(outputs_dir, base_name, "vlm", "result.md")
-            if os.path.exists(exact_result):
-                result_file = exact_result
-            else:
-                for item in os.listdir(outputs_dir):
-                    item_path = os.path.join(outputs_dir, item)
-                    if os.path.isdir(item_path):
-                        vlm_dir = os.path.join(item_path, "vlm")
-                        if os.path.exists(vlm_dir):
-                            potential_result = os.path.join(vlm_dir, "result.md")
-                            if os.path.exists(potential_result):
-                                result_file = potential_result
-                                break
-
-        if not result_file or not os.path.exists(result_file):
+        if not result_file.exists():
             return jsonify({"error": "Interpretation results file does not exist"}), 404
 
         try:
-            with open(result_file, "r", encoding="utf-8") as f:
+            with result_file.open("r", encoding="utf-8") as f:
                 content = f.read()
             return jsonify(
                 {
                     "success": True,
                     "content": content,
-                    "file_path": result_file,
                     "title": paper.title if paper else "Paper Analysis",
                 }
             )
@@ -497,10 +498,14 @@ def register_agent_summary_routes(
                 return jsonify({"error": "Paper not found"}), 404
 
             paper, _ = result
-        pdf_path = paper.file_path
-
-        if not pdf_path or not os.path.exists(pdf_path):
-            return jsonify({"error": "PDFFile does not exist"}), 404
+        try:
+            pdf_path = resolve_paper_file(paper)
+            analysis_dir = paper_asset_paths(
+                upload_folder,
+                pdf_path,
+            ).analysis_directory
+        except PathSecurityError:
+            return jsonify({"error": "unsafe_stored_path"}), 409
 
         image_path = (request.args.get("path") or "").strip()
         if not image_path:
@@ -514,105 +519,24 @@ def register_agent_summary_routes(
         if any(p == ".." for p in parts):
             return jsonify({"error": "Invalid image path"}), 400
 
-        pdf_dir = os.path.dirname(pdf_path)
-        base_name = os.path.splitext(os.path.basename(pdf_path))[0]
-        outputs_dir = os.path.join(pdf_dir, "outputs")
-
-        image_file = None
-        if os.path.exists(outputs_dir):
-            rel = normalized
-            rel_in_images = rel[len("images/") :] if rel.startswith("images/") else rel
-            requested_name = posixpath.basename(rel)
-            requested_stem, _ = os.path.splitext(requested_name)
-
-            def try_candidate(path: str) -> str | None:
-                if path and os.path.exists(path) and os.path.isfile(path):
-                    return path
-                return None
-
-            def iter_base_dirs() -> List[str]:
-                bases: List[str] = []
-                bases.append(os.path.join(outputs_dir, base_name, "vlm"))
-                bases.append(os.path.join(outputs_dir, base_name))
-                bases.append(outputs_dir)
-                try:
-                    for item in os.listdir(outputs_dir):
-                        item_path = os.path.join(outputs_dir, item)
-                        if not os.path.isdir(item_path):
-                            continue
-                        bases.append(item_path)
-                        bases.append(os.path.join(item_path, "vlm"))
-                except Exception:
-                    pass
-                seen: set[str] = set()
-                deduped: List[str] = []
-                for b in bases:
-                    b_norm = os.path.normpath(b)
-                    if b_norm in seen:
-                        continue
-                    seen.add(b_norm)
-                    deduped.append(b_norm)
-                return deduped
-
-            for base_dir in iter_base_dirs():
-                if not base_dir or not os.path.exists(base_dir):
-                    continue
-                candidates = [
-                    os.path.join(base_dir, rel),
-                    os.path.join(base_dir, rel_in_images),
-                    os.path.join(base_dir, "images", rel),
-                    os.path.join(base_dir, "images", rel_in_images),
-                    os.path.join(base_dir, requested_name),
-                    os.path.join(base_dir, "images", requested_name),
-                    os.path.join(base_dir, "assets", rel),
-                    os.path.join(base_dir, "assets", rel_in_images),
-                    os.path.join(base_dir, "assets", "images", rel_in_images),
-                ]
-                for candidate in candidates:
-                    found = try_candidate(candidate)
-                    if found:
-                        image_file = found
-                        break
-                if image_file:
-                    break
-
-            if not image_file:
-                suffixes = [
-                    rel,
-                    f"images/{rel_in_images}",
-                    rel_in_images,
-                ]
-                suffixes = [s.replace("\\", "/").lstrip("/") for s in suffixes if s]
-
-                best: tuple[int, str] | None = None
-                for root, dirs, files in os.walk(outputs_dir):
-                    rel_root = os.path.relpath(root, outputs_dir)
-                    depth = 0 if rel_root == "." else rel_root.count(os.sep) + 1
-                    if depth > 6:
-                        dirs[:] = []
-                        continue
-                    for fname in files:
-                        full = os.path.join(root, fname)
-                        rel_full = os.path.relpath(full, outputs_dir).replace(os.sep, "/")
-                        score = 0
-                        if any(rel_full.endswith(suf) for suf in suffixes):
-                            score = 300
-                        elif fname == requested_name:
-                            score = 200
-                        elif requested_stem and os.path.splitext(fname)[0] == requested_stem:
-                            score = 100
-                        if score:
-                            if "images/" in rel_full:
-                                score += 5
-                            if best is None or score > best[0]:
-                                best = (score, full)
-                    if best and best[0] >= 300:
-                        break
-                if best:
-                    image_file = best[1]
-
-        if not image_file or not os.path.exists(image_file):
+        try:
+            image_file = safe_join(
+                analysis_dir,
+                normalized,
+                must_exist=True,
+                require_file=True,
+            )
+            image_file = ensure_confined(
+                upload_folder,
+                image_file,
+                must_exist=True,
+                require_file=True,
+            )
+        except PathSecurityError:
             return jsonify({"error": "Image file does not exist"}), 404
 
         mime_type, _ = mimetypes.guess_type(image_file)
-        return send_file(image_file, mimetype=mime_type or "application/octet-stream")
+        return send_file(
+            str(image_file),
+            mimetype=mime_type or "application/octet-stream",
+        )

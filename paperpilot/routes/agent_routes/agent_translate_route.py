@@ -11,6 +11,11 @@ from flask import jsonify, request, send_file
 
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
+from paperpilot.security.paths import (
+    PathSecurityError,
+    paper_asset_paths,
+    verified_paper_path,
+)
 from paperpilot.tools.agent_tools.translate_pdf import (
     TranslationDependencies,
     translate_paper_task,
@@ -30,7 +35,21 @@ def register_agent_translate_routes(
     get_papers_in_category: Callable[[str, CategoryPath], List[Paper]],
     save_paper_metadata: Callable[[str, Any], None],
     agentic_settings_file: str,
+    upload_folder: str,
 ) -> None:
+    def resolve_paper_file(paper: Paper) -> str:
+        entry = paper_store.get_entry(paper.id)
+        if not entry:
+            raise PathSecurityError("paper_category_missing")
+        return str(
+            verified_paper_path(
+                upload_folder,
+                entry.category_id,
+                paper.filename,
+                paper.file_path,
+            )
+        )
+
     @app.route("/api/paper/translate", methods=["POST"])
     def api_translate_paper():
         """translatePDFpaper - Start background task"""
@@ -116,10 +135,10 @@ def register_agent_translate_routes(
                     return jsonify({"success": False, "error": "Paper not found"}), 404
 
                 paper, category_path = result
-            pdf_path = paper.file_path
-
-            if not pdf_path or not os.path.exists(pdf_path):
-                return jsonify({"success": False, "error": "PDFFile does not exist"}), 404
+            try:
+                pdf_path = resolve_paper_file(paper)
+            except PathSecurityError:
+                return jsonify({"success": False, "error": "unsafe_stored_path"}), 409
 
             pdf_dir = os.path.dirname(pdf_path)
             pdf_filename = os.path.basename(pdf_path)
@@ -285,10 +304,14 @@ def register_agent_translate_routes(
             if not paper:
                 return jsonify({"error": "Paper not found"}), 404
 
-        chinese_path = paper.chinese_version_path
-        if chinese_path and os.path.exists(chinese_path):
+        try:
+            pdf_path = resolve_paper_file(paper)
+            chinese_path = paper_asset_paths(upload_folder, pdf_path).chinese_dual
+        except PathSecurityError:
+            return jsonify({"error": "unsafe_stored_path"}), 409
+        if chinese_path.exists():
             response = send_file(
-                chinese_path,
+                str(chinese_path),
                 as_attachment=False,
                 mimetype="application/pdf",
             )

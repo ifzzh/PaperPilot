@@ -23,6 +23,7 @@ from werkzeug.utils import secure_filename
 
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import PaperStore
+from paperpilot.security.paths import PathSecurityError, validate_category_name
 from paperpilot.tools.basic_tools.upload_paper import (
     fetch_bibtex_from_dblp,
     fetch_paper_by_arxiv_id_fast,
@@ -48,7 +49,7 @@ class GetCategoryPathFn(Protocol):
 
 
 class CreateCategoryFolderFn(Protocol):
-    def __call__(self, category_path: list[str]) -> str: ...
+    def __call__(self, category_id: str) -> str: ...
 
 
 class SavePaperMetadataFn(Protocol):
@@ -166,7 +167,10 @@ def _find_or_create_category(
         if not path:
             return None
 
-        target_name = path[0]
+        try:
+            target_name = validate_category_name(path[0])
+        except PathSecurityError:
+            return None
         remaining_path = path[1:]
 
         # Find an existing category
@@ -189,17 +193,16 @@ def _find_or_create_category(
         children.append(new_category)
 
         # Create folder
-        full_path = current_path + [target_name]
         try:
-            create_category_folder(full_path)
-            print(f"[Import] Create category folders: {'/'.join(full_path)}")
+            create_category_folder(new_id)
+            print(f"[Import] Create category folder for: {target_name}")
         except Exception as e:
             print(f"[Import] Failed to create category folder: {e}")
 
         if remaining_path:
             # Continue to create subcategories
             return find_or_create_in_children(
-                new_category["children"], remaining_path, full_path
+                new_category["children"], remaining_path, current_path + [target_name]
             )
         else:
             return new_id
@@ -289,7 +292,10 @@ def _find_or_create_category_under_parent(
         if not path:
             return None
 
-        target_name = path[0]
+        try:
+            target_name = validate_category_name(path[0])
+        except PathSecurityError:
+            return None
         remaining_path = path[1:]
 
         # Find an existing category
@@ -314,17 +320,18 @@ def _find_or_create_category_under_parent(
         children.append(new_category)
 
         # Create folder
-        full_folder_path = current_folder_path + [target_name]
         try:
-            create_category_folder(full_folder_path)
-            print(f"[Import] Create category folders: {'/'.join(full_folder_path)}")
+            create_category_folder(new_id)
+            print(f"[Import] Create category folder for: {target_name}")
         except Exception as e:
             print(f"[Import] Failed to create category folder: {e}")
 
         if remaining_path:
             # Continue to create subcategories
             return find_or_create_in_children(
-                new_category["children"], remaining_path, full_folder_path
+                new_category["children"],
+                remaining_path,
+                current_folder_path + [target_name],
             )
         else:
             return new_id
@@ -661,17 +668,8 @@ def register_import_routes(
                     skipped_count += 1
                     continue
 
-                # Get full folder path (including parent directory)
-                # full_category_path The format is ["Root", "ParentDir", "Category", ...]
-                # Need to be removed when creating a folder "Root"
-                folder_path_parts = (
-                    full_category_path[1:]
-                    if len(full_category_path) > 1
-                    else category_path
-                )
-
                 # Check whether the target directory already has a paper with the same name (duplicate detection)
-                category_folder = create_category_folder(folder_path_parts)
+                category_folder = create_category_folder(category_id)
                 paper_title = paper_info.get("title", "")
                 if paper_title and _check_duplicate_in_folder(
                     category_folder, paper_title
@@ -690,7 +688,7 @@ def register_import_routes(
                 pdf_content, pdf_filename = pdf_result
 
                 # Create category folder and save PDF(use full path)
-                category_folder = create_category_folder(folder_path_parts)
+                category_folder = create_category_folder(category_id)
 
                 # Use the paper title as the file name
                 clean_title = _clean_filename(paper_info.get("title"))
@@ -1591,6 +1589,11 @@ def register_import_routes(
                         # If it does not exist, create a new category
                         if not found:
                             # Create new category
+                            try:
+                                cat_name = validate_category_name(cat_name)
+                            except PathSecurityError:
+                                category_id = None
+                                break
                             new_cat_id = str(uuid.uuid4())
                             new_category = {
                                 "id": new_cat_id,
@@ -1613,7 +1616,7 @@ def register_import_routes(
                         continue
 
                     # Create category folders
-                    category_folder = create_category_folder(full_category_path)
+                    category_folder = create_category_folder(category_id)
 
                     # Check if the same paper already exists
                     paper_id = paper_metadata.get("id")

@@ -33,7 +33,7 @@ class GetCategoryPathFn(Protocol):
 
 
 class CreateCategoryFolderFn(Protocol):
-    def __call__(self, category_path: list[str]) -> str: ...
+    def __call__(self, category_id: str) -> str: ...
 
 
 class SavePaperMetadataFn(Protocol):
@@ -193,7 +193,7 @@ def register_upload_from_pdf_routes(
             if not category_path:
                 return jsonify({"success": False, "error": "Category not found"})
 
-        category_folder = create_category_folder(category_path[1:])  # jump over Root
+        category_folder = create_category_folder(category_id)
         filename = secure_filename(file.filename)
         file_path = os.path.join(category_folder, filename)
 

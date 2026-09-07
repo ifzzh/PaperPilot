@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import os
-import shutil
 import uuid
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
 from flask import Flask, jsonify, request, send_file
+
+from paperpilot.security.paths import (
+    PathSecurityError,
+    category_directory,
+    remove_confined_tree,
+    validate_category_name,
+)
 
 
 class GetCategoriesFn(Protocol):
@@ -82,11 +88,11 @@ def register_category_routes(
     def api_add_category():
         data = request.json or {}
         parent_id = data.get("parent_id")
-        name = data.get("name")
-
-        if not name:
+        try:
+            name = validate_category_name(data.get("name"))
+        except PathSecurityError:
             return (
-                jsonify({"success": False, "error": "Category name is required"}),
+                jsonify({"success": False, "error": "invalid_category_name"}),
                 400,
             )
 
@@ -110,11 +116,11 @@ def register_category_routes(
     @app.route("/api/categories/<category_id>", methods=["PUT"])
     def api_rename_category(category_id):
         data = request.json or {}
-        new_name = data.get("name")
-
-        if not new_name:
+        try:
+            new_name = validate_category_name(data.get("name"))
+        except PathSecurityError:
             return (
-                jsonify({"success": False, "error": "Category name is required"}),
+                jsonify({"success": False, "error": "invalid_category_name"}),
                 400,
             )
 
@@ -169,6 +175,7 @@ def register_category_routes(
     @app.route("/api/categories/<category_id>", methods=["DELETE"])
     def api_delete_category(category_id):
         categories = get_categories()
+        unsafe_storage = False
 
         def collect_all_category_ids(node: Dict[str, Any]) -> List[str]:
             """Recursively collect a category and all its subcategories ID"""
@@ -190,23 +197,37 @@ def register_category_routes(
             return deleted_count
 
         def delete_category_recursive(node: Dict[str, Any], target_id: str) -> bool:
+            nonlocal unsafe_storage
             children = node.get("children", [])
             for index, child in enumerate(children):
                 if child["id"] == target_id:
                     # 1. Collect all categories to be deleted ID(Includes subcategories)
                     all_category_ids = collect_all_category_ids(child)
 
+                    # Validate every exact ID-backed directory before changing state.
+                    category_directories = []
+                    try:
+                        for cat_id in all_category_ids:
+                            folder = category_directory(upload_folder, cat_id)
+                            if folder.exists():
+                                category_directories.append(folder)
+                                # Validation only; deletion happens after all checks pass.
+                                for current_root, dirs, files in os.walk(folder):
+                                    for name in [*dirs, *files]:
+                                        if os.path.islink(os.path.join(current_root, name)):
+                                            raise PathSecurityError("symlink_in_tree")
+                    except PathSecurityError:
+                        unsafe_storage = True
+                        return False
+
                     # 2. from paper_store Delete all related papers from
                     deleted_papers = delete_papers_in_categories(all_category_ids)
                     print(f"Already from paper_store delete {deleted_papers} papers")
 
-                    # 3. Delete physical folder
-                    category_path = get_category_path(categories, target_id)
-                    if category_path and len(category_path) > 1:
-                        folder_path = os.path.join(upload_folder, *category_path[1:])
-                        if os.path.exists(folder_path):
-                            shutil.rmtree(folder_path)
-                            print(f"Category folder deleted: {folder_path}")
+                    # 3. Delete only the exact ID-backed folders.
+                    for folder in reversed(category_directories):
+                        remove_confined_tree(upload_folder, folder)
+                        print("Category storage directory deleted")
 
                     # 4. Remove node from classification tree
                     del children[index]
@@ -218,6 +239,9 @@ def register_category_routes(
         if delete_category_recursive(categories, category_id):
             save_categories(categories)
             return jsonify({"success": True})
+
+        if unsafe_storage:
+            return jsonify({"success": False, "error": "unsafe_stored_path"}), 409
 
         return jsonify({"success": False, "error": "Category not found"}), 404
 
@@ -337,41 +361,6 @@ def register_category_routes(
 
         # Get new path
         new_path = get_category_path(categories, category_id)
-
-        # Move physical folder
-        if old_path and new_path and len(old_path) > 1 and len(new_path) > 1:
-            old_folder = os.path.join(upload_folder, *old_path[1:])
-            new_folder = os.path.join(upload_folder, *new_path[1:])
-
-            if os.path.exists(old_folder) and old_folder != new_folder:
-                # Make sure the parent directory of the new path exists
-                new_parent_folder = os.path.dirname(new_folder)
-                os.makedirs(new_parent_folder, exist_ok=True)
-
-                # If a folder with the same name already exists in the target location, it needs to be processed
-                if os.path.exists(new_folder):
-                    print(
-                        f"[mobile classification] The folder already exists in the target location: {new_folder}"
-                    )
-                    # Optionally merge or return an error
-                    return (
-                        jsonify(
-                            {
-                                "success": False,
-                                "error": "A folder with the same name already exists in the target location",
-                            }
-                        ),
-                        400,
-                    )
-
-                try:
-                    shutil.move(old_folder, new_folder)
-                    print(
-                        f"[mobile classification] Folder moved: {old_folder} -> {new_folder}"
-                    )
-                except Exception as e:
-                    print(f"[mobile classification] Failed to move folder: {e}")
-                    # Continue saving category structures even if folder move fails
 
         save_categories(categories)
 

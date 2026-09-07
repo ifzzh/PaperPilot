@@ -18,6 +18,7 @@ from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.user_data_dao import DailyArxivReadDAO, ReadingListDAO
 from paperpilot.database.dao.settings_dao import SettingsDAO
+from paperpilot.security.paths import PathSecurityError, ensure_confined
 from paperpilot.tools.basic_tools.daily_arxiv import (
     DailyArxivManager,
     build_daily_arxiv_summary_prompt,
@@ -43,7 +44,7 @@ def register_daily_arxiv_routes(
     temp_papers_dir: str,
     get_categories: Callable[[], dict],
     get_category_path: Callable[[dict, str], List[str] | None],
-    create_category_folder: Callable[[List[str]], str],
+    create_category_folder: Callable[[str], str],
     save_paper_metadata: Callable[[str, Any], None],
     reading_list_file: str,
     reading_list_temp_dir: str,
@@ -599,7 +600,7 @@ def register_daily_arxiv_routes(
                     return jsonify({"success": False, "error": "Category does not exist"}), 404
 
                 # Create category folders
-                folder_path = create_category_folder(category_path[1:])
+                folder_path = create_category_folder(category_id)
 
             # Get paper information from storage
             paper_info = None
@@ -1034,16 +1035,22 @@ def register_daily_arxiv_routes(
             if not thumbnail_path:
                 return jsonify({"success": False, "error": "Thumbnail does not exist"}), 404
 
-            # Make sure the path is absolute
-            if not os.path.isabs(thumbnail_path):
-                thumbnail_path = os.path.abspath(thumbnail_path)
+            try:
+                thumbnail_path = ensure_confined(
+                    temp_papers_dir,
+                    thumbnail_path,
+                    must_exist=True,
+                    require_file=True,
+                )
+            except PathSecurityError:
+                return jsonify({"success": False, "error": "unsafe_stored_path"}), 409
 
-            if not os.path.exists(thumbnail_path):
+            if not thumbnail_path.exists():
                 return jsonify({"success": False, "error": "Thumbnail file does not exist"}), 404
 
             # Add a cache header to let the browser cache the image (7sky)
             response = send_file(
-                thumbnail_path, mimetype="image/jpeg", as_attachment=False
+                str(thumbnail_path), mimetype="image/jpeg", as_attachment=False
             )
             response.headers["Cache-Control"] = (
                 "public, max-age=604800"  # 7sky = 7*24*60*60

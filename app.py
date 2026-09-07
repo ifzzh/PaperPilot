@@ -21,6 +21,7 @@ from paperpilot.auth import (
     AuthConfigurationError,
     FixedWindowRateLimiter,
 )
+from paperpilot.security.paths import paper_directory
 from paperpilot.core.paper_store import paper_store
 from paperpilot.core.search_index import SearchIndex
 from paperpilot.database.connection import DB_PATH
@@ -400,14 +401,17 @@ add_pdf_counts_to_categories = category_manager.add_pdf_counts_to_categories
 get_category_pdf_count = category_manager.get_category_pdf_count
 
 get_papers_in_category = None
-get_paper_json_path = paper_repository.get_paper_json_path
 load_paper_metadata = paper_repository.load_paper_metadata
 scan_papers_in_directory = paper_repository.scan_papers_in_directory
 
 
 def save_paper_metadata(pdf_path: str, paper_data) -> None:
     """Save paper metadata and update search index"""
-    paper_repository.save_paper_metadata(pdf_path, paper_data)
+    paper_repository.save_paper_metadata(
+        pdf_path,
+        paper_data,
+        upload_root=UPLOAD_FOLDER,
+    )
 
     # Update search index
     if search_index:
@@ -448,7 +452,7 @@ def delete_paper_files(pdf_path: str) -> None:
         pass
 
     # Delete files
-    paper_repository.delete_paper_files(pdf_path)
+    paper_repository.delete_paper_files(UPLOAD_FOLDER, pdf_path)
 
     # Remove from search index
     if paper_id and search_index:
@@ -727,9 +731,7 @@ def register_routes():
         get_category_path=get_category_path,
         find_category_node=find_category_node,
         get_papers_in_category=get_papers_in_category,
-        create_category_folder=create_category_folder,
         save_paper_metadata=save_paper_metadata,
-        get_paper_json_path=get_paper_json_path,
         delete_paper_files=delete_paper_files,
         extract_pdf_metadata=None,  # No longer needed, use new upload_paper module
         search_arxiv_by_title=None,  # No longer needed, use new upload_paper module
@@ -768,6 +770,7 @@ def register_routes():
         get_papers_in_category=get_papers_in_category,
         save_paper_metadata=save_paper_metadata,
         agentic_settings_file=AGENTIC_SETTINGS_FILE,
+        upload_folder=UPLOAD_FOLDER,
     )
 
     register_agent_chat_routes(
@@ -787,6 +790,7 @@ def register_routes():
         get_papers_in_category=get_papers_in_category,
         save_paper_metadata=save_paper_metadata,
         agentic_settings_file=AGENTIC_SETTINGS_FILE,
+        upload_folder=UPLOAD_FOLDER,
     )
 
     register_import_routes(
@@ -859,11 +863,11 @@ if __name__ == "__main__":
     # Initialize application (configure paper directory etc.)
     init_app(papers_dir=args.papers_dir)
 
-    # Register routes (must be called after init_app)
-    register_routes()
-
     # Initialize category system
     init_categories()
+
+    # Register routes after category initialization.
+    register_routes()
 
     # Rebuild search index (in background thread to avoid blocking startup)
     def rebuild_search_index():
@@ -882,7 +886,9 @@ if __name__ == "__main__":
                     """Recursively collect all papers"""
                     node_path = get_category_path(categories, node.get("id"))
                     if node_path and len(node_path) > 1:
-                        directory_path = os.path.join(UPLOAD_FOLDER, *node_path[1:])
+                        directory_path = str(
+                            paper_directory(UPLOAD_FOLDER, node.get("id"))
+                        )
                         if os.path.exists(directory_path):
                             papers = scan_papers_in_directory(
                                 directory_path,

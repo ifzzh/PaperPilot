@@ -4,6 +4,7 @@ import json
 import os
 from typing import Any, Callable, Dict, List, Optional
 from paperpilot.database.dao.category_dao import CategoryDAO
+from paperpilot.security.paths import paper_directory
 
 # Empty default classification structure (only root, no subcategories)
 EMPTY_CATEGORIES: Dict[str, Any] = {
@@ -117,10 +118,8 @@ def get_category_path(
     return None
 
 
-def create_category_folder(upload_folder: str, category_path: List[str]) -> str:
-    folder_path = os.path.join(upload_folder, *category_path)
-    os.makedirs(folder_path, exist_ok=True)
-    return folder_path
+def create_category_folder(upload_folder: str, category_id: str) -> str:
+    return str(paper_directory(upload_folder, category_id, create=True))
 
 
 def get_category_pdf_count(

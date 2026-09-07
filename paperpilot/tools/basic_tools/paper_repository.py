@@ -2,20 +2,33 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 from datetime import datetime
 from typing import Iterable, List, Optional
 
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.paper_dao import PaperDAO
+from paperpilot.security.paths import (
+    PathSecurityError,
+    ensure_confined,
+    paper_asset_paths,
+    paper_directory,
+    remove_confined_tree,
+)
 
 
 def get_paper_json_path(pdf_path: str) -> str:
     return os.path.splitext(pdf_path)[0] + ".json"
 
 
-def save_paper_metadata(pdf_path: str, paper_data) -> None:
+def save_paper_metadata(
+    pdf_path: str,
+    paper_data,
+    *,
+    upload_root: Optional[str] = None,
+) -> None:
+    if upload_root is not None:
+        pdf_path = str(ensure_confined(upload_root, pdf_path))
     if isinstance(paper_data, Paper):
         paper = paper_data
     else:
@@ -62,48 +75,34 @@ def load_paper_metadata(pdf_path: str) -> Optional[Paper]:
     return None
 
 
-def delete_paper_files(pdf_path: str) -> None:
-    json_path = get_paper_json_path(pdf_path)
+def delete_paper_files(upload_root: str, pdf_path: str) -> None:
+    assets = paper_asset_paths(upload_root, pdf_path)
 
-    # Delete physical files
-    if os.path.exists(pdf_path):
-        os.remove(pdf_path)
-        print(f"DeletedPDFdocument: {pdf_path}")
+    for path in (
+        assets.pdf,
+        assets.metadata,
+        assets.chinese_dual,
+        assets.chinese_mono,
+        assets.translation_log,
+    ):
+        if path.exists():
+            confined = ensure_confined(
+                upload_root,
+                path,
+                must_exist=True,
+                require_file=True,
+            )
+            confined.unlink()
+            print(f"Deleted paper asset: {confined.name}")
 
-    if os.path.exists(json_path):
-        os.remove(json_path)
-        print(f"DeletedJSONdocument: {json_path}")
-
-    base_name = os.path.splitext(os.path.basename(pdf_path))[0]
-    pdf_dir = os.path.dirname(pdf_path)
-    zh_dual = os.path.join(pdf_dir, f"{base_name}.zh.dual.pdf")
-    zh_mono = os.path.join(pdf_dir, f"{base_name}.zh.mono.pdf")
-    for f in (zh_dual, zh_mono):
-        try:
-            if os.path.exists(f):
-                os.remove(f)
-                print(f"Chinese translation removedPDF: {f}")
-        except Exception as exc:
-            print(f"Remove Chinese translationPDFfail: {f}, {exc}")
-
-    outputs_dir = os.path.join(pdf_dir, "outputs")
-    if os.path.exists(outputs_dir):
-        for item in os.listdir(outputs_dir):
-            item_path = os.path.join(outputs_dir, item)
-            if os.path.isdir(item_path) and base_name in item:
-                shutil.rmtree(item_path)
-                print(f"DeletedAIInterpret the output directory: {item_path}")
-        try:
-            if not os.listdir(outputs_dir):
-                os.rmdir(outputs_dir)
-                print(f"Empty deletedoutputsTable of contents: {outputs_dir}")
-        except Exception:
-            pass
+    if assets.analysis_directory.exists():
+        remove_confined_tree(upload_root, assets.analysis_directory)
+        print("Deleted exact paper analysis directory")
             
     # Delete from DB
     try:
         # We need the ID. Try to get it from DB first.
-        data = PaperDAO.get_paper_by_path(pdf_path)
+        data = PaperDAO.get_paper_by_path(str(assets.pdf))
         if data and data.get('id'):
             PaperDAO.delete_paper(data['id'])
     except Exception as e:
@@ -129,7 +128,18 @@ def scan_papers_in_directory(
         if filename.endswith(".zh.dual.pdf") or filename.endswith(".zh.mono.pdf"):
             continue
 
-        pdf_path = os.path.join(directory_path, filename)
+        try:
+            pdf_path = str(
+                ensure_confined(
+                    directory_path,
+                    os.path.join(directory_path, filename),
+                    must_exist=True,
+                    require_file=True,
+                )
+            )
+        except PathSecurityError:
+            print("Skipped unsafe PDF entry while scanning category storage")
+            continue
         paper = load_paper_metadata(pdf_path)
 
         if paper:
@@ -146,61 +156,45 @@ def scan_papers_in_directory(
 
         paper.mark_starred(getattr(paper, "starred", False))
 
-        base_name = os.path.splitext(filename)[0]
-        dual_file = os.path.join(directory_path, f"{base_name}.zh.dual.pdf")
-        paper.mark_chinese_version(dual_file if os.path.exists(dual_file) else None)
+        assets = paper_asset_paths(directory_path, pdf_path)
+        dual_file = assets.chinese_dual
+        paper.mark_chinese_version(str(dual_file) if dual_file.exists() else None)
         if not paper.has_chinese_version:
             paper.use_chinese_version = False
 
-        pdf_dir = os.path.dirname(pdf_path)
-        outputs_dir = os.path.join(pdf_dir, "outputs")
-        analysis_result_path = None
-        if os.path.exists(outputs_dir):
-            for item in os.listdir(outputs_dir):
-                item_path = os.path.join(outputs_dir, item)
-                if os.path.isdir(item_path) and base_name in item:
-                    vlm_dir = os.path.join(item_path, "vlm")
-                    if os.path.exists(vlm_dir):
-                        result_file = os.path.join(vlm_dir, "result.md")
-                        if os.path.exists(result_file):
-                            analysis_result_path = result_file
-                            break
+        analysis_result_path = (
+            str(assets.analysis_result) if assets.analysis_result.exists() else None
+        )
         paper.mark_analysis_result(analysis_result_path)
 
         registered = paper_store.upsert(
             paper, category_id=category_id, category_path=category_path_list
         )
-        save_paper_metadata(pdf_path, registered)
+        save_paper_metadata(pdf_path, registered, upload_root=directory_path)
         papers.append(registered)
 
     return papers
 
 
-def refresh_paper_status(paper: Paper) -> None:
+def refresh_paper_status(paper: Paper, upload_root: str) -> None:
     """Check the file system and update the translation and interpretation status of the paper"""
     if not paper.file_path or not os.path.exists(paper.file_path):
         return
     
-    pdf_dir = os.path.dirname(paper.file_path)
-    base_name = os.path.splitext(os.path.basename(paper.file_path))[0]
+    try:
+        assets = paper_asset_paths(upload_root, paper.file_path)
+    except PathSecurityError:
+        return
     
     # Check translation files
-    dual_file = os.path.join(pdf_dir, f"{base_name}.zh.dual.pdf")
-    paper.mark_chinese_version(dual_file if os.path.exists(dual_file) else None)
+    paper.mark_chinese_version(
+        str(assets.chinese_dual) if assets.chinese_dual.exists() else None
+    )
     
     # Check interpretation results
-    outputs_dir = os.path.join(pdf_dir, "outputs")
-    analysis_result_path = None
-    if os.path.exists(outputs_dir):
-        for item in os.listdir(outputs_dir):
-            item_path = os.path.join(outputs_dir, item)
-            if os.path.isdir(item_path) and base_name in item:
-                vlm_dir = os.path.join(item_path, "vlm")
-                if os.path.exists(vlm_dir):
-                    result_file = os.path.join(vlm_dir, "result.md")
-                    if os.path.exists(result_file):
-                        analysis_result_path = result_file
-                        break
+    analysis_result_path = (
+        str(assets.analysis_result) if assets.analysis_result.exists() else None
+    )
     paper.mark_analysis_result(analysis_result_path)
 
 
@@ -215,14 +209,18 @@ def get_papers_in_category(
         for paper in papers:
             old_has_chinese = paper.has_chinese_version
             old_has_analysis = paper.has_analysis_result
-            refresh_paper_status(paper)
+            refresh_paper_status(paper, upload_folder)
             # If the status changes, save to JSON document
             if (paper.has_chinese_version != old_has_chinese or 
                 paper.has_analysis_result != old_has_analysis):
                 if paper.file_path and os.path.exists(paper.file_path):
-                    save_paper_metadata(paper.file_path, paper)
+                    save_paper_metadata(
+                        paper.file_path,
+                        paper,
+                        upload_root=upload_folder,
+                    )
         return papers
-    directory_path = os.path.join(upload_folder, *category_path[1:])
+    directory_path = str(paper_directory(upload_folder, category_id))
     return scan_papers_in_directory(
         directory_path, category_id=category_id, category_path=category_path
     )
