@@ -101,4 +101,13 @@ CREATE TABLE IF NOT EXISTS translation_jobs (
 
 CREATE INDEX IF NOT EXISTS idx_translation_jobs_paper_status
     ON translation_jobs(paper_id, status);
+
+-- API credentials encrypted with the deployment-only settings key.
+CREATE TABLE IF NOT EXISTS agentic_secrets (
+    name TEXT PRIMARY KEY,
+    ciphertext TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (name IN ('translate', 'interpret', 'dailyArxiv', 'mineru'))
+);
 """

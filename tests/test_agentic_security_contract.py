@@ -1,8 +1,12 @@
 import ipaddress
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+from paperpilot.database.models import SCHEMA_SCRIPT
+from paperpilot.security.agentic_credentials import AgenticCredentialStore
 
 from paperpilot.security.credentials import (
     CredentialDecryptionError,
@@ -52,6 +56,34 @@ class SettingsCredentialCipherTests(unittest.TestCase):
             missing.write_text("not-a-key", encoding="utf-8")
             with self.assertRaises(CredentialKeyError):
                 SettingsCredentialCipher.from_file(missing)
+
+    def test_store_persists_only_ciphertext_and_clear_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            db_path = root / "paperpilot.db"
+            key_path = root / "settings.key"
+            generate_settings_key(key_path)
+            connection = sqlite3.connect(db_path)
+            connection.executescript(SCHEMA_SCRIPT)
+            connection.close()
+            connection = sqlite3.connect(db_path)
+            connection.row_factory = sqlite3.Row
+            with patch(
+                "paperpilot.database.dao.agentic_secret_dao.get_db",
+                return_value=connection,
+            ):
+                store = AgenticCredentialStore.from_key_file(str(key_path))
+                store.set("translate", "sk-database-secret")
+                self.assertTrue(store.configured("translate"))
+                self.assertEqual(store.get("translate"), "sk-database-secret")
+                store.validate_all()
+                store.clear("translate")
+                store.clear("translate")
+                self.assertFalse(store.configured("translate"))
+            connection.close()
+
+            database_bytes = db_path.read_bytes()
+            self.assertNotIn(b"sk-database-secret", database_bytes)
 
 
 class OutboundPolicyTests(unittest.TestCase):
