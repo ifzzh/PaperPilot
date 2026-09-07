@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import shutil
 import stat
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -11,6 +13,14 @@ _CATEGORY_NAMESPACE = uuid.uuid5(
     uuid.NAMESPACE_URL,
     "https://github.com/ifzzh/PaperPilot/category-storage/v1",
 )
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+}
 
 
 class PathSecurityError(ValueError):
@@ -19,6 +29,17 @@ class PathSecurityError(ValueError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+@dataclass(frozen=True)
+class PaperAssetPaths:
+    pdf: Path
+    metadata: Path
+    chinese_dual: Path
+    chinese_mono: Path
+    translation_log: Path
+    analysis_directory: Path
+    analysis_result: Path
 
 
 def _as_text(value: os.PathLike[str] | str) -> str:
@@ -145,6 +166,25 @@ def validate_filename(value: object) -> str:
     return text
 
 
+def validate_category_name(value: object) -> str:
+    """Validate a display name even though it is not used as a path component."""
+    if not isinstance(value, str):
+        raise PathSecurityError("invalid_category_name")
+    text = _as_text(value).strip()
+    windows_stem = text.rstrip(" .").split(".", 1)[0].upper()
+    if (
+        not text
+        or len(text) > 255
+        or text in {".", ".."}
+        or "/" in text
+        or "\\" in text
+        or any(ord(character) < 32 for character in text)
+        or windows_stem in _WINDOWS_RESERVED_NAMES
+    ):
+        raise PathSecurityError("invalid_category_name")
+    return text
+
+
 def category_storage_id(category_id: object) -> str:
     """Return a stable, path-safe UUIDv5 for a logical category ID."""
     if not isinstance(category_id, str) or not category_id:
@@ -163,6 +203,29 @@ def category_directory(
         directory.mkdir(parents=True, exist_ok=True)
         directory = ensure_confined(root, directory, must_exist=True)
     return directory
+
+
+def ensure_confined_tree(
+    root: os.PathLike[str] | str,
+    candidate: os.PathLike[str] | str,
+) -> Path:
+    directory = ensure_confined(root, candidate, must_exist=True)
+    if not directory.is_dir():
+        raise PathSecurityError("not_directory")
+    for current_root, directories, files in os.walk(directory, followlinks=False):
+        for name in [*directories, *files]:
+            path = Path(current_root) / name
+            if path.is_symlink():
+                raise PathSecurityError("symlink_in_tree")
+    return directory
+
+
+def remove_confined_tree(
+    root: os.PathLike[str] | str,
+    candidate: os.PathLike[str] | str,
+) -> None:
+    directory = ensure_confined_tree(root, candidate)
+    shutil.rmtree(directory)
 
 
 def paper_directory(
@@ -222,3 +285,27 @@ def verified_paper_path(
     if stored != expected:
         raise PathSecurityError("stored_path_mismatch")
     return expected
+
+
+def paper_asset_paths(
+    root: os.PathLike[str] | str,
+    pdf_path: os.PathLike[str] | str,
+) -> PaperAssetPaths:
+    pdf = ensure_confined(root, pdf_path)
+    filename = validate_filename(pdf.name)
+    if pdf.suffix.lower() != ".pdf":
+        raise PathSecurityError("not_pdf")
+    stem = Path(filename).stem
+    directory = pdf.parent
+    return PaperAssetPaths(
+        pdf=pdf,
+        metadata=ensure_confined(root, directory / f"{stem}.json"),
+        chinese_dual=ensure_confined(root, directory / f"{stem}.zh.dual.pdf"),
+        chinese_mono=ensure_confined(root, directory / f"{stem}.zh.mono.pdf"),
+        translation_log=ensure_confined(root, directory / f"{stem}.translate.log"),
+        analysis_directory=ensure_confined(root, directory / "outputs" / stem),
+        analysis_result=ensure_confined(
+            root,
+            directory / "outputs" / stem / "vlm" / "result.md",
+        ),
+    )

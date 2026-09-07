@@ -8,7 +8,10 @@ from paperpilot.security.paths import (
     category_storage_id,
     ensure_confined,
     paper_path,
+    paper_asset_paths,
+    remove_confined_tree,
     safe_join,
+    validate_category_name,
     verified_paper_path,
     validate_filename,
 )
@@ -100,6 +103,24 @@ class TestSecurePaths(unittest.TestCase):
         self.assertRegex(first, r"^[0-9a-f]{32}$")
         self.assertNotEqual(first, category_storage_id("other-category"))
 
+    def test_category_display_name_rejects_path_and_device_names(self):
+        self.assertEqual(validate_category_name("  Machine Learning  "), "Machine Learning")
+        invalid_names = (
+            "",
+            ".",
+            "..",
+            "../outside",
+            "parent/child",
+            "parent\\child",
+            "CON",
+            "nul.txt",
+            "bad\x00name",
+            "bad\nname",
+        )
+        for value in invalid_names:
+            with self.subTest(value=value), self.assertRaises(PathSecurityError):
+                validate_category_name(value)
+
     def test_category_directory_does_not_depend_on_display_hierarchy(self):
         expected = self.root / ".categories" / category_storage_id("category-id")
         self.assertEqual(category_directory(self.root, "category-id"), expected)
@@ -139,6 +160,38 @@ class TestSecurePaths(unittest.TestCase):
                 "paper.pdf",
                 str(other),
             )
+
+    def test_tree_removal_rejects_nested_symlink(self):
+        directory = category_directory(self.root, "category-id", create=True)
+        outside = self.base / "outside.txt"
+        outside.write_text("keep")
+        (directory / "link").symlink_to(outside)
+        with self.assertRaises(PathSecurityError):
+            remove_confined_tree(self.root, directory)
+        self.assertTrue(outside.exists())
+        self.assertTrue(directory.exists())
+
+    def test_tree_removal_deletes_only_confined_directory(self):
+        directory = category_directory(self.root, "category-id", create=True)
+        (directory / "paper.pdf").write_bytes(b"pdf")
+        remove_confined_tree(self.root, directory)
+        self.assertFalse(directory.exists())
+        self.assertTrue(self.root.exists())
+
+    def test_paper_assets_are_exactly_derived_from_pdf_name(self):
+        pdf = paper_path(
+            self.root,
+            "category-id",
+            "paper.pdf",
+            create_parent=True,
+        )
+        assets = paper_asset_paths(self.root, pdf)
+        self.assertEqual(assets.chinese_dual.name, "paper.zh.dual.pdf")
+        self.assertEqual(assets.analysis_directory, pdf.parent / "outputs" / "paper")
+        self.assertEqual(
+            assets.analysis_result,
+            pdf.parent / "outputs" / "paper" / "vlm" / "result.md",
+        )
 
 
 if __name__ == "__main__":
