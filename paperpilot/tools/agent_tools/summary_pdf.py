@@ -187,7 +187,7 @@ INPUT: <MARKDOWN>"""
                 mineru_server_url,
             ]
 
-            print(f"implementPDF2MDOrder: {' '.join(cmd)}")
+            print("Starting confined MinerU PDF-to-Markdown command")
             print(f"working directory: {pdf_dir}")
 
             process = subprocess.Popen(

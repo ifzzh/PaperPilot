@@ -106,6 +106,8 @@ class OutboundPolicy:
             raise OutboundPolicyError("outbound_credentials_forbidden")
         if parts.fragment:
             raise OutboundPolicyError("outbound_fragment_forbidden")
+        if purpose == "ai" and parts.query:
+            raise OutboundPolicyError("outbound_query_forbidden")
         origin = _format_origin(parts)
         private_allowed = purpose == "ai" and origin in self.private_origins
         allowed = self.transfer_origins if purpose == "transfer" else self.public_origins | self.private_origins

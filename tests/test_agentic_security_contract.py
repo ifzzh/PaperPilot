@@ -104,7 +104,7 @@ class OutboundPolicyTests(unittest.TestCase):
         )
         resolver = self._resolve({"api.example.test": ["8.8.8.8"]})
         with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
-            target = policy.validate("https://api.example.test/v1/chat?x=1", purpose="ai")
+            target = policy.validate("https://api.example.test/v1/chat", purpose="ai")
             self.assertEqual(target.origin, "https://api.example.test")
         with self.assertRaisesRegex(OutboundPolicyError, "origin_not_allowed"):
             policy.validate("https://other.example.test/v1", purpose="ai")
@@ -168,6 +168,7 @@ class OutboundPolicyTests(unittest.TestCase):
             cases = (
                 "https://user:pass@api.example.test/v1",
                 "https://api.example.test/v1#fragment",
+                "https://api.example.test/v1?token=value",
                 "https://api.example.test/\ninternal",
                 "https://api.example.test/v1",
             )

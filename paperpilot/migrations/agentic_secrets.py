@@ -184,6 +184,18 @@ def apply_migration(
     target = Path(db_path).resolve()
     inspection = inspect_database(target)
     cipher = SettingsCredentialCipher.from_file(key_file)
+    validation = sqlite3.connect(target)
+    try:
+        table = validation.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agentic_secrets'"
+        ).fetchone()
+        if table:
+            for name, envelope in validation.execute(
+                "SELECT name, ciphertext FROM agentic_secrets"
+            ).fetchall():
+                cipher.decrypt(str(name), str(envelope))
+    finally:
+        validation.close()
     _assert_exclusive_access(target)
     backup_path = _backup_database(target, Path(backup_dir).resolve())
 

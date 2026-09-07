@@ -119,6 +119,15 @@ class AgenticSecretMigrationTests(unittest.TestCase):
         with self.assertRaises(Exception):
             SettingsCredentialCipher.from_file(self.key).decrypt("mineru", envelope)
 
+    def test_idempotent_apply_rejects_wrong_key_before_backup(self):
+        apply_migration(self.db, self.key, self.backups)
+        wrong_key = self.root / "wrong.key"
+        generate_settings_key(wrong_key)
+        before = set(self.backups.iterdir())
+        with self.assertRaises(Exception):
+            apply_migration(self.db, wrong_key, self.backups)
+        self.assertEqual(before, set(self.backups.iterdir()))
+
 
 if __name__ == "__main__":
     unittest.main()

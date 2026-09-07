@@ -117,6 +117,14 @@ class AgenticSettingsSecurityTests(unittest.TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertFalse(self.store.configured("translate"))
 
+    def test_connection_tests_reject_non_string_credentials(self):
+        llm = self.client.post("/api/settings/test/llm", json={"llmApiKey": 123})
+        mineru = self.client.post("/api/settings/test/mineru-api", json={"apiToken": {}})
+        self.assertEqual(llm.status_code, 400)
+        self.assertEqual(llm.get_json()["error"], "invalid_llm_test_payload")
+        self.assertEqual(mineru.status_code, 400)
+        self.assertEqual(mineru.get_json()["error"], "invalid_api_key")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -441,10 +441,16 @@ def register_settings_routes(
         """test LLM API connect"""
         try:
             data = request.json or {}
-            llm_config_type = (data.get("llmConfigType") or "").strip() or None
-            llm_model = data.get("llmModel", "").strip()
-            llm_base_url = data.get("llmBaseUrl", "").strip()
-            llm_api_key = data.get("llmApiKey", "").strip()
+            fields = {
+                name: data.get(name, "")
+                for name in ("llmConfigType", "llmModel", "llmBaseUrl", "llmApiKey")
+            }
+            if any(not isinstance(value, str) for value in fields.values()):
+                return jsonify({"success": False, "error": "invalid_llm_test_payload"}), 400
+            llm_config_type = fields["llmConfigType"].strip() or None
+            llm_model = fields["llmModel"].strip()
+            llm_base_url = fields["llmBaseUrl"].strip()
+            llm_api_key = fields["llmApiKey"].strip()
 
             if not llm_model or not llm_base_url:
                 try:
@@ -627,7 +633,10 @@ def register_settings_routes(
             import requests
 
             data = request.json or {}
-            mineru_server_url = data.get("mineruServerUrl", "").strip()
+            mineru_server_url = data.get("mineruServerUrl", "")
+            if not isinstance(mineru_server_url, str):
+                return jsonify({"success": False, "error": "invalid_mineru_url"}), 400
+            mineru_server_url = mineru_server_url.strip()
 
             if not mineru_server_url:
                 return (
@@ -690,7 +699,10 @@ def register_settings_routes(
             from paperpilot.tools.api_test_utils import test_mineru_api_token
 
             data = request.json or {}
-            api_token = data.get("apiToken", "").strip()
+            api_token = data.get("apiToken", "")
+            if not isinstance(api_token, str):
+                return jsonify({"success": False, "error": "invalid_api_key"}), 400
+            api_token = api_token.strip()
 
             if not api_token and credential_store is not None:
                 api_token = credential_store.get("mineru")
