@@ -1,0 +1,50 @@
+[
+  {
+    "name": "script_element",
+    "payload": "<script>window.__paperpilotXss = 'script'</script>visible",
+    "plain_text": "<script>window.__paperpilotXss = 'script'</script>visible",
+    "forbidden_selectors": ["script"]
+  },
+  {
+    "name": "image_event_handler",
+    "payload": "<img src=x onerror=\"window.__paperpilotXss = 'image'\">image",
+    "plain_text": "<img src=x onerror=\"window.__paperpilotXss = 'image'\">image",
+    "forbidden_selectors": ["img[onerror]", "img[src='x']"]
+  },
+  {
+    "name": "svg_event_handler",
+    "payload": "<svg onload=\"window.__paperpilotXss = 'svg'\"><circle></circle></svg>svg",
+    "plain_text": "<svg onload=\"window.__paperpilotXss = 'svg'\"><circle></circle></svg>svg",
+    "forbidden_selectors": ["svg"]
+  },
+  {
+    "name": "mathml_script_url",
+    "payload": "<math><a href=\"javascript:window.__paperpilotXss='math'\">math</a></math>",
+    "plain_text": "<math><a href=\"javascript:window.__paperpilotXss='math'\">math</a></math>",
+    "forbidden_selectors": ["math", "a[href^='javascript:']"]
+  },
+  {
+    "name": "attribute_breakout",
+    "payload": "\"><img src=x onerror=\"window.__paperpilotXss='attribute'\">",
+    "plain_text": "\"><img src=x onerror=\"window.__paperpilotXss='attribute'\">",
+    "forbidden_selectors": ["img[onerror]", "img[src='x']"]
+  },
+  {
+    "name": "javascript_link",
+    "payload": "[danger](javascript:window.__paperpilotXss='link')",
+    "plain_text": "[danger](javascript:window.__paperpilotXss='link')",
+    "forbidden_selectors": ["a[href^='javascript:']"]
+  },
+  {
+    "name": "data_image",
+    "payload": "![pixel](data:image/svg+xml,<svg onload=alert(1)></svg>)",
+    "plain_text": "![pixel](data:image/svg+xml,<svg onload=alert(1)></svg>)",
+    "forbidden_selectors": ["img[src^='data:']", "svg"]
+  },
+  {
+    "name": "malformed_html",
+    "payload": "<div><style>*{display:none}</style><iframe srcdoc='<script>alert(1)</script>'>",
+    "plain_text": "<div><style>*{display:none}</style><iframe srcdoc='<script>alert(1)</script>'>",
+    "forbidden_selectors": ["style", "iframe", "script"]
+  }
+]
