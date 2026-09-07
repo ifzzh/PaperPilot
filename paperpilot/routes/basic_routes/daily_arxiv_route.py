@@ -57,6 +57,7 @@ def register_daily_arxiv_routes(
     """
     register Daily arXiv Related routes
     """
+    del agentic_settings_file
 
     def _fetch_bibtex_background(
         paper_id: str,
@@ -128,16 +129,6 @@ def register_daily_arxiv_routes(
                 return picked
         except Exception:
             pass
-
-        if agentic_settings_file and os.path.exists(agentic_settings_file):
-            try:
-                with open(agentic_settings_file, "r", encoding="utf-8") as f:
-                    file_cfg = json.load(f) or {}
-                picked = pick(file_cfg)
-                if picked:
-                    return picked
-            except Exception:
-                return {}
 
         return {}
 
