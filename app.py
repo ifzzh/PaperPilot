@@ -22,6 +22,10 @@ from paperpilot.auth import (
     FixedWindowRateLimiter,
 )
 from paperpilot.security.paths import paper_directory
+from paperpilot.migrations.category_storage import (
+    MigrationError as CategoryStorageMigrationError,
+    assert_storage_migrated,
+)
 from paperpilot.core.paper_store import paper_store
 from paperpilot.core.search_index import SearchIndex
 from paperpilot.database.connection import DB_PATH
@@ -866,7 +870,13 @@ if __name__ == "__main__":
     # Initialize category system
     init_categories()
 
-    # Register routes after category initialization.
+    # Refuse mixed or legacy physical layouts before routes and schedulers start.
+    try:
+        assert_storage_migrated(UPLOAD_FOLDER, DB_PATH)
+    except CategoryStorageMigrationError as exc:
+        parser.error(str(exc))
+
+    # Register routes only after storage has passed migration checks.
     register_routes()
 
     # Rebuild search index (in background thread to avoid blocking startup)
