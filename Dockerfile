@@ -55,6 +55,8 @@ RUN uv sync --frozen --no-dev
 
 FROM ubuntu:24.04 AS runtime
 
+ARG APP_VERSION=0.2.0
+ARG VCS_REF=unknown
 ARG ARXIV_PROXY=
 ARG ARXIV_API_PROXY=
 ARG ARXIV_HTTP_PROXY=
@@ -69,6 +71,11 @@ ENV ARXIV_API_PROXY=${ARXIV_API_PROXY}
 ENV ARXIV_HTTP_PROXY=${ARXIV_HTTP_PROXY}
 ENV ARXIV_HTTPS_PROXY=${ARXIV_HTTPS_PROXY}
 
+LABEL org.opencontainers.image.title="PaperPilot" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.source="https://github.com/ifzzh/PaperPilot"
+
 RUN apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" update && \
     apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" install -y --no-install-recommends \
     ca-certificates \
@@ -81,13 +88,21 @@ RUN apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" upd
 WORKDIR /app
 
 COPY --from=builder /opt/venv /opt/venv
-COPY . /app
+COPY --from=builder /app/app.py /app/app.py
+COPY --from=builder /app/paperpilot /app/paperpilot
+COPY --from=builder /app/static /app/static
+COPY --from=builder /app/templates /app/templates
 
-RUN mkdir -p /app/db /data/papers
+RUN groupadd --gid 1001 paperpilot \
+  && useradd --uid 10001 --gid 1001 --no-create-home --home-dir /app --shell /usr/sbin/nologin paperpilot \
+  && mkdir -p /app/db /data/papers \
+  && chown -R 10001:1001 /app /data/papers
+
+USER 10001:1001
 
 EXPOSE 7191
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=30s \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7191/', timeout=4).read()"
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7191/healthz', timeout=4).read()"
 
 CMD ["python", "app.py", "--host", "0.0.0.0", "--port", "7191", "--papers-dir", "/data/papers"]

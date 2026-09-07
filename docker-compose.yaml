@@ -1,23 +1,21 @@
-version: "3.8"
-
 services:
   paperpilot:
-    image: ghcr.io/flyflypeng/paperpilot:latest
+    image: ifzzh520/paperpilot:0.2.0
     container_name: paperpilot
     ports:
-      - "7191:7191"
+      - "127.0.0.1:7191:7191"
+    env_file:
+      - /mnt/raid1/projects/paperpilot/deploy/.env
     environment:
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-      - ARXIV_PROXY=${ARXIV_PROXY}
-      - ARXIV_API_PROXY=${ARXIV_API_PROXY}
-      - ARXIV_HTTP_PROXY=${ARXIV_HTTP_PROXY}
-      - ARXIV_HTTPS_PROXY=${ARXIV_HTTPS_PROXY}
+      PAPERPILOT_ENV: ${PAPERPILOT_ENV:-production}
+      PAPERPILOT_AUTH_MODE: ${PAPERPILOT_AUTH_MODE:-supabase}
+      PAPERPILOT_COOKIE_SECURE: ${PAPERPILOT_COOKIE_SECURE:-true}
     volumes:
-      # Runtime env file loaded by python-dotenv inside the container
-      - ./.env:/app/.env:ro
-      # SQLite database and app-managed metadata
-      - ./data/db:/app/db
-      # Uploaded papers and generated artifacts
-      - ./data/papers:/data/papers
+      - /mnt/raid1/projects/paperpilot/deploy/.env:/app/.env:ro
+      - /srv/ifserver-fast/paperpilot/runtime/db:/app/db
+      - /mnt/raid1/projects/paperpilot/data/papers:/data/papers
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
