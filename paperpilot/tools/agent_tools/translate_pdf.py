@@ -1,58 +1,23 @@
 from __future__ import annotations
 
-import os
-import re
-import subprocess
 import threading
+import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List
-
-import fitz
 
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
+from paperpilot.database.dao.translation_job_dao import TranslationJobDAO
+from paperpilot.security.paths import PathSecurityError, paper_asset_paths, verified_paper_path
+from paperpilot.tools.agent_tools.translation_worker_client import (
+    TranslationWorkerClient,
+    TranslationWorkerRejected,
+    TranslationWorkerUnavailable,
+)
 
 PaperList = List[Paper]
 CategoryPath = List[str]
-
-_PERCENT_RE = re.compile(r"(?<!\d)(\d{1,3})(?:\.\d+)?\s*%")
-_PAGE_FRACTION_RE = re.compile(r"(?i)\bpages?\b\D{0,20}(\d+)\s*/\s*(\d+)\b")
-_OF_FRACTION_RE = re.compile(r"(?i)\bpages?\b\D{0,20}(\d+)\s+of\s+(\d+)\b")
-_GENERIC_FRACTION_RE = re.compile(r"(?<!\d)(\d{1,5})\s*/\s*(\d{1,5})(?!\d)")
-
-
-def _extract_progress_from_text(text: str) -> int | None:
-    if not text:
-        return None
-
-    percent_candidates = [int(m.group(1)) for m in _PERCENT_RE.finditer(text)]
-    if percent_candidates:
-        value = percent_candidates[-1]
-        if 0 <= value <= 100:
-            return value
-        return max(0, min(100, value))
-
-    for pattern in (_PAGE_FRACTION_RE, _OF_FRACTION_RE):
-        m = pattern.search(text)
-        if not m:
-            continue
-        cur = int(m.group(1))
-        total = int(m.group(2))
-        if total <= 0:
-            continue
-        value = int(cur * 100 / total)
-        return max(0, min(100, value))
-
-    m = _GENERIC_FRACTION_RE.search(text)
-    if m:
-        cur = int(m.group(1))
-        total = int(m.group(2))
-        if total > 0 and cur >= 0 and total >= cur:
-            value = int(cur * 100 / total)
-            return max(0, min(100, value))
-
-    return None
 
 
 @dataclass
@@ -63,331 +28,189 @@ class TranslationDependencies:
     get_category_path: Callable[[dict, str], CategoryPath | None]
     get_papers_in_category: Callable[[str, CategoryPath], PaperList]
     save_paper_metadata: Callable[[str, Paper], None]
+    upload_folder: str
+    worker_client: TranslationWorkerClient
 
 
-def _sanitize_pdf_for_babeldoc(src_path: str, dst_path: str) -> None:
-    if os.path.exists(dst_path):
-        os.remove(dst_path)
-    doc = fitz.open(src_path)
-    try:
-        doc.save(dst_path, garbage=4, deflate=True, clean=True)
-    finally:
-        doc.close()
+def _task_payload(job: dict) -> dict:
+    return {
+        "paper_id": job["paper_id"],
+        "status": job["status"],
+        "progress": int(job.get("progress") or 0),
+        "logs": [],
+        "log_lock": threading.Lock(),
+        "start_time": job.get("created_at") or datetime.now(timezone.utc).isoformat(),
+        "result": None,
+    }
 
 
-def _redact_openai_api_key(cmd: List[str]) -> List[str]:
-    redacted = list(cmd)
-    try:
-        key_flag_index = redacted.index("--openai-api-key")
-    except ValueError:
-        return redacted
-    if key_flag_index + 1 < len(redacted):
-        redacted[key_flag_index + 1] = "***"
-    return redacted
+def _find_paper(paper_id: str, deps: TranslationDependencies) -> Paper | None:
+    entry = paper_store.get_entry(paper_id)
+    if entry:
+        return entry.paper
+    categories = deps.get_categories()
+
+    def search(node: dict) -> Paper | None:
+        category_path = deps.get_category_path(categories, node["id"])
+        if category_path:
+            for paper in deps.get_papers_in_category(node["id"], category_path):
+                if paper.id == paper_id:
+                    return paper
+        for child in node.get("children", []):
+            found = search(child)
+            if found:
+                return found
+        return None
+
+    for child in categories.get("children", []):
+        found = search(child)
+        if found:
+            return found
+    return None
 
 
-def translate_paper_task(
+def _verified_pdf(paper: Paper, deps: TranslationDependencies) -> str:
+    entry = paper_store.get_entry(paper.id)
+    if not entry:
+        raise PathSecurityError("paper_category_missing")
+    return str(
+        verified_paper_path(
+            deps.upload_folder,
+            entry.category_id,
+            paper.filename,
+            paper.file_path,
+        )
+    )
+
+
+def _update_memory_task(
+    task_id: str,
+    deps: TranslationDependencies,
+    *,
+    status: str,
+    progress: int,
+    logs: list[str],
+    result: dict | None,
+) -> None:
+    with deps.translation_tasks_lock:
+        task = deps.translation_tasks.setdefault(
+            task_id,
+            {
+                "paper_id": "",
+                "status": status,
+                "progress": 0,
+                "logs": [],
+                "log_lock": threading.Lock(),
+                "start_time": datetime.now(timezone.utc).isoformat(),
+                "result": None,
+            },
+        )
+        with task["log_lock"]:
+            task["status"] = status
+            task["progress"] = max(0, min(100, int(progress)))
+            task["logs"] = list(logs)
+            task["result"] = result
+
+
+def monitor_worker_task(
     task_id: str,
     paper_id: str,
-    pdf_path: str,
-    pdf_dir: str,
-    pdf_filename: str,
-    openai_model: str,
-    openai_base_url: str,
-    openai_api_key: str,
     deps: TranslationDependencies,
+    *,
+    poll_seconds: float = 1.0,
 ) -> None:
-    """Background translation tasks"""
-    start_time = datetime.now()  # Recording start time
-    with deps.translation_tasks_lock:
-        task_info = deps.translation_tasks[task_id]
-        task_info["status"] = "running"
-        task_info.setdefault("progress", 0)
-        log_lines = task_info["logs"]
-        log_lock = task_info["log_lock"]
-        process = None
-        task_info.setdefault("font_xobj_parse_errors", 0)
-
-    def read_output(pipe, label):
-        """Read subprocess output in real time"""
-        try:
-            for line in iter(pipe.readline, ""):
-                if line:
-                    line = line.rstrip()
-                    print(f"[{label}] {line}")
-                    with log_lock:
-                        log_lines.append(f"[{label}] {line}")
-                        if (
-                            "failed to parse font xobj" in line
-                            or "FT_Exception" in line
-                            or "font xobj" in line
-                        ):
-                            task_info["font_xobj_parse_errors"] = int(
-                                task_info.get("font_xobj_parse_errors") or 0
-                            ) + 1
-                        progress = _extract_progress_from_text(line)
-                        if progress is not None:
-                            task_info["progress"] = max(
-                                int(task_info.get("progress") or 0), progress
-                            )
-        except Exception as e:  # noqa: BLE001
-            print(f"Error while reading output: {e}")
-        finally:
-            pipe.close()
-
-    original_cwd = os.getcwd()
     try:
-        os.chdir(pdf_dir)
-        base_name = os.path.splitext(pdf_filename)[0]
-        sanitized_pdf_filename: str | None = None
-        attempt_pdf_filename = pdf_filename
-        attempt_base_name = base_name
-        return_code = 1
-        enable_compatibility = False
-
-        for attempt_index in range(2):
-            with deps.translation_tasks_lock:
-                deps.translation_tasks[task_id]["progress"] = int(
-                    deps.translation_tasks[task_id].get("progress") or 0
+        while True:
+            state = deps.worker_client.get(task_id)
+            status = str(state.get("status") or "failed")
+            progress = int(state.get("progress") or 0)
+            logs = [str(item) for item in state.get("logs") or []]
+            if status == "completed":
+                paper = _find_paper(paper_id, deps)
+                if paper is None:
+                    raise RuntimeError("paper_not_found")
+                pdf_path = _verified_pdf(paper, deps)
+                assets = paper_asset_paths(deps.upload_folder, pdf_path)
+                deps.worker_client.promote_result(
+                    task_id,
+                    papers_root=deps.upload_folder,
+                    destination=assets.chinese_dual,
+                    logs=logs,
+                    log_destination=assets.translation_log,
                 )
-
-            cmd = [
-                "babeldoc",
-                "--openai",
-                "--openai-model",
-                openai_model,
-                "--openai-base-url",
-                openai_base_url,
-                "--openai-api-key",
-                openai_api_key,
-            ]
-            if enable_compatibility:
-                cmd.append("--enhance-compatibility")
-            cmd.extend(["--files", attempt_pdf_filename])
-
-            print(f"Execute translation command: {' '.join(_redact_openai_api_key(cmd))}")
-            print(f"working directory: {pdf_dir}")
-
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-            )
-
-            with deps.translation_tasks_lock:
-                deps.translation_tasks[task_id]["process"] = process
-
-            stdout_thread = threading.Thread(
-                target=read_output, args=(process.stdout, "STDOUT")
-            )
-            stderr_thread = threading.Thread(
-                target=read_output, args=(process.stderr, "STDERR")
-            )
-            stdout_thread.daemon = True
-            stderr_thread.daemon = True
-            stdout_thread.start()
-            stderr_thread.start()
-
-            return_code = process.wait(timeout=3600)
-
-            stdout_thread.join(timeout=1)
-            stderr_thread.join(timeout=1)
-
-            produced_dual_file = os.path.join(
-                pdf_dir, f"{attempt_base_name}.zh.dual.pdf"
-            )
-            if os.path.exists(produced_dual_file):
-                return_code = 0
-                break
-
-            if return_code == 0:
-                break
-
-            font_error_count = int(task_info.get("font_xobj_parse_errors") or 0)
-            if attempt_index == 0 and font_error_count > 0 and sanitized_pdf_filename is None:
-                with log_lock:
-                    log_lines.append(
-                        "[PAPERPILOT] Detected PDF font XObject parse errors; trying to sanitize PDF and retry."
-                    )
-                sanitized_pdf_filename = f"{base_name}.paperpilot.sanitized.pdf"
-                sanitized_pdf_path = os.path.join(pdf_dir, sanitized_pdf_filename)
-                _sanitize_pdf_for_babeldoc(pdf_path, sanitized_pdf_path)
-                attempt_pdf_filename = sanitized_pdf_filename
-                attempt_base_name = os.path.splitext(sanitized_pdf_filename)[0]
-                enable_compatibility = True
-                continue
-
-            break
-
-        with deps.translation_tasks_lock:
-            if return_code == 0:
-                dual_file = os.path.join(pdf_dir, f"{base_name}.zh.dual.pdf")
-                mono_file = os.path.join(pdf_dir, f"{base_name}.zh.mono.pdf")
-
-                if attempt_base_name != base_name:
-                    produced_dual = os.path.join(
-                        pdf_dir, f"{attempt_base_name}.zh.dual.pdf"
-                    )
-                    produced_mono = os.path.join(
-                        pdf_dir, f"{attempt_base_name}.zh.mono.pdf"
-                    )
-                    if os.path.exists(produced_dual):
-                        os.replace(produced_dual, dual_file)
-                    if os.path.exists(produced_mono):
-                        os.replace(produced_mono, mono_file)
-
-                if os.path.exists(dual_file):
-                    if os.path.exists(mono_file):
-                        os.remove(mono_file)
-
-                    # First try from paper_store Find papers in (supports _ReadingListTemp Table of contents)
-                    entry = paper_store.get_entry(paper_id)
-                    if entry:
-                        paper = entry.paper
-                        paper.mark_chinese_version(dual_file)
-                        target_path = paper.file_path or pdf_path
-                        if target_path:
-                            deps.save_paper_metadata(target_path, paper)
-                    else:
-                        # if paper_store Not found in , use recursive search of classification tree
-                        categories = deps.get_categories()
-
-                        def search_and_update_paper(node):
-                            category_path = deps.get_category_path(categories, node["id"])
-                            if category_path:
-                                papers = deps.get_papers_in_category(
-                                    node["id"], category_path
-                                )
-                                for paper in papers:
-                                    if paper.id == paper_id:
-                                        paper.mark_chinese_version(dual_file)
-                                        target_path = paper.file_path or pdf_path
-                                        if target_path:
-                                            deps.save_paper_metadata(target_path, paper)
-                                        return True
-                            if "children" in node:
-                                for child in node["children"]:
-                                    if search_and_update_paper(child):
-                                        return True
-                            return False
-
-                        for child in categories.get("children", []):
-                            if search_and_update_paper(child):
-                                break
-
-                    log_file = os.path.join(pdf_dir, f"{base_name}.translate.log")
-                    try:
-                        with open(log_file, "w", encoding="utf-8") as f:
-                            f.write("\n".join(log_lines))
-                    except Exception as e:  # noqa: BLE001
-                        print(f"Failed to save log file: {e}")
-
-                    end_time = datetime.now()
-                    translation_duration = int((end_time - start_time).total_seconds())
-
-                    # First try from paper_store Find papers in (supports _ReadingListTemp Table of contents)
-                    entry = paper_store.get_entry(paper_id)
-                    if entry:
-                        paper = entry.paper
-                        paper.translation_time = max(
-                            getattr(paper, "translation_time", 0),
-                            translation_duration,
-                        )
-                        path = paper.file_path
-                        if path and os.path.exists(path):
-                            deps.save_paper_metadata(path, paper)
-                    else:
-                        # if paper_store Not found in , use recursive search of classification tree
-                        categories = deps.get_categories()
-
-                        def search_and_update_time(node):
-                            category_path = deps.get_category_path(categories, node["id"])
-                            if category_path:
-                                papers = deps.get_papers_in_category(
-                                    node["id"], category_path
-                                )
-                                for paper in papers:
-                                    if paper.id == paper_id:
-                                        paper.translation_time = max(
-                                            getattr(paper, "translation_time", 0),
-                                            translation_duration,
-                                        )
-                                        path = paper.file_path
-                                        if path and os.path.exists(path):
-                                            deps.save_paper_metadata(path, paper)
-                                        return True
-                            if "children" in node:
-                                for child in node["children"]:
-                                    if search_and_update_time(child):
-                                        return True
-                            return False
-
-                        for child in categories.get("children", []):
-                            if search_and_update_time(child):
-                                break
-
-                    deps.translation_tasks[task_id]["status"] = "completed"
-                    deps.translation_tasks[task_id]["progress"] = 100
-                    deps.translation_tasks[task_id]["result"] = {
-                        "success": True,
-                        "chinese_version_path": dual_file,
-                        "log_file": log_file,
-                    }
-                else:
-                    deps.translation_tasks[task_id]["status"] = "failed"
-                    deps.translation_tasks[task_id]["result"] = {
-                        "success": False,
-                        "error": "Translation file not generated",
-                    }
-            else:
-                font_error_count = int(task_info.get("font_xobj_parse_errors") or 0)
-                if font_error_count > 0:
-                    error_message = (
-                        "PDF 字体对象解析失败（FreeType invalid argument）。"
-                        "建议用浏览器/Acrobat“另存为 PDF”或“打印到 PDF”生成新文件后重试。"
-                    )
-                else:
-                    error_message = f"翻译失败（退出码: {return_code}）"
-                deps.translation_tasks[task_id]["status"] = "failed"
-                deps.translation_tasks[task_id]["result"] = {
-                    "success": False,
-                    "error": error_message,
+                paper.mark_chinese_version(str(assets.chinese_dual))
+                row = TranslationJobDAO.get(task_id) or {}
+                try:
+                    started = datetime.fromisoformat(row.get("created_at", ""))
+                    duration = max(0, int((datetime.now(timezone.utc) - started).total_seconds()))
+                except (TypeError, ValueError):
+                    duration = 0
+                paper.translation_time = max(paper.translation_time, duration)
+                deps.save_paper_metadata(pdf_path, paper)
+                result = {
+                    "success": True,
+                    "chinese_version_path": f"/api/paper/{paper_id}/chinese/file",
                 }
-
-    except subprocess.TimeoutExpired:
-        with deps.translation_tasks_lock:
-            deps.translation_tasks[task_id]["status"] = "failed"
-            deps.translation_tasks[task_id]["result"] = {
-                "success": False,
-                "error": "Translation timeout",
-            }
-        if process:
-            process.kill()
-    except Exception as e:  # noqa: BLE001
-        print(f"An error occurred during translation: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
-        with deps.translation_tasks_lock:
-            deps.translation_tasks[task_id]["status"] = "failed"
-            deps.translation_tasks[task_id]["result"] = {
-                "success": False,
-                "error": f"Translation failed: {str(e)}",
-            }
-        if process:
-            process.kill()
-    finally:
-        try:
-            sanitized_pdf_path = os.path.join(
-                pdf_dir, f"{os.path.splitext(pdf_filename)[0]}.paperpilot.sanitized.pdf"
+                TranslationJobDAO.update(task_id, "completed", progress=100)
+                _update_memory_task(
+                    task_id, deps, status="completed", progress=100, logs=logs, result=result
+                )
+                deps.worker_client.cleanup(task_id)
+                return
+            if status in {"failed", "cancelled"}:
+                error = str(state.get("error") or status)
+                result = {"success": False, "error": error}
+                TranslationJobDAO.update(task_id, status, progress=progress, error=error)
+                _update_memory_task(
+                    task_id, deps, status=status, progress=progress, logs=logs, result=result
+                )
+                return
+            TranslationJobDAO.update(task_id, status, progress=progress)
+            _update_memory_task(
+                task_id, deps, status=status, progress=progress, logs=logs, result=None
             )
-            with deps.translation_tasks_lock:
-                task_status = deps.translation_tasks.get(task_id, {}).get("status")
-            if os.path.exists(sanitized_pdf_path) and task_status == "completed":
-                os.remove(sanitized_pdf_path)
-        except Exception:  # noqa: BLE001
-            pass
-        os.chdir(original_cwd)
+            time.sleep(poll_seconds)
+    except (TranslationWorkerUnavailable, TranslationWorkerRejected) as exc:
+        error = (
+            "interrupted"
+            if isinstance(exc, TranslationWorkerRejected)
+            else "translation_worker_unavailable"
+        )
+        TranslationJobDAO.update(task_id, "failed", error=error)
+        _update_memory_task(
+            task_id,
+            deps,
+            status="failed",
+            progress=0,
+            logs=[],
+            result={"success": False, "error": error},
+        )
+    except Exception as exc:  # noqa: BLE001
+        error = str(exc)[:512]
+        TranslationJobDAO.update(task_id, "failed", error=error)
+        _update_memory_task(
+            task_id,
+            deps,
+            status="failed",
+            progress=0,
+            logs=[],
+            result={"success": False, "error": error},
+        )
+
+
+def start_monitor(task_id: str, paper_id: str, deps: TranslationDependencies) -> threading.Thread:
+    thread = threading.Thread(
+        target=monitor_worker_task,
+        args=(task_id, paper_id, deps),
+        daemon=True,
+    )
+    thread.start()
+    return thread
+
+
+def recover_translation_tasks(deps: TranslationDependencies) -> None:
+    for job in TranslationJobDAO.list_active():
+        task_id = job["job_id"]
+        with deps.translation_tasks_lock:
+            deps.translation_tasks[task_id] = _task_payload(job)
+        start_monitor(task_id, job["paper_id"], deps)
