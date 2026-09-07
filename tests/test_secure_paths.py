@@ -4,9 +4,12 @@ from pathlib import Path
 
 from paperpilot.security.paths import (
     PathSecurityError,
+    category_directory,
     category_storage_id,
     ensure_confined,
+    paper_path,
     safe_join,
+    verified_paper_path,
     validate_filename,
 )
 
@@ -96,6 +99,46 @@ class TestSecurePaths(unittest.TestCase):
         self.assertEqual(first, category_storage_id("category-id"))
         self.assertRegex(first, r"^[0-9a-f]{32}$")
         self.assertNotEqual(first, category_storage_id("other-category"))
+
+    def test_category_directory_does_not_depend_on_display_hierarchy(self):
+        expected = self.root / ".categories" / category_storage_id("category-id")
+        self.assertEqual(category_directory(self.root, "category-id"), expected)
+
+    def test_paper_path_uses_category_id_and_reserved_reading_list(self):
+        regular = paper_path(self.root, "category-id", "paper.pdf")
+        temporary = paper_path(self.root, "reading_list_temp", "paper.pdf")
+        self.assertEqual(
+            regular.parent,
+            self.root / ".categories" / category_storage_id("category-id"),
+        )
+        self.assertEqual(temporary.parent, self.root / "_ReadingListTemp")
+
+    def test_stored_path_must_match_server_derived_path(self):
+        expected = paper_path(
+            self.root,
+            "category-id",
+            "paper.pdf",
+            create_parent=True,
+        )
+        expected.write_bytes(b"pdf")
+        self.assertEqual(
+            verified_paper_path(
+                self.root,
+                "category-id",
+                "paper.pdf",
+                str(expected),
+            ),
+            expected,
+        )
+        other = self.root / "other.pdf"
+        other.write_bytes(b"other")
+        with self.assertRaises(PathSecurityError):
+            verified_paper_path(
+                self.root,
+                "category-id",
+                "paper.pdf",
+                str(other),
+            )
 
 
 if __name__ == "__main__":

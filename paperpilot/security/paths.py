@@ -163,3 +163,62 @@ def category_directory(
         directory.mkdir(parents=True, exist_ok=True)
         directory = ensure_confined(root, directory, must_exist=True)
     return directory
+
+
+def paper_directory(
+    root: os.PathLike[str] | str,
+    category_id: str,
+    *,
+    create: bool = False,
+) -> Path:
+    if category_id == "reading_list_temp":
+        directory = safe_join(root, "_ReadingListTemp")
+        if create:
+            directory.mkdir(parents=True, exist_ok=True)
+            directory = ensure_confined(root, directory, must_exist=True)
+        return directory
+    return category_directory(root, category_id, create=create)
+
+
+def paper_path(
+    root: os.PathLike[str] | str,
+    category_id: str,
+    filename: object,
+    *,
+    create_parent: bool = False,
+    must_exist: bool = False,
+) -> Path:
+    directory = paper_directory(root, category_id, create=create_parent)
+    return ensure_confined(
+        root,
+        directory / validate_filename(filename),
+        must_exist=must_exist,
+        require_file=must_exist,
+    )
+
+
+def verified_paper_path(
+    root: os.PathLike[str] | str,
+    category_id: str,
+    filename: object,
+    stored_path: object,
+    *,
+    must_exist: bool = True,
+) -> Path:
+    if not isinstance(stored_path, (str, os.PathLike)):
+        raise PathSecurityError("invalid_stored_path")
+    expected = paper_path(
+        root,
+        category_id,
+        filename,
+        must_exist=must_exist,
+    )
+    stored = ensure_confined(
+        root,
+        stored_path,
+        must_exist=must_exist,
+        require_file=must_exist,
+    )
+    if stored != expected:
+        raise PathSecurityError("stored_path_mismatch")
+    return expected
