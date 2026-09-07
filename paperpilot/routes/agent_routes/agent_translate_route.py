@@ -239,4 +239,4 @@ def register_agent_translate_routes(
         return send_file(str(chinese_path), as_attachment=False, mimetype="application/pdf")
 
     recover_translation_tasks(deps)
-    threading.Thread(target=worker_client.cleanup_failed_older_than, daemon=True).start()
+    threading.Thread(target=worker_client.run_cleanup_loop, daemon=True).start()

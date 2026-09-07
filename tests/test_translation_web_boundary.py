@@ -22,7 +22,7 @@ class TranslationWebBoundaryTests(unittest.TestCase):
         self.papers.mkdir()
         paper_store.reset()
         self.worker = Mock()
-        self.worker.cleanup_failed_older_than.return_value = None
+        self.worker.run_cleanup_loop.return_value = None
         app = Flask(__name__)
         with (
             patch(

@@ -249,8 +249,19 @@ class TranslationWorkerClient:
             if child.is_dir() and not child.is_symlink() and child.stat().st_mtime < cutoff:
                 try:
                     job_id = canonical_job_id(child.name)
-                    status = self.get(job_id)
+                    status_path = child / "status.json"
+                    if status_path.is_symlink() or not status_path.is_file():
+                        continue
+                    status = json.loads(status_path.read_text(encoding="utf-8"))
                     if status.get("status") in {"failed", "cancelled"}:
                         self.cleanup(job_id)
                 except Exception:
                     continue
+
+    def run_cleanup_loop(self, interval_seconds: int = 3600) -> None:
+        while True:
+            try:
+                self.cleanup_failed_older_than()
+            except Exception:
+                pass
+            time.sleep(interval_seconds)
