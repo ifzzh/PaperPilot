@@ -7,6 +7,29 @@ from dataclasses import dataclass, field, fields
 from typing import Any, Dict, Iterable, Optional
 
 
+USER_EDITABLE_FIELDS = frozenset(
+    {
+        "abstract",
+        "affiliation",
+        "authors",
+        "github",
+        "homepage",
+        "journal",
+        "notes",
+        "starred",
+        "title",
+        "year",
+    }
+)
+
+
+class PaperUpdateError(ValueError):
+    def __init__(self, reason: str, fields: Iterable[str] = ()) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.fields = tuple(sorted(fields))
+
+
 def _normalize_bool(value: Any, default: bool = False) -> bool:
     if isinstance(value, bool):
         return value
@@ -146,6 +169,28 @@ class Paper:
             elif allow_extra:
                 self.extra[key] = value
 
+        self._normalize_fields()
+
+    def update_user_fields(self, data: object) -> None:
+        """Atomically apply fields exposed by the paper metadata API."""
+        if not isinstance(data, dict):
+            raise PaperUpdateError("invalid_payload")
+
+        forbidden = set(data) - USER_EDITABLE_FIELDS
+        if forbidden:
+            raise PaperUpdateError("unsupported_fields", forbidden)
+
+        invalid_types = {
+            key
+            for key, value in data.items()
+            if (key == "starred" and not isinstance(value, bool))
+            or (key != "starred" and not isinstance(value, str))
+        }
+        if invalid_types:
+            raise PaperUpdateError("invalid_field_types", invalid_types)
+
+        for key, value in data.items():
+            setattr(self, key, value)
         self._normalize_fields()
 
     def sync_filesystem(self, pdf_path: str, filename: str) -> None:

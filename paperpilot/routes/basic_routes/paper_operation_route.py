@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Tupl
 
 from flask import Flask, jsonify, request, send_file
 
-from paperpilot.core.base_paper import Paper
+from paperpilot.core.base_paper import Paper, PaperUpdateError
 from paperpilot.core.paper_store import PaperStore
 from paperpilot.database.dao.user_data_dao import ReadingListDAO, ReadingHistoryDAO
 from paperpilot.tools.basic_tools.paper_repository import scan_papers_in_directory
@@ -452,7 +452,9 @@ def register_paper_operation_routes(
     @app.route("/api/paper/<paper_id>", methods=["PUT"])
     def api_update_paper(paper_id: str):
         try:
-            data = request.json or {}
+            data = request.get_json(silent=True)
+            if not isinstance(data, dict):
+                return jsonify({"error": "invalid_payload"}), 400
             result = find_paper(paper_id)
             if not result:
                 return jsonify({"error": "Paper not found"}), 404
@@ -469,7 +471,13 @@ def register_paper_operation_routes(
                     f"[Title update] User changes title: '{old_title}' → '{new_title}'"
                 )
 
-            paper.update_from_dict(data)
+            try:
+                paper.update_user_fields(data)
+            except PaperUpdateError as exc:
+                payload = {"error": exc.reason}
+                if exc.fields:
+                    payload["fields"] = list(exc.fields)
+                return jsonify(payload), 400
             paper.extra["updated_date"] = datetime.now().isoformat()
 
             if paper.file_path:
