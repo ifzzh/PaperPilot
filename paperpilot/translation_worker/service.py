@@ -205,23 +205,27 @@ class TranslationWorkerService:
 
     def _run(self, job_id: str, model: str, base_url: str, api_key: str) -> None:
         state = self._jobs[job_id]
-        state.update(status="running", updated_at=time.time())
-        self._write_status(job_id, state)
+        final: dict = {}
+        with self._lock:
+            state.update(status="running", updated_at=time.time())
+            self._write_status(job_id, state)
         try:
             self._executor(job_id, model, base_url, api_key, state)
             if state["cancel"].is_set():
-                state.update(status="cancelled", error="cancelled")
+                final.update(status="cancelled", error="cancelled")
             else:
                 output = self._validate_output(job_id)
-                state.update(status="completed", progress=100, output=output.name)
+                final.update(status="completed", progress=100, output=output.name)
         except TimeoutError:
-            state.update(status="failed", error="timeout")
+            final.update(status="failed", error="timeout")
         except Exception as exc:  # noqa: BLE001
-            state.update(status="failed", error=redact_text(exc, (api_key,))[:512])
+            final.update(status="failed", error=redact_text(exc, (api_key,))[:512])
         finally:
-            state["process"] = None
-            state["updated_at"] = time.time()
-            self._write_status(job_id, state)
+            with self._lock:
+                state.update(final)
+                state["process"] = None
+                state["updated_at"] = time.time()
+                self._write_status(job_id, state)
             api_key = ""  # minimize lifetime of the only local reference
 
     def _execute_babeldoc(self, job_id: str, model: str, base_url: str, api_key: str, state: dict) -> None:

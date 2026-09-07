@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import json
+import signal
+import subprocess
 import tempfile
 import threading
 import time
 import unittest
 import uuid
 from pathlib import Path
+from unittest.mock import Mock, call, patch
 
 from paperpilot.translation_worker.app import create_worker_app
-from paperpilot.translation_worker.service import TranslationWorkerService
+from paperpilot.translation_worker.service import (
+    TranslationWorkerService,
+    WorkerLimits,
+    redact_text,
+)
 
 
 TOKEN = "t" * 48
@@ -128,6 +136,65 @@ class WorkerContractTests(unittest.TestCase):
                 break
             time.sleep(0.01)
         self.assertEqual(state["status"], "completed")
+
+    def test_restart_marks_incomplete_job_interrupted(self):
+        job_id, _ = self._job()
+        status = {
+            "job_id": job_id,
+            "status": "running",
+            "progress": 42,
+            "created_at": time.time(),
+            "updated_at": time.time(),
+            "error": None,
+            "output": None,
+        }
+        (self.root / job_id / "status.json").write_text(json.dumps(status))
+
+        recovered = TranslationWorkerService(self.root).public_state(job_id)
+
+        self.assertEqual(recovered["status"], "failed")
+        self.assertEqual(recovered["error"], "interrupted")
+
+    def test_output_limit_fails_job(self):
+        job_id, work = self._job()
+
+        def executor(_job_id, _model, _base_url, _api_key, _state):
+            (work / "input.zh.dual.pdf").write_bytes(b"too-large")
+
+        service = TranslationWorkerService(
+            self.root,
+            limits=WorkerLimits(max_output_bytes=4),
+            executor=executor,
+        )
+        client = create_worker_app(token=TOKEN, service=service).test_client()
+        client.post("/v1/jobs", json=self._payload(job_id), headers=self._headers())
+        for _ in range(100):
+            state = client.get(f"/v1/jobs/{job_id}", headers=self._headers()).get_json()
+            if state["status"] == "failed":
+                break
+            time.sleep(0.01)
+        self.assertEqual(state["error"], "output_too_large")
+
+    def test_log_redaction_covers_headers_cookies_and_keys(self):
+        secret = "super-secret"
+        redacted = redact_text(
+            "Authorization: Bearer super-secret Cookie=session API_KEY=super-secret",
+            (secret,),
+        )
+        self.assertNotIn(secret, redacted)
+        self.assertNotIn("session", redacted)
+
+    def test_process_group_cancel_escalates_after_grace_period(self):
+        service = TranslationWorkerService(self.root)
+        process = Mock(pid=1234)
+        process.poll.return_value = None
+        process.wait.side_effect = [subprocess.TimeoutExpired("babeldoc", 10), None]
+        with patch("os.killpg") as killpg:
+            service._terminate_process_group(process)
+        self.assertEqual(
+            killpg.call_args_list,
+            [call(1234, signal.SIGTERM), call(1234, signal.SIGKILL)],
+        )
 
 
 if __name__ == "__main__":
