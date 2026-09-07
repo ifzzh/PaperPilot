@@ -12555,7 +12555,7 @@ function renderDailyArxivGrid() {
                 <div class="daily-arxiv-card-thumbnail">
                     ${thumbnailHtml}
                     <div class="daily-arxiv-card-thumbnail-badges">
-                        <span class="daily-arxiv-card-category">${displayCategoryLabel}</span>
+                        <span class="daily-arxiv-card-category">${escapeHtml(displayCategoryLabel)}</span>
                         ${countriesFlagsHtml}
                     </div>
                 </div>
@@ -12573,20 +12573,20 @@ function renderDailyArxivGrid() {
                     <div class="daily-arxiv-card-meta">
                         <span class="daily-arxiv-card-date">${date}</span>
                         <div class="daily-arxiv-card-actions">
-                            ${paper.homepage ? `<button class="daily-arxiv-card-action" onclick="event.stopPropagation(); window.open('${paper.homepage.startsWith('http') ? paper.homepage : 'https://' + paper.homepage}', '_blank')" title="Project home page">
+                            ${homepageUrl ? `<button class="daily-arxiv-card-action" data-external-url="${escapeHtml(homepageUrl)}" title="Project home page">
                                 <i class="fas fa-home"></i>
                             </button>` : ''}
-                            ${paper.github ? `<button class="daily-arxiv-card-action" onclick="event.stopPropagation(); window.open('${paper.github.startsWith('http') ? paper.github : 'https://' + paper.github}', '_blank')" title="GitHub storehouse">
+                            ${githubUrl ? `<button class="daily-arxiv-card-action" data-external-url="${escapeHtml(githubUrl)}" title="GitHub storehouse">
                                 <i class="fab fa-github"></i>
                             </button>` : ''}
-                            <button class="daily-arxiv-card-action" onclick="event.stopPropagation(); window.open('https://arxiv.org/abs/${paper.arxiv_id}', '_blank')" title="exist arXiv Check">
+                            <button class="daily-arxiv-card-action" data-external-url="${escapeHtml(arxivUrl)}" title="exist arXiv Check">
                                 <i class="fas fa-external-link-alt"></i>
                             </button>
                             ${(() => {
                 // Check if the paper is on the to-read list
                 const isInReadingList = paper.paper_id && readingListPaperIds.has(paper.paper_id);
                 if (isInReadingList) {
-                    return `<button class="daily-arxiv-card-action add-to-reading-list paper-col-btn reading icon-only in-list" data-paper-id="${paper.paper_id}" onclick="onDailyArxivRemoveFromReadingList(${index}, event)" title="Remove from to-read list">
+                    return `<button class="daily-arxiv-card-action add-to-reading-list paper-col-btn reading icon-only in-list" data-paper-id="${escapeHtml(paper.paper_id)}" onclick="onDailyArxivRemoveFromReadingList(${index}, event)" title="Remove from to-read list">
                                         <i class="fas fa-times"></i>
                                     </button>`;
                 } else {
@@ -12602,6 +12602,13 @@ function renderDailyArxivGrid() {
             </div>
         `;
     }).join('');
+    gridEl.querySelectorAll('[data-external-url]').forEach(button => {
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            const url = paperPilotSecurity.safeHttpUrl(button.dataset.externalUrl);
+            if (url) window.open(url, '_blank', 'noopener,noreferrer');
+        });
+    });
 }
 
 // Render unit filter
@@ -12713,7 +12720,7 @@ function renderDailyArxivFilterAffiliations() {
                     <span class="dot" style="background:${isExcluded ? '#9ca3af' : textColor};"></span>
                     <span class="label">${escapeHtml(aff)}</span>
                     ${countLabel}
-                    <span class="filter-remove-btn" onclick="event.stopPropagation(); toggleExcludeAffiliation('${escapeHtml(aff).replace(/'/g, "\\'")}');" title="Exclude this organization">
+                    <span class="filter-remove-btn" title="Exclude this organization">
                         <i class="fas fa-times"></i>
                     </span>
                 </button>
@@ -12759,7 +12766,7 @@ function renderDailyArxivFilterAffiliations() {
                     <span class="dot" style="background:${isEffectivelyExcluded ? '#9ca3af' : textColor};"></span>
                     <span class="label">${escapeHtml(aff)}</span>
                     ${countLabel}
-                    <span class="filter-remove-btn" onclick="event.stopPropagation(); toggleExcludeAffiliation('${escapeHtml(aff).replace(/'/g, "\\'")}');" title="Exclude this organization">
+                    <span class="filter-remove-btn" title="Exclude this organization">
                         <i class="fas fa-times"></i>
                     </span>
                 </button>
@@ -12771,11 +12778,15 @@ function renderDailyArxivFilterAffiliations() {
 
     // Bind click event（Multiple choice）
     container.querySelectorAll('.daily-arxiv-filter-affiliation').forEach(btn => {
+        const aff = btn.getAttribute('data-affiliation');
+        btn.querySelector('.filter-remove-btn')?.addEventListener('click', e => {
+            e.stopPropagation();
+            toggleExcludeAffiliation(aff);
+        });
         btn.addEventListener('click', (e) => {
             // If the click is x button, does not trigger selection
             if (e.target.closest('.filter-remove-btn')) return;
 
-            const aff = btn.getAttribute('data-affiliation');
             if (!aff) return;
             // If it has been excluded, cancel the exclusion first
             if (dailyArxivExcludedAffiliations.has(aff)) {
@@ -12881,7 +12892,7 @@ function renderDailyArxivFilterCountries() {
                 <span class="dot" style="background:transparent;"></span>
                 <span class="label country-flag-label ${flag ? '' : 'no-flag'}">${escapeHtml(displayText)}</span>
                 ${countLabel}
-                <span class="filter-remove-btn" onclick="event.stopPropagation(); toggleExcludeCountry('${escapeHtml(country).replace(/'/g, "\\'")}');" title="exclude this region">
+                <span class="filter-remove-btn" title="exclude this region">
                     <i class="fas fa-times"></i>
                 </span>
             </button>
@@ -12890,11 +12901,15 @@ function renderDailyArxivFilterCountries() {
 
     // Bind click event（Multiple choice）
     container.querySelectorAll('.daily-arxiv-filter-affiliation').forEach(btn => {
+        const country = btn.getAttribute('data-country');
+        btn.querySelector('.filter-remove-btn')?.addEventListener('click', e => {
+            e.stopPropagation();
+            toggleExcludeCountry(country);
+        });
         btn.addEventListener('click', (e) => {
             // If the click is x button, does not trigger selection
             if (e.target.closest('.filter-remove-btn')) return;
 
-            const country = btn.getAttribute('data-country');
             if (!country) return;
             // If it has been excluded, cancel the exclusion first
             if (dailyArxivExcludedCountries.has(country)) {
@@ -13023,7 +13038,7 @@ function renderDailyArxivFilterKeywords() {
                 <span class="dot" style="background:transparent;"></span>
                 <span class="label">${escapeHtml(keyword)}</span>
                 ${countLabel}
-                <span class="filter-remove-btn" onclick="event.stopPropagation(); toggleExcludeKeyword('${escapeHtml(keyword).replace(/'/g, "\\'")}');" title="Exclude this keyword">
+                <span class="filter-remove-btn" title="Exclude this keyword">
                     <i class="fas fa-times"></i>
                 </span>
             </button>
@@ -13032,11 +13047,15 @@ function renderDailyArxivFilterKeywords() {
 
     // Bind click event（Multiple choice）
     container.querySelectorAll('.daily-arxiv-filter-affiliation').forEach(btn => {
+        const keyword = btn.getAttribute('data-keyword');
+        btn.querySelector('.filter-remove-btn')?.addEventListener('click', e => {
+            e.stopPropagation();
+            toggleExcludeKeyword(keyword);
+        });
         btn.addEventListener('click', (e) => {
             // If the click is x button, does not trigger selection
             if (e.target.closest('.filter-remove-btn')) return;
 
-            const keyword = btn.getAttribute('data-keyword');
             if (!keyword) return;
             // If it has been excluded, cancel the exclusion first
             if (dailyArxivExcludedKeywords.has(keyword)) {
@@ -13073,10 +13092,7 @@ function toggleExcludeKeyword(keyword) {
 
 // HTML escape
 function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return paperPilotSecurity.escapeHtml(text);
 }
 
 function isValidDailyArxivSummary(summary) {
@@ -13115,6 +13131,12 @@ function showDailyArxivDetail(index) {
         ? new Date(paper.announced).toLocaleDateString('en-US')
         : '';
     const submitDate = paper.published ? new Date(paper.published).toLocaleDateString('en-US') : '';
+    const homepageUrl = paperPilotSecurity.safeHttpUrl(paper.homepage);
+    const githubUrl = paperPilotSecurity.safeHttpUrl(paper.github);
+    const arxivUrl = paperPilotSecurity.safeHttpUrl(
+        `https://arxiv.org/abs/${encodeURIComponent(paperPilotSecurity.asText(paper.arxiv_id))}`
+    );
+    const pdfUrl = paperPilotSecurity.safeHttpUrl(paper.pdf_url, { allowRelative: true });
 
     // Institutional information area（with color）
     let affiliationsHtml = '';
@@ -13216,19 +13238,19 @@ function showDailyArxivDetail(index) {
                         </div>
                         <div class="daily-arxiv-detail-meta-item">
                             <i class="fas fa-tag"></i>
-                            <span>${(paper.categories || []).join(', ')}</span>
+                            <span>${escapeHtml((paper.categories || []).join(', '))}</span>
                         </div>
                         <div class="daily-arxiv-detail-meta-item">
                             <i class="fas fa-calendar"></i>
-                            <span>Announce: ${announcedDate} | submit: ${submitDate}</span>
+                            <span>Announce: ${escapeHtml(announcedDate)} | submit: ${escapeHtml(submitDate)}</span>
                         </div>
-                        ${paper.homepage ? `<div class="daily-arxiv-detail-meta-item">
+                        ${homepageUrl ? `<div class="daily-arxiv-detail-meta-item">
                             <i class="fas fa-home"></i>
-                            <span><a href="${paper.homepage.startsWith('http') ? paper.homepage : 'https://' + paper.homepage}" target="_blank" style="color: #2196F3; text-decoration: none;">${escapeHtml(paper.homepage)}</a></span>
+                            <span><a href="${escapeHtml(homepageUrl)}" target="_blank" rel="noopener noreferrer" style="color: #2196F3; text-decoration: none;">${escapeHtml(paper.homepage)}</a></span>
                         </div>` : ''}
-                        ${paper.github ? `<div class="daily-arxiv-detail-meta-item">
+                        ${githubUrl ? `<div class="daily-arxiv-detail-meta-item">
                             <i class="fab fa-github"></i>
-                            <span><a href="${paper.github.startsWith('http') ? paper.github : 'https://' + paper.github}" target="_blank" style="color: #2196F3; text-decoration: none;">${escapeHtml(paper.github)}</a></span>
+                            <span><a href="${escapeHtml(githubUrl)}" target="_blank" rel="noopener noreferrer" style="color: #2196F3; text-decoration: none;">${escapeHtml(paper.github)}</a></span>
                         </div>` : ''}
                     </div>
                     ${affiliationsHtml}
@@ -13241,18 +13263,18 @@ function showDailyArxivDetail(index) {
                 </div>
                 <div class="daily-arxiv-detail-footer">
                     <div class="daily-arxiv-detail-links">
-                        ${paper.homepage ? `<a href="${paper.homepage.startsWith('http') ? paper.homepage : 'https://' + paper.homepage}" target="_blank" title="Project home page">
+                        ${homepageUrl ? `<a href="${escapeHtml(homepageUrl)}" target="_blank" rel="noopener noreferrer" title="Project home page">
                             <i class="fas fa-home"></i> Homepage
                         </a>` : ''}
-                        ${paper.github ? `<a href="${paper.github.startsWith('http') ? paper.github : 'https://' + paper.github}" target="_blank" title="GitHub storehouse">
+                        ${githubUrl ? `<a href="${escapeHtml(githubUrl)}" target="_blank" rel="noopener noreferrer" title="GitHub storehouse">
                             <i class="fab fa-github"></i> GitHub
                         </a>` : ''}
-                        <a href="https://arxiv.org/abs/${paper.arxiv_id}" target="_blank">
+                        <a href="${escapeHtml(arxivUrl)}" target="_blank" rel="noopener noreferrer">
                             <i class="fas fa-external-link-alt"></i> arXiv
                         </a>
-                        <a href="${paper.pdf_url}" target="_blank">
+                        ${pdfUrl ? `<a href="${escapeHtml(pdfUrl)}" target="_blank" rel="noopener noreferrer">
                             <i class="fas fa-file-pdf"></i> PDF
-                        </a>
+                        </a>` : ''}
                     </div>
                     <button class="daily-arxiv-add-btn" onclick="onDailyArxivAddToReadingList(${index}, event); closeDailyArxivDetail();">
                         <i class="fas fa-book-open"></i> Add to Readling List
@@ -13732,12 +13754,18 @@ function renderCustomInstitutions() {
         return;
     }
 
-    listContainer.innerHTML = customInstitutions.map(inst => `
-        <div class="custom-institution-item" ondblclick="editInstitution('${escapeHtml(inst.abbreviation)}')" title="Double click to edit">
-            <i class="fas fa-university"></i>
-            ${escapeHtml(inst.abbreviation)}
-        </div>
-    `).join('');
+    listContainer.replaceChildren();
+    customInstitutions.forEach(inst => {
+        const item = document.createElement('div');
+        item.className = 'custom-institution-item';
+        item.title = 'Double click to edit';
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-university';
+        item.appendChild(icon);
+        item.appendChild(document.createTextNode(` ${paperPilotSecurity.asText(inst.abbreviation)}`));
+        item.addEventListener('dblclick', () => editInstitution(inst.abbreviation));
+        listContainer.appendChild(item);
+    });
 }
 
 /**
