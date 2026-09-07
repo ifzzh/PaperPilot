@@ -4979,6 +4979,10 @@ async function saveAgenticSettings(silent = false) {
 
         if (response.ok && result.success) {
             console.log('[Save settings] ✅ Saved successfully');
+            [translateApiKeyEl, interpretApiKeyEl, dailyArxivApiKeyEl, mineruApiTokenEl]
+                .filter(Boolean)
+                .forEach(element => { element.value = ''; });
+            await loadAgenticSettings();
             agenticSettingsDirty = false;
             updateSettingsSaveStatus('agentic-save-status', 'saved');
             // renew Daily arXiv of LLM configuration status
@@ -5005,6 +5009,38 @@ async function saveAgenticSettings(silent = false) {
         if (!silent) {
             showMessage(`Save failed: ${e.message}`, 'error');
         }
+    }
+}
+
+function updateCredentialStatus(secretName, configured) {
+    const prefix = secretName === 'mineru' ? 'mineru-api-token' : `llm-${secretName}-api-key`;
+    const input = document.getElementById(prefix);
+    const status = document.getElementById(`${prefix}-status`);
+    const clearButton = document.querySelector(`.credential-clear-btn[data-secret-name="${secretName}"]`);
+    if (input) {
+        input.value = '';
+        input.dataset.configured = configured ? 'true' : 'false';
+        input.placeholder = configured ? 'Stored securely — enter to replace' : 'Enter API credential';
+    }
+    if (status) {
+        status.textContent = configured ? 'Configured' : 'Not configured';
+        status.classList.toggle('configured', configured);
+    }
+    if (clearButton) clearButton.disabled = !configured;
+}
+
+async function clearAgenticSecret(secretName) {
+    if (!window.confirm('Clear this saved API credential? AI features using it will stop working.')) return;
+    try {
+        const response = await fetch(`/api/settings/agentic/secrets/${encodeURIComponent(secretName)}`, {
+            method: 'DELETE'
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || 'Clear failed');
+        updateCredentialStatus(secretName, false);
+        showMessage('API credential cleared', 'success');
+    } catch (error) {
+        showMessage(`Clear failed: ${error.message}`, 'error');
     }
 }
 
@@ -5051,7 +5087,7 @@ async function loadAgenticSettings() {
             const legacyFallback = {
                 llmModel: settings.llmModel || '',
                 llmBaseUrl: settings.llmBaseUrl || '',
-                llmApiKey: settings.llmApiKey || ''
+                llmApiKeyConfigured: !!settings.llmApiKeyConfigured
             };
             const llmConfigs = settings.llmConfigs || {};
             const translateCfg = llmConfigs.translate || legacyFallback;
@@ -5073,7 +5109,7 @@ async function loadAgenticSettings() {
                 }
             }
             if (translateApiKeyEl) {
-                translateApiKeyEl.value = translateCfg.llmApiKey || '';
+                updateCredentialStatus('translate', !!translateCfg.llmApiKeyConfigured);
                 if (!translateApiKeyEl.dataset.bound) {
                     translateApiKeyEl.dataset.bound = 'true';
                     translateApiKeyEl.addEventListener('input', autoSaveAgenticSettings);
@@ -5095,7 +5131,7 @@ async function loadAgenticSettings() {
                 }
             }
             if (interpretApiKeyEl) {
-                interpretApiKeyEl.value = interpretCfg.llmApiKey || '';
+                updateCredentialStatus('interpret', !!interpretCfg.llmApiKeyConfigured);
                 if (!interpretApiKeyEl.dataset.bound) {
                     interpretApiKeyEl.dataset.bound = 'true';
                     interpretApiKeyEl.addEventListener('input', autoSaveAgenticSettings);
@@ -5117,7 +5153,7 @@ async function loadAgenticSettings() {
                 }
             }
             if (dailyArxivApiKeyEl) {
-                dailyArxivApiKeyEl.value = dailyArxivCfg.llmApiKey || '';
+                updateCredentialStatus('dailyArxiv', !!dailyArxivCfg.llmApiKeyConfigured);
                 if (!dailyArxivApiKeyEl.dataset.bound) {
                     dailyArxivApiKeyEl.dataset.bound = 'true';
                     dailyArxivApiKeyEl.addEventListener('input', autoSaveAgenticSettings);
@@ -5131,12 +5167,18 @@ async function loadAgenticSettings() {
                 }
             }
             if (mineruApiTokenEl) {
-                mineruApiTokenEl.value = settings.mineruApiToken || '';
+                updateCredentialStatus('mineru', !!settings.mineruApiTokenConfigured);
                 if (!mineruApiTokenEl.dataset.bound) {
                     mineruApiTokenEl.dataset.bound = 'true';
                     mineruApiTokenEl.addEventListener('input', autoSaveAgenticSettings);
                 }
             }
+            document.querySelectorAll('.credential-clear-btn').forEach(button => {
+                if (!button.dataset.bound) {
+                    button.dataset.bound = 'true';
+                    button.addEventListener('click', () => clearAgenticSecret(button.dataset.secretName));
+                }
+            });
             agenticSettingsDirty = false;
             updateSettingsSaveStatus('agentic-save-status', 'idle');
 
@@ -5258,7 +5300,7 @@ async function loadAILanguageSetting() {
 
 // test LLM API（Core logic, reusable）
 async function testLLMAPICore(llmModel, llmBaseUrl, llmApiKey, llmConfigType = null) {
-    if (!llmModel || !llmBaseUrl || !llmApiKey) {
+    if (!llmModel || !llmBaseUrl) {
         return {
             success: false,
             error: 'Please fill in the complete LLM API Configuration（Model、Base URL、API Key）'
@@ -5331,7 +5373,8 @@ async function testLLMAPIByScenario(scenarioKey) {
     const llmBaseUrl = baseUrlEl.value.trim();
     const llmApiKey = apiKeyEl.value.trim();
 
-    if (!llmModel || !llmBaseUrl || !llmApiKey) {
+    const hasStoredKey = apiKeyEl.dataset.configured === 'true';
+    if (!llmModel || !llmBaseUrl || (!llmApiKey && !hasStoredKey)) {
         showConnectionTestResult(resultDiv, 'warning', 'Please fill in the complete LLM API Configuration');
         return;
     }
@@ -5411,7 +5454,9 @@ async function testMineruAPI(event) {
         // Test API token
         const mineruApiToken = document.getElementById('mineru-api-token').value.trim();
 
-        if (!mineruApiToken) {
+        const tokenInput = document.getElementById('mineru-api-token');
+        const hasStoredToken = tokenInput.dataset.configured === 'true';
+        if (!mineruApiToken && !hasStoredToken) {
             showConnectionTestResult(resultDiv, 'warning', 'Please enter API token');
             btn.disabled = false;
             btn.innerHTML = originalHTML;
@@ -5459,7 +5504,7 @@ async function getAgenticSettings() {
 }
 
 function getAgenticLLMConfig(settings, scenarioKey) {
-    const empty = { llmModel: '', llmBaseUrl: '', llmApiKey: '' };
+    const empty = { llmModel: '', llmBaseUrl: '', llmApiKeyConfigured: false };
     if (!settings) return empty;
 
     const llmConfigs = settings.llmConfigs;
@@ -5469,7 +5514,7 @@ function getAgenticLLMConfig(settings, scenarioKey) {
             return {
                 llmModel: (cfg.llmModel || '').trim(),
                 llmBaseUrl: (cfg.llmBaseUrl || '').trim(),
-                llmApiKey: (cfg.llmApiKey || '').trim(),
+                llmApiKeyConfigured: !!cfg.llmApiKeyConfigured,
             };
         }
     }
@@ -5477,12 +5522,12 @@ function getAgenticLLMConfig(settings, scenarioKey) {
     return {
         llmModel: (settings.llmModel || '').trim(),
         llmBaseUrl: (settings.llmBaseUrl || '').trim(),
-        llmApiKey: (settings.llmApiKey || '').trim(),
+        llmApiKeyConfigured: !!settings.llmApiKeyConfigured,
     };
 }
 
 function isAgenticLLMConfigured(cfg) {
-    return !!(cfg && cfg.llmModel && cfg.llmBaseUrl && cfg.llmApiKey);
+    return !!(cfg && cfg.llmModel && cfg.llmBaseUrl && cfg.llmApiKeyConfigured);
 }
 
 // ========== Deprecated setup function（reserved for compatibility） ==========
@@ -6825,10 +6870,7 @@ async function processTranslationQueue() {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                paper_id: paperId,
-                openai_model: llmCfg.llmModel,
-                openai_base_url: llmCfg.llmBaseUrl,
-                openai_api_key: llmCfg.llmApiKey
+                paper_id: paperId
             })
         });
 
@@ -8297,7 +8339,7 @@ async function requestAnalysis(paperId, event) {
     // Check MinerU configuration based on mode
     const useApi = settings.mineruUseApi === true;
     const mineruConfigured = useApi
-        ? (settings.mineruApiToken && settings.mineruApiToken.trim() !== '')
+        ? settings.mineruApiTokenConfigured === true
         : (settings.mineruServerUrl && settings.mineruServerUrl.trim() !== '');
 
     const llmCfg = getAgenticLLMConfig(settings, 'interpret');
@@ -8382,10 +8424,6 @@ async function processAnalysisQueue() {
             },
             body: JSON.stringify({
                 paper_id: paperId,
-                openai_base_url: llmCfg.llmBaseUrl,
-                openai_api_key: llmCfg.llmApiKey,
-                openai_model: llmCfg.llmModel,
-                system_prompt: '',
                 ai_language: aiLanguage
             })
         });
@@ -11422,7 +11460,7 @@ async function testLLMAPIForDailyArxiv() {
         const cfg = getAgenticLLMConfig(settings, 'dailyArxiv');
 
         // Direct reuse testLLMAPICore function
-        return await testLLMAPICore(cfg.llmModel, cfg.llmBaseUrl, cfg.llmApiKey, 'dailyArxiv');
+        return await testLLMAPICore(cfg.llmModel, cfg.llmBaseUrl, '', 'dailyArxiv');
     } catch (error) {
         return {
             success: false,
@@ -13317,10 +13355,8 @@ async function extractAffiliationsForPaper(paperIndex) {
         console.error('get Agentic Settings fail:', err);
     }
 
-    const llmBaseUrl = agenticSettings.llmBaseUrl;
-    const llmApiKey = agenticSettings.llmApiKey;
-
-    if (!llmBaseUrl || !llmApiKey) {
+    const affiliationConfig = getAgenticLLMConfig(agenticSettings, 'interpret');
+    if (!isAgenticLLMConfigured(affiliationConfig)) {
         showMessage('Please configure it in settings first Agentic Settings of LLM API', 'warning');
         return;
     }

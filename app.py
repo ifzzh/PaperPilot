@@ -23,6 +23,13 @@ from paperpilot.auth import (
     FixedWindowRateLimiter,
 )
 from paperpilot.security.paths import paper_directory
+from paperpilot.security.agentic_credentials import AgenticCredentialStore
+from paperpilot.security.credentials import CredentialError
+from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
+from paperpilot.migrations.agentic_secrets import (
+    AgenticSecretMigrationError,
+    assert_no_plaintext_credentials,
+)
 from paperpilot.migrations.category_storage import (
     MigrationError as CategoryStorageMigrationError,
     assert_storage_migrated,
@@ -95,6 +102,8 @@ _auth_cache_lock = threading.Lock()
 AUTH_CONFIG: Optional[AuthConfig] = None
 AUTH_COOKIE_NAME = "paperpilot_access_token"
 _rate_limiter = FixedWindowRateLimiter()
+AGENTIC_CREDENTIAL_STORE: Optional[AgenticCredentialStore] = None
+OUTBOUND_POLICY: Optional[OutboundPolicy] = None
 
 
 def _browser_security_headers() -> dict[str, str]:
@@ -318,22 +327,18 @@ DEFAULT_AGENTIC_SETTINGS = {
         "translate": {
             "llmModel": "",
             "llmBaseUrl": "",
-            "llmApiKey": "",
         },
         "interpret": {
             "llmModel": "",
             "llmBaseUrl": "",
-            "llmApiKey": "",
         },
         "dailyArxiv": {
             "llmModel": "",
             "llmBaseUrl": "",
-            "llmApiKey": "",
         },
     },
     "mineruServerUrl": "",  # PDF parsing service address (for local mode)
     "mineruUseApi": False,  # Toggle between local CLI mode and cloud API mode
-    "mineruApiToken": "",  # MinerU cloud API token (for API mode)
     # Note: System prompts are now built-in and selected based on user's aiLanguage setting
     # Custom prompts are no longer supported
 }
@@ -691,12 +696,14 @@ def register_routes():
                 return {
                     "llmModel": (picked.get("llmModel") or "").strip(),
                     "llmBaseUrl": (picked.get("llmBaseUrl") or "").strip(),
-                    "llmApiKey": (picked.get("llmApiKey") or "").strip(),
+                    "llmApiKey": AGENTIC_CREDENTIAL_STORE.get("dailyArxiv")
+                    if AGENTIC_CREDENTIAL_STORE else "",
                 }
             return {
                 "llmModel": (cfg.get("llmModel") or "").strip(),
                 "llmBaseUrl": (cfg.get("llmBaseUrl") or "").strip(),
-                "llmApiKey": (cfg.get("llmApiKey") or "").strip(),
+                "llmApiKey": AGENTIC_CREDENTIAL_STORE.get("dailyArxiv")
+                if AGENTIC_CREDENTIAL_STORE else "",
             }
         except Exception:
             return {}
@@ -762,6 +769,8 @@ def register_routes():
         default_agentic_settings=DEFAULT_AGENTIC_SETTINGS,
         avatars_dir=AVATARS_DIR,
         start_daily_arxiv_callback=start_daily_arxiv_if_configured,
+        credential_store=AGENTIC_CREDENTIAL_STORE,
+        outbound_policy=OUTBOUND_POLICY,
     )
 
     register_paper_operation_routes(
@@ -901,6 +910,23 @@ if __name__ == "__main__":
 
     # Initialize application (configure paper directory etc.)
     init_app(papers_dir=args.papers_dir)
+
+    settings_key_file = os.getenv(
+        "PAPERPILOT_SETTINGS_KEY_FILE", "/run/secrets/paperpilot_settings_key"
+    ).strip()
+    try:
+        assert_no_plaintext_credentials(DB_PATH)
+        AGENTIC_CREDENTIAL_STORE = AgenticCredentialStore.from_key_file(settings_key_file)
+        AGENTIC_CREDENTIAL_STORE.validate_all()
+        OUTBOUND_POLICY = OutboundPolicy.from_environ(os.environ)
+    except (
+        AgenticSecretMigrationError,
+        CredentialError,
+        OutboundPolicyError,
+        OSError,
+        ValueError,
+    ) as exc:
+        parser.error(f"unsafe agentic configuration: {exc}")
 
     # Initialize category system
     init_categories()
