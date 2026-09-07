@@ -245,7 +245,7 @@ def _audit_sensitive_request(response):
             .isoformat(timespec="seconds")
             .replace("+00:00", "Z"),
         }
-        app.logger.info(json.dumps(record, ensure_ascii=True, sort_keys=True))
+        print(json.dumps(record, ensure_ascii=True, sort_keys=True), flush=True)
     return response
 
 # Configuration file storage path (will be set in main function according to parameters)

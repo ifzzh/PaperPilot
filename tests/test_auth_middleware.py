@@ -1,4 +1,6 @@
+import io
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 import app as app_module
@@ -191,13 +193,14 @@ class TestAuthMiddleware(unittest.TestCase):
         self.assertGreaterEqual(int(responses[10].headers["Retry-After"]), 1)
 
     def test_audit_log_does_not_include_bearer_token(self):
-        with self.assertLogs(app_module.app.logger.name, level="INFO") as captured:
+        captured = io.StringIO()
+        with redirect_stdout(captured):
             response = self.client.post(
                 "/api/test-auth-protected",
                 headers={"Authorization": "Bearer super-secret-token"},
             )
         self.assertEqual(response.status_code, 401)
-        combined = "\n".join(captured.output)
+        combined = captured.getvalue()
         self.assertIn('"event": "api_audit"', combined)
         self.assertIn('"reason": "invalid_token"', combined)
         self.assertNotIn("super-secret-token", combined)
