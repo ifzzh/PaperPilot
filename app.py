@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from functools import partial
 from typing import Optional
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -94,6 +95,38 @@ _auth_cache_lock = threading.Lock()
 AUTH_CONFIG: Optional[AuthConfig] = None
 AUTH_COOKIE_NAME = "paperpilot_access_token"
 _rate_limiter = FixedWindowRateLimiter()
+
+
+def _browser_security_headers() -> dict[str, str]:
+    connect_sources = ["'self'"]
+    if AUTH_CONFIG is not None and AUTH_CONFIG.supabase_url:
+        parsed = urlsplit(AUTH_CONFIG.supabase_url)
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            connect_sources.append(f"{parsed.scheme}://{parsed.netloc}")
+
+    csp = "; ".join(
+        [
+            "default-src 'self'",
+            "base-uri 'self'",
+            "object-src 'none'",
+            "frame-ancestors 'self'",
+            "form-action 'self'",
+            "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.bootcdn.net",
+            "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
+            "font-src 'self' data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
+            "img-src 'self' data: blob:",
+            f"connect-src {' '.join(connect_sources)}",
+            "frame-src 'self' blob:",
+            "worker-src 'self' blob: https://cdnjs.cloudflare.com",
+        ]
+    )
+    return {
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "same-origin",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "Content-Security-Policy-Report-Only": csp,
+    }
 
 
 def _verify_supabase_access_token(access_token: str) -> str | None:
@@ -231,6 +264,8 @@ def _require_auth_for_api():
 def _audit_sensitive_request(response):
     request_id = getattr(g, "request_id", uuid.uuid4().hex)
     response.headers["X-Request-ID"] = request_id
+    for header, value in _browser_security_headers().items():
+        response.headers[header] = value
     is_api = request.path.startswith("/api/")
     should_audit = is_api and (
         request.method in {"POST", "PUT", "PATCH", "DELETE"}
