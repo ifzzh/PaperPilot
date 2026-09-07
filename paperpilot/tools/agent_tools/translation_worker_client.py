@@ -139,6 +139,8 @@ class TranslationWorkerClient:
         work = job / "work"
         job.mkdir(mode=0o770, parents=False, exist_ok=False)
         work.mkdir(mode=0o770)
+        os.chmod(job, 0o2770)
+        os.chmod(work, 0o2770)
         temporary = work / ".input.pdf.tmp"
         target = work / "input.pdf"
         with source_path.open("rb") as reader, temporary.open("xb") as writer:

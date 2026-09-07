@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import stat
 import tempfile
 import unittest
 import uuid
@@ -35,6 +36,8 @@ class TranslationWorkerClientStorageTests(unittest.TestCase):
 
         self.assertEqual(staged, self.jobs / job_id / "work" / "input.pdf")
         self.assertEqual(staged.read_bytes(), b"%PDF-source")
+        self.assertEqual(stat.S_IMODE(staged.parent.stat().st_mode), 0o2770)
+        self.assertEqual(stat.S_IMODE(staged.stat().st_mode), 0o640)
 
     def test_stage_rejects_symlink_source(self):
         outside = Path(self.temp.name) / "outside.pdf"

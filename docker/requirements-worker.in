@@ -1,0 +1,5 @@
+# Keep the isolated worker dependency surface independent from the Web runtime.
+BabelDOC==0.6.4
+Flask==2.3.3
+PyMuPDF==1.28.2
+Werkzeug==2.3.7

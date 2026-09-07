@@ -60,6 +60,10 @@ FROM runtime-base AS translation-worker
 ARG APP_VERSION=0.4.0
 ARG VCS_REF=unknown
 
+ENV HOME=/tmp \
+    XDG_CACHE_HOME=/tmp/.cache \
+    MPLCONFIGDIR=/tmp/matplotlib
+
 WORKDIR /app
 COPY --from=worker-dependencies /opt/venv /opt/venv
 COPY paperpilot /app/paperpilot
