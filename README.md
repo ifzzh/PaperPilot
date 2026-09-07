@@ -180,7 +180,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   The maintained Compose file uses the v0.4.0 Web and translation-worker images. The Web service binds only `127.0.0.1:7191`; Worker port `7192` is internal only. Both run as non-root users. Copy `.env.example` to the deployment directory, create a random Worker token file, and create the staging directory before running `docker compose up -d`.
+   The maintained Compose file uses the v0.5.0 Web and translation-worker images. The Web service binds only `127.0.0.1:7191`; Worker port `7192` is internal only. Both run as non-root users. Copy `.env.example` to the deployment directory, create a random Worker token file, and create the staging directory before running `docker compose up -d`.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -189,6 +189,12 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    ```
 
    The Worker receives only `/work/jobs` and its token secret. It does not mount the paper library, SQLite database, `.env`, or Docker socket. Successful output is validated and atomically copied into the paper library by the Web service.
+
+### Upgrading from v0.4.0
+
+v0.5.0 removes stored-XSS paths in paper, category, chat, analysis, settings and Daily arXiv rendering. Normal text keeps the existing layout but is no longer interpreted as HTML. AI chat and analysis still support Markdown headings, lists, tables, quotes, highlighted code and MathJax formulas; rendered HTML is cleaned by the self-hosted, pinned DOMPurify 3.4.14 build. External Markdown images are shown as HTTPS links instead of loading automatically, while controlled same-origin analysis images continue to display.
+
+There is no database or storage migration. Update both Web and Worker image tags together. Browser security headers are added on every response; CSP is intentionally Report-Only in this release so existing inline handlers and pinned CDN assets remain functional. To roll back, pin both images to their v0.4.0 digests.
 
 ### Upgrading from v0.3.0
 

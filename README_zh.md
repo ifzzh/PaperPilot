@@ -179,7 +179,7 @@
    | `--port` | `7191` | 服务器监听端口 |
    | `--debug` | `False` | 启用调试模式（开发用） |
 
-   维护中的 Compose 文件使用 v0.4.0 Web 与翻译 Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192` 只在 Compose 网络内开放；两个容器都以非 root 用户运行。启动前请复制 `.env.example`、创建随机 Worker token 文件并创建 staging 目录：
+   维护中的 Compose 文件使用 v0.5.0 Web 与翻译 Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192` 只在 Compose 网络内开放；两个容器都以非 root 用户运行。启动前请复制 `.env.example`、创建随机 Worker token 文件并创建 staging 目录：
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -188,6 +188,12 @@
    ```
 
    Worker 只挂载 `/work/jobs` 和 token secret，不挂载论文库、SQLite、`.env` 或 Docker Socket。翻译成功后由 Web 校验输出并原子写入论文库。
+
+### 从 v0.4.0 升级
+
+v0.5.0 修复论文、分类、聊天、分析、设置和 Daily arXiv 页面中的存储型 XSS。正常文本保持原有布局，但不再解释其中的 HTML。AI 聊天和分析仍支持 Markdown 标题、列表、表格、引用、代码高亮与 MathJax 公式；渲染结果统一经仓库自托管并固定版本的 DOMPurify 3.4.14 清洗。Markdown 外站图片改为 HTTPS 链接而不自动加载，受控的站内分析图片仍可正常显示。
+
+本次没有数据库或存储迁移，Web 与 Worker 镜像应同步升级。所有响应新增浏览器安全头；CSP 在本版仅为 Report-Only，不会阻断现有内联事件与固定 CDN 资源。回滚时把两个镜像同时固定回 v0.4.0 digest。
 
 ### 从 v0.3.0 升级
 
