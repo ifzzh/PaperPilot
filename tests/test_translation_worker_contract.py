@@ -184,6 +184,19 @@ class WorkerContractTests(unittest.TestCase):
         self.assertNotIn(secret, redacted)
         self.assertNotIn("session", redacted)
 
+    def test_worker_log_redacts_job_paths_and_command_arguments(self):
+        job_id, _ = self._job()
+        service = TranslationWorkerService(self.root)
+        state = {"job_id": job_id, "logs": [], "progress": 0}
+        service._append_log(
+            state,
+            f"output={self.root / job_id}/work/input.pdf model=fake-model \x1b[31m",
+            ("fake-model",),
+        )
+        self.assertNotIn(str(self.root), state["logs"][0])
+        self.assertNotIn("fake-model", state["logs"][0])
+        self.assertNotIn("\x1b", state["logs"][0])
+
     def test_process_group_cancel_escalates_after_grace_period(self):
         service = TranslationWorkerService(self.root)
         process = Mock(pid=1234)

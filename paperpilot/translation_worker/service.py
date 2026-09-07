@@ -189,8 +189,12 @@ class TranslationWorkerService:
             thread.start()
         return self.public_state(job_id)
 
-    def _append_log(self, state: dict, line: str, api_key: str) -> None:
-        safe = redact_text(line.rstrip(), (api_key,))
+    def _append_log(self, state: dict, line: str, secrets: tuple[str, ...]) -> None:
+        safe = line.rstrip().replace(str(self.root / state["job_id"]), "<job>")
+        safe = safe.replace(str(self.root), "<jobs>")
+        safe = redact_text(safe, secrets)
+        safe = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", safe)
+        safe = "".join(character for character in safe if character == "\t" or ord(character) >= 32)
         current = sum(len(item.encode("utf-8")) + 1 for item in state["logs"])
         remaining = self.limits.max_log_bytes - current
         if remaining <= 0:
@@ -247,7 +251,7 @@ class TranslationWorkerService:
         assert process.stdout is not None
         reader = threading.Thread(
             target=self._read_output,
-            args=(process.stdout, state, api_key),
+            args=(process.stdout, state, (api_key, base_url, model)),
             daemon=True,
         )
         reader.start()
@@ -269,10 +273,10 @@ class TranslationWorkerService:
         if process.returncode != 0:
             raise RuntimeError(f"babeldoc_failed:{process.returncode}")
 
-    def _read_output(self, pipe, state: dict, api_key: str) -> None:
+    def _read_output(self, pipe, state: dict, secrets: tuple[str, ...]) -> None:
         try:
             for line in iter(pipe.readline, ""):
-                self._append_log(state, line, api_key)
+                self._append_log(state, line, secrets)
         finally:
             pipe.close()
 
