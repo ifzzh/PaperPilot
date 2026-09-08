@@ -82,7 +82,7 @@
 
 - **后端**：Python 3.10+, Flask
 - **前端**：HTML5, CSS3, 原生 JS (响应式设计)
-- **数据库**：SQLite (元数据), Supabase (可选鉴权)
+- **数据库**：SQLite（元数据、本地账号与加密配置）
 - **AI 核心**：
   - [MinerU](https://github.com/opendatalab/MinerU) (高保真 PDF 解析)
   - [BabelDOC](https://github.com/funstory-ai/BabelDOC) (文档翻译)
@@ -125,42 +125,17 @@
    uv pip install -e ".[server]"
    ```
 
-4. **Supabase Auth 鉴权（生产环境必需）**
-   PaperPilot 使用 Supabase 邮箱/密码鉴权。所有修改请求必须携带 Bearer Token；通过验证的浏览器会额外获得 HttpOnly Cookie，以便安全加载 PDF、缩略图和下载文件。生产环境采用 fail-closed，必须同时配置 Supabase 参数和明确的管理员邮箱允许列表。
+4. **本地账号鉴权（生产环境必需）**
 
-   1）创建 Supabase 项目并获取密钥
-   - 进入 https://supabase.com/ 创建 Project
-   - 在 Supabase 控制台进入 **Project Settings → API**
-   - 复制 **Project URL** 作为 `SUPABASE_URL`
-   - 复制 **Project API keys → anon public** 作为 `SUPABASE_ANON_KEY`
+   PaperPilot 使用本地用户名和 Argon2id 密码哈希，不需要邮箱或 Supabase。生产环境固定使用 `local` 模式，且必须至少存在一个有效管理员，否则 fail-closed 拒绝启动。
 
-   2）在 Supabase 控制台启用 Email 登录
-   - 进入 **Authentication → Providers**
-   - 启用 **Email**（Email/Password）
-   - 从 Supabase 控制台创建或邀请管理员账号；PaperPilot 不再提供公开注册入口
-
-   3）配置回调地址（非常重要）
-   - 进入 **Authentication → URL Configuration**
-   - 将 **Site URL** 设置为你的站点根地址，例如：
-   - 本地：`http://localhost:7191`
-   - 线上：`https://your-domain.com`
-   - 在 **Redirect URLs** 中添加允许的回调地址（至少包含站点根地址），例如：
-   - `http://localhost:7191/`
-   - `https://your-domain.com/`
-
-   4）在 PaperPilot 中配置鉴权
-   在项目根目录复制并编辑环境变量：
+   复制环境模板，并通过隐藏交互输入创建首位管理员：
    ```bash
    cp .env.example .env
-   # 填入 SUPABASE_URL、SUPABASE_ANON_KEY 和 PAPERPILOT_ALLOWED_EMAILS
+   python -m paperpilot.auth_cli --db db/paperpilot.db create-admin --username ifzzh
    ```
-   重启服务后访问页面。生产鉴权配置缺失或不完整时服务会拒绝启动，而不会匿名开放 API。仅在隔离的本地开发中，才可设置 `PAPERPILOT_ENV=development`、`PAPERPILOT_AUTH_MODE=disabled`，并把端口绑定在 `127.0.0.1`。
 
-   **安全提示**
-   - 仅使用 `anon public` key；不要把 `service_role` key 放进 `.env` 或发到前端
-   - 本项目会把 `SUPABASE_URL` 与 `SUPABASE_ANON_KEY` 注入到页面中（用于浏览器侧登录），这是预期行为
-   - `PAPERPILOT_ALLOWED_EMAILS` 中的账号都是同一全局论文库的管理员，当前没有租户隔离
-   - 通过 HTTPS 提供服务时必须设置 `PAPERPILOT_COOKIE_SECURE=true`
+   临时密码不会通过命令参数或环境变量接收，首次登录必须修改。管理员可在“设置 → 用户与服务管理”生成一次性、24 小时有效的邀请码；普通用户无需邮箱。论文、分类、文件、聊天、阅读数据、任务、设置和 AI 密钥均按不可变用户 UUID 隔离。HTTPS 部署必须设置 `PAPERPILOT_COOKIE_SECURE=true`。
 
 5. **启动应用**
 
@@ -180,7 +155,7 @@
    | `--port` | `7191` | 服务器监听端口 |
    | `--debug` | `False` | 启用调试模式（开发用） |
 
-   正式容器使用单个 Gunicorn `gthread` worker 和 8 个线程。维护中的 Compose 文件使用 v0.8.2 Web、翻译 Worker 与 Document Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192`、`7193` 只在 Compose 内部网络开放；三个容器都以非 root 用户运行。启动前请复制 `.env.example`、创建相互独立的 Worker token 与设置加密主密钥，并创建 staging 目录：
+   正式容器使用单个 Gunicorn `gthread` worker 和 8 个线程。维护中的 Compose 文件使用 v0.9.0 Web、翻译 Worker 与 Document Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192`、`7193` 只在 Compose 内部网络开放；三个容器都以非 root 用户运行。
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -193,6 +168,22 @@
    ```
 
    翻译 Worker 只挂载 `/work/jobs` 和自身 token；Document Worker 只挂载 3 GiB `/work/document-jobs` tmpfs 和自身 token。两者都不挂载论文库、SQLite、`.env`、设置主密钥或 Docker Socket。`/healthz` 只检查 Web 存活，`/readyz` 还检查 SQLite 和两个 Worker；Worker 短暂故障会让 readiness 返回 `503`，不会触发 Web 重启循环。
+
+### 从 v0.8.2 升级
+
+v0.9.0 将 Supabase 替换为本地账号，并引入完整租户所有权。升级前停止 v0.8.2，同时备份 SQLite 和论文目录。先创建 `ifzzh` 管理员，再执行迁移 dry-run/apply：
+
+```bash
+python -m paperpilot.auth_cli --db /app/db/paperpilot.db create-admin --username ifzzh
+python -m paperpilot.migrations.tenant_storage --db /app/db/paperpilot.db \
+  --papers-root /data/papers --owner ifzzh --dry-run
+python -m paperpilot.migrations.tenant_storage --db /app/db/paperpilot.db \
+  --papers-root /data/papers --owner ifzzh \
+  --key-file /run/secrets/paperpilot_settings_key \
+  --backup-dir /backups --apply
+```
+
+现有数据会归属 `ifzzh` 并迁入 `.users/<用户 UUID>/`；manifest 支持 `--rollback`。上线后管理员可在网页即时批准公网 HTTPS AI Provider，无需改 `.env` 或重启；私网目标仍只能由部署端批准。
 
 ### 从 v0.7.0 升级
 
@@ -310,7 +301,7 @@ ARXIV_PROXY=http://127.0.0.1:7890
 
 也可以使用按协议区分的变量：`ARXIV_HTTP_PROXY` 和
 `ARXIV_HTTPS_PROXY`。这些变量只会应用到 `arxiv.org` 和
-`export.arxiv.org`，不会影响 DBLP、LLM 服务、Supabase、MinerU 或其他后端请求。
+`export.arxiv.org`，不会影响 DBLP、LLM 服务、MinerU 或其他后端请求。
 
 Docker 构建时如需写入镜像默认值：
 
@@ -364,7 +355,7 @@ Daily ArXiv 支持两种每日抓取名额分配方式：
 
 ## ⚠️ 注意事项
 
-- **多用户支持**：当前版本 PaperPilot 专为个人或小团队设计，尚未完全支持多用户隔离（Multi-tenancy）。虽然支持通过 Supabase 进行鉴权，但所有用户共享同一套后台配置和论文库。建议在私有网络或受信任的环境中部署。
+- **多用户支持**：v0.9.0 起使用本地用户名与邀请码注册，并隔离各用户的论文、配置、聊天、任务与 AI 密钥。管理员只能管理账号角色和 Provider，不能读取其他用户密钥。
 - **BabelDOC 翻译**：基于 BabelDOC 功能的中英文对照翻译功能内存开销较大，并且整个 AI 翻译过程较长，建议需要特别精读论文时使用。
 
 ## 🗺️ Roadmap

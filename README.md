@@ -82,7 +82,7 @@ Supports user authentication for secure private access and public network deploy
 
 - **Backend**: Python 3.10+, Flask
 - **Frontend**: HTML5, CSS3, Vanilla JS (Responsive)
-- **Database**: SQLite (Metadata), Supabase (Optional Auth)
+- **Database**: SQLite (metadata, local accounts, and encrypted settings)
 - **AI Core**:
   - [MinerU](https://github.com/opendatalab/MinerU) (High-fidelity PDF parsing)
   - [BabelDOC](https://github.com/funstory-ai/BabelDOC) (Document Translation)
@@ -125,42 +125,19 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    uv pip install -e ".[server]"
    ```
 
-4. **Supabase Auth (Required in production)**
-   PaperPilot uses Supabase Email/Password authentication. API mutations require a Bearer token; validated browser sessions also receive an HttpOnly cookie so protected PDFs, thumbnails, and downloads can load normally. Production starts fail-closed and requires both Supabase values plus an explicit administrator email allowlist.
+4. **Local authentication (required in production)**
 
-   1) Create a Supabase project and get API values
-   - Create a project at https://supabase.com/
-   - In the Supabase dashboard, open **Project Settings → API**
-   - Copy **Project URL** as `SUPABASE_URL`
-   - Copy **Project API keys → anon public** as `SUPABASE_ANON_KEY`
+   PaperPilot uses local usernames and Argon2id password hashes. It does not require an email address or Supabase. Production starts fail-closed in `local` mode and requires at least one active administrator.
 
-   2) Enable Email auth
-   - Go to **Authentication → Providers**
-   - Enable **Email** (Email/Password)
-   - Create or invite administrator accounts from the Supabase dashboard. Public sign-up is not exposed by PaperPilot.
-
-   3) Configure redirect URLs (important)
-   - Go to **Authentication → URL Configuration**
-   - Set **Site URL** to your site origin, for example:
-   - Local: `http://localhost:7191`
-   - Production: `https://your-domain.com`
-   - Add allowed callback URLs in **Redirect URLs** (at least include your site root), for example:
-   - `http://localhost:7191/`
-   - `https://your-domain.com/`
-
-   4) Configure auth in PaperPilot
-   Copy and edit environment variables in the project root:
+   Copy the environment template, initialize the database, and create the first administrator through hidden interactive input:
    ```bash
    cp .env.example .env
-   # Fill in SUPABASE_URL, SUPABASE_ANON_KEY, and PAPERPILOT_ALLOWED_EMAILS
+   python -m paperpilot.auth_cli --db db/paperpilot.db create-admin --username ifzzh
    ```
-   Restart the server. Missing or partial production auth configuration stops startup instead of opening the API anonymously. For isolated local development only, set `PAPERPILOT_ENV=development`, `PAPERPILOT_AUTH_MODE=disabled`, and bind the published port to `127.0.0.1`.
 
-   **Security notes**
-   - Use only the `anon public` key; never put `service_role` keys into `.env` or ship them to the browser
-   - This project injects `SUPABASE_URL` and `SUPABASE_ANON_KEY` into pages for browser-side login, which is expected
-   - Every email in `PAPERPILOT_ALLOWED_EMAILS` is an administrator of the same shared library; PaperPilot does not provide tenant isolation
-   - Set `PAPERPILOT_COOKIE_SECURE=true` when the site is served over HTTPS
+   The temporary password is never accepted on the command line or through an environment variable, and the first login must change it. Administrators generate one-use, 24-hour invite codes for ordinary users from **Settings → Administration**. Users, papers, categories, files, settings, chats, tasks, reading data, and encrypted AI credentials are isolated by immutable user UUID.
+
+   Set `PAPERPILOT_COOKIE_SECURE=true` behind HTTPS. For localhost-only development, `development + local + COOKIE_SECURE=false` is supported. Explicit `development + disabled` remains test-only and must never be exposed.
 
 
 5. **Run the Application**
@@ -180,7 +157,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.8.2 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users. Copy `.env.example` to the deployment directory, create separate Worker tokens and the settings-encryption key, and create the translation staging directory before running `docker compose up -d`.
+   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.9.0 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -195,6 +172,22 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    The translation Worker receives only `/work/jobs` and its token. The Document Worker receives only a 3 GiB tmpfs mounted at `/work/document-jobs` and its separate token, and has no public network or host port. Neither Worker mounts the paper library, SQLite database, `.env`, settings key, or Docker socket. Successful output is validated and atomically copied into the paper library by the Web service.
 
    `/healthz` is the container liveness endpoint. `/readyz` additionally checks SQLite and both Workers and may return `503` during a Worker outage without causing a Web restart loop.
+
+### Upgrading from v0.8.2
+
+v0.9.0 replaces Supabase with local accounts and introduces complete tenant ownership. Stop v0.8.2 and back up both SQLite and the paper tree before continuing. Create the bootstrap administrator first, then preview and apply the offline migration:
+
+```bash
+python -m paperpilot.auth_cli --db /app/db/paperpilot.db create-admin --username ifzzh
+python -m paperpilot.migrations.tenant_storage --db /app/db/paperpilot.db \
+  --papers-root /data/papers --owner ifzzh --dry-run
+python -m paperpilot.migrations.tenant_storage --db /app/db/paperpilot.db \
+  --papers-root /data/papers --owner ifzzh \
+  --key-file /run/secrets/paperpilot_settings_key \
+  --backup-dir /backups --apply
+```
+
+The password prompts are hidden; never put a password in shell history. Existing records and files are assigned to `ifzzh` and moved under `.users/<user-uuid>/`. The generated manifest supports `--rollback <manifest>`. After deployment, public HTTPS AI Providers can be approved immediately from the administrator page; private targets remain deployment-only.
 
 ### Upgrading from v0.7.0
 
@@ -313,7 +306,7 @@ ARXIV_PROXY=http://127.0.0.1:7890
 
 Scheme-specific overrides are also supported: `ARXIV_HTTP_PROXY` and
 `ARXIV_HTTPS_PROXY`. These variables are applied only to `arxiv.org` and
-`export.arxiv.org`; DBLP, LLM providers, Supabase, MinerU, and other backend
+`export.arxiv.org`; DBLP, LLM providers, MinerU, and other backend
 requests are not proxied by this setting.
 
 When baking the value into a Docker image:
@@ -364,7 +357,7 @@ This keeps niche categories visible, avoids consuming all daily slots too early,
 
 ## ⚠️ Important Notes
 
-- **Multi-User Support**: The current version of PaperPilot is designed for individuals or small teams and does not yet fully support multi-tenancy. While it supports authentication via Supabase, all users share the same backend configuration and paper library. It is recommended to deploy in a private network or trusted environment.
+- **Multi-User Support**: v0.9.0 uses local usernames and invitation-only registration. Papers, files, settings, chats, jobs, reading data, and AI credentials are isolated by user UUID; administrators cannot retrieve another user's API keys.
 - **BabelDOC Translation**: The English-Chinese parallel translation feature based on BabelDOC has high memory consumption and a long processing time. It is recommended to use this feature primarily for papers that require intensive reading.
 
 ## 🗺️ Roadmap
