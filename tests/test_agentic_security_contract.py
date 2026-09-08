@@ -109,6 +109,44 @@ class OutboundPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(OutboundPolicyError, "origin_not_allowed"):
             policy.validate("https://other.example.test/v1", purpose="ai")
 
+    def test_explicit_proxy_fake_ip_range_supports_approved_https_hostname(self):
+        policy = OutboundPolicy(
+            public_origins={"https://api.example.test"},
+            private_origins=set(),
+            transfer_origins=set(),
+            proxy_fake_ip_networks={"198.18.0.0/15"},
+        )
+        resolver = self._resolve({"api.example.test": ["198.18.2.10"]})
+        with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
+            target = policy.validate("https://api.example.test/v1/chat", purpose="ai")
+        self.assertEqual(target.addresses, ("198.18.2.10",))
+
+    def test_proxy_fake_ip_exception_never_allows_ip_literal_or_private_lan(self):
+        fake_ip_policy = OutboundPolicy(
+            public_origins={"https://198.18.2.10"},
+            private_origins=set(),
+            transfer_origins=set(),
+            proxy_fake_ip_networks={"198.18.0.0/15"},
+        )
+        lan_policy = OutboundPolicy(
+            public_origins={"https://api.example.test"},
+            private_origins=set(),
+            transfer_origins=set(),
+            proxy_fake_ip_networks={"198.18.0.0/15"},
+        )
+        with patch(
+            "paperpilot.security.outbound.socket.getaddrinfo",
+            self._resolve({"198.18.2.10": ["198.18.2.10"]}),
+        ):
+            with self.assertRaisesRegex(OutboundPolicyError, "private_address_forbidden"):
+                fake_ip_policy.validate("https://198.18.2.10/v1", purpose="ai")
+        with patch(
+            "paperpilot.security.outbound.socket.getaddrinfo",
+            self._resolve({"api.example.test": ["10.0.0.8"]}),
+        ):
+            with self.assertRaisesRegex(OutboundPolicyError, "private_address_forbidden"):
+                lan_policy.validate("https://api.example.test/v1", purpose="ai")
+
     def test_private_origin_requires_private_allowlist(self):
         resolver = self._resolve({"mineru": ["172.20.0.4"]})
         denied = OutboundPolicy(

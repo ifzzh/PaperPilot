@@ -6,7 +6,12 @@ from flask import Flask
 
 from paperpilot.database import connection
 from paperpilot.database.db_manager import init_db_schema
-from paperpilot.local_auth import LocalAuthError, LocalAuthService, normalize_username
+from paperpilot.local_auth import (
+    LocalAuthError,
+    LocalAuthService,
+    normalize_username,
+    validate_password,
+)
 
 
 class TestLocalAuth(unittest.TestCase):
@@ -58,6 +63,15 @@ class TestLocalAuth(unittest.TestCase):
         for value in ("ab", "name@example.com", "空白", "has space"):
             with self.subTest(value=value), self.assertRaises(LocalAuthError):
                 normalize_username(value)
+
+    def test_password_contract_accepts_eight_characters(self):
+        self.assertEqual(validate_password("12345678"), "12345678")
+        self.assertEqual(validate_password("abcdefgh", temporary=True), "abcdefgh")
+        for value in ("1234567", "a" * 129):
+            with self.subTest(length=len(value)), self.assertRaisesRegex(
+                LocalAuthError, "invalid_password"
+            ):
+                validate_password(value)
 
     def test_last_active_administrator_is_protected(self):
         admin = self.service.create_bootstrap_admin("ifzzh", "temporary12")
