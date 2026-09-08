@@ -21,6 +21,7 @@ from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.document_worker.client import DocumentWorkerClient
 from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
+from paperpilot.security.identity import current_user_id
 from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
 from paperpilot.security.paths import PathSecurityError, ensure_confined, safe_join
 from paperpilot.tools.basic_tools.daily_arxiv import (
@@ -1119,6 +1120,21 @@ def register_daily_arxiv_routes(
     @app.route("/api/daily-arxiv/scheduler/status", methods=["GET"])
     def api_scheduler_status():
         try:
+            owns_scheduler = (
+                not manager._scheduler_running
+                or manager._scheduler_owner_id == current_user_id()
+            )
+            if not owns_scheduler:
+                return jsonify(
+                    {
+                        "success": True,
+                        "is_running": False,
+                        "llm_configured": bool(is_llm_configured()),
+                        "llm_api_failed": False,
+                        "llm_api_error_message": "",
+                        "last_fetch_time": {},
+                    }
+                )
             last_fetch_time = {}
             for k, v in getattr(manager, "_last_fetch_time", {}).items():
                 last_fetch_time[k] = v.isoformat() if v else None
@@ -1143,6 +1159,10 @@ def register_daily_arxiv_routes(
         """Manually start the scheduler"""
         try:
             if manager._scheduler_running:
+                if manager._scheduler_owner_id != current_user_id():
+                    return jsonify(
+                        {"success": False, "error": "scheduler_unavailable"}
+                    ), 409
                 return jsonify(
                     {
                         "success": True,

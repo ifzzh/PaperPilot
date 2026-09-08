@@ -27,6 +27,7 @@ import arxiv
 
 from paperpilot.database.dao.paper_dao import PaperDAO
 from paperpilot.database.dao.daily_arxiv_dao import DailyArxivDAO
+from paperpilot.security.identity import current_identity, run_as_identity
 from paperpilot.database.dao.document_job_dao import DocumentJobDAO
 from paperpilot.document_worker.client import DocumentWorkerClient
 from paperpilot.document_worker.safety import bounded_copy
@@ -1001,6 +1002,7 @@ class DailyArxivManager:
         # scheduler
         self._scheduler_thread = None
         self._scheduler_running = False
+        self._scheduler_owner_id: Optional[str] = None
         self._scheduler_dispatch_callback = None
         self._last_fetch_time: Dict[str, datetime] = {}
 
@@ -2280,9 +2282,13 @@ class DailyArxivManager:
         if self._scheduler_running:
             return
 
+        identity = current_identity()
+        self._scheduler_owner_id = identity.user_id
         self._scheduler_running = True
         self._scheduler_thread = threading.Thread(
-            target=self._scheduler_loop, daemon=True
+            target=run_as_identity,
+            args=(identity, self._scheduler_loop),
+            daemon=True,
         )
         self._scheduler_thread.start()
         print("[DailyArxiv] Scheduler started")
@@ -2302,6 +2308,8 @@ class DailyArxivManager:
         self._scheduler_running = False
         if self._scheduler_thread:
             self._scheduler_thread.join(timeout=5)
+        self._scheduler_thread = None
+        self._scheduler_owner_id = None
         print("[DailyArxiv] Scheduler has stopped")
 
     def _scheduler_loop(self):
