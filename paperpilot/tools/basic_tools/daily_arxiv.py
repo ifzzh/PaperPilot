@@ -2345,6 +2345,7 @@ class DailyArxivManager:
         }
 
         PaperDAO.save_paper(dao_data)
+        DailyArxivDAO.save_candidate(paper_dict)
 
     def cleanup_old_papers(self, retention_days: int = 7):
         """

@@ -157,6 +157,32 @@ CREATE TABLE IF NOT EXISTS daily_arxiv_reads_v2 (
     PRIMARY KEY(owner_id, arxiv_id)
 );
 
+CREATE TABLE IF NOT EXISTS daily_arxiv_topics (
+    owner_id TEXT NOT NULL,
+    topic_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    quota INTEGER NOT NULL,
+    config_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(owner_id, topic_id)
+);
+
+CREATE TABLE IF NOT EXISTS daily_arxiv_candidates (
+    owner_id TEXT NOT NULL,
+    arxiv_id TEXT NOT NULL,
+    release_date TEXT NOT NULL,
+    topic_id TEXT,
+    relevance_score REAL NOT NULL DEFAULT 0,
+    selection_reason TEXT,
+    artifact_status TEXT NOT NULL DEFAULT 'candidate',
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    next_retry_at TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(owner_id, arxiv_id)
+);
+CREATE INDEX IF NOT EXISTS idx_daily_candidates_release
+    ON daily_arxiv_candidates(owner_id, release_date, relevance_score DESC);
+
 -- Isolated translation worker jobs. Credentials are deliberately never stored.
 CREATE TABLE IF NOT EXISTS translation_jobs (
     job_id TEXT PRIMARY KEY,

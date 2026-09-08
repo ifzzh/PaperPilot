@@ -316,6 +316,7 @@ def register_daily_arxiv_routes(
             data = normalize_daily_arxiv_settings(data)
             with open(daily_arxiv_settings_file, "w", encoding="utf-8") as fp:
                 json.dump(data, fp, ensure_ascii=False, indent=2)
+            DailyArxivDAO.save_topics(data.get("researchTopics", []))
             return jsonify(
                 {"success": True, "categoryQuotas": data.get("categoryQuotas", {})}
             )

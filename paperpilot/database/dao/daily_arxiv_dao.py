@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from ..connection import get_db
 from paperpilot.security.identity import current_user_id
 
@@ -24,3 +25,43 @@ class DailyArxivDAO:
                     pass
             return d
         return None
+
+    @staticmethod
+    def save_topics(topics):
+        db = get_db()
+        owner_id = current_user_id()
+        now = datetime.now(timezone.utc).isoformat()
+        db.execute('DELETE FROM daily_arxiv_topics WHERE owner_id=?', (owner_id,))
+        for topic in topics or []:
+            db.execute(
+                '''INSERT INTO daily_arxiv_topics
+                   (owner_id,topic_id,name,quota,config_json,updated_at)
+                   VALUES (?,?,?,?,?,?)''',
+                (owner_id, topic['id'], topic['name'], int(topic['quota']),
+                 json.dumps(topic, ensure_ascii=False), now),
+            )
+        db.commit()
+
+    @staticmethod
+    def save_candidate(paper):
+        matches = paper.get('matched_topics') or []
+        topic_id = matches[0].get('id') if matches and isinstance(matches[0], dict) else None
+        db = get_db()
+        db.execute(
+            '''INSERT INTO daily_arxiv_candidates
+               (owner_id,arxiv_id,release_date,topic_id,relevance_score,selection_reason,
+                artifact_status,retry_count,next_retry_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(owner_id,arxiv_id) DO UPDATE SET
+                 release_date=excluded.release_date, topic_id=excluded.topic_id,
+                 relevance_score=excluded.relevance_score,
+                 selection_reason=excluded.selection_reason,
+                 artifact_status=excluded.artifact_status,
+                 retry_count=excluded.retry_count, next_retry_at=excluded.next_retry_at,
+                 updated_at=excluded.updated_at''',
+            (current_user_id(), paper['arxiv_id'], paper.get('fetch_date') or paper.get('daily_date'),
+             topic_id, float(paper.get('relevance_score', 0) or 0), paper.get('selection_reason'),
+             paper.get('artifact_status', 'candidate'), int(paper.get('asset_retry_count', 0) or 0),
+             paper.get('asset_next_retry_at'), datetime.now(timezone.utc).isoformat()),
+        )
+        db.commit()
