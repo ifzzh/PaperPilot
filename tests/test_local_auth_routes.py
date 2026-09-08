@@ -72,10 +72,32 @@ class TestLocalAuthRoutes(unittest.TestCase):
             "invite_code": invite,
         })
         self.assertEqual(replay.status_code, 400)
+        self.assertEqual(replay.get_json()["error"], "registration_failed")
         login = self.client.post("/api/auth/login", json={
             "username": "reader_one", "password": "long-reader-password",
         })
         self.assertEqual(login.get_json()["user"]["role"], "user")
+
+    def test_registration_failures_do_not_reveal_username_or_invite_state(self):
+        csrf = self._login()
+        invite = self.client.post(
+            "/api/admin/invites", headers={"X-CSRF-Token": csrf}
+        ).get_json()["invite_code"]
+        self.client.delete("/api/auth/session", headers={"X-CSRF-Token": csrf})
+        created = self.client.post("/api/auth/register", json={
+            "username": "reader_one", "password": "long-reader-password",
+            "invite_code": invite,
+        })
+        self.assertEqual(created.status_code, 201)
+
+        for payload in (
+            {"username": "reader_one", "password": "long-reader-password", "invite_code": "invalid"},
+            {"username": "reader_two", "password": "long-reader-password", "invite_code": "invalid"},
+        ):
+            with self.subTest(username=payload["username"]):
+                response = self.client.post("/api/auth/register", json=payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.get_json(), {"error": "registration_failed"})
 
     def test_bootstrap_user_is_restricted_until_password_change(self):
         with app_module.app.app_context():

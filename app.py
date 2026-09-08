@@ -695,10 +695,11 @@ def auth_register():
             data.get("username"), data.get("password"), data.get("invite_code")
         )
         return jsonify({"success": True, "user": user}), 201
-    except LocalAuthError as exc:
-        g.audit_reason = exc.reason
-        status = 409 if exc.reason == "username_unavailable" else 400
-        return jsonify({"error": exc.reason}), status
+    except LocalAuthError:
+        # Public registration failures are deliberately indistinguishable so an
+        # unauthenticated caller cannot enumerate usernames or invite state.
+        g.audit_reason = "registration_failed"
+        return jsonify({"error": "registration_failed"}), 400
 
 
 @app.route("/api/auth/session", methods=["GET", "DELETE"])

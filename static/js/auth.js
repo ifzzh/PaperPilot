@@ -189,8 +189,9 @@ async function handleAuth(event) {
         }
     } catch (error) {
         const messages = {
-            invalid_credentials: '用户名或密码错误', invalid_invite: '邀请码无效、过期或已使用',
-            username_unavailable: '用户名已被使用', invalid_password: '密码必须为 12–128 个字符',
+            invalid_credentials: '用户名或密码错误',
+            registration_failed: '注册失败，请检查用户名、密码和邀请码',
+            invalid_password: '密码必须为 12–128 个字符',
             invalid_username: '用户名须为 3–32 位小写字母、数字、下划线或连字符',
             invalid_reset_code: '重置码无效、过期或已使用', csrf_failed: '安全令牌失效，请重新登录',
         };
