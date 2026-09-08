@@ -202,6 +202,116 @@ class LocalAuthService:
         database.commit()
         return {"id": invite_id, "created_at": now, "expires_at": now + ONE_TIME_CODE_SECONDS}, code
 
+    def list_invites(self) -> list[dict]:
+        now = int(self._now())
+        rows = get_db().execute(
+            """SELECT id,created_at,expires_at,used_at,revoked_at
+               FROM invite_codes ORDER BY created_at DESC"""
+        ).fetchall()
+        return [
+            {
+                **dict(row),
+                "status": (
+                    "used" if row["used_at"] else "revoked" if row["revoked_at"]
+                    else "expired" if row["expires_at"] <= now else "active"
+                ),
+            }
+            for row in rows
+        ]
+
+    def revoke_invite(self, invite_id: str) -> None:
+        database = get_db()
+        database.execute(
+            "UPDATE invite_codes SET revoked_at=? WHERE id=? AND used_at IS NULL",
+            (int(self._now()), invite_id),
+        )
+        database.commit()
+
+    def list_users(self) -> list[dict]:
+        rows = get_db().execute(
+            "SELECT * FROM users ORDER BY created_at,username_normalized"
+        ).fetchall()
+        return [self._public_user(row) for row in rows]
+
+    def update_user(self, actor_id: str, user_id: str, *, role=None, status=None) -> dict:
+        if role not in {None, "admin", "user"} or status not in {None, "active", "disabled"}:
+            raise LocalAuthError("invalid_user_update")
+        database = get_db()
+        target = database.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        if target is None:
+            raise LocalAuthError("user_not_found")
+        next_role, next_status = role or target["role"], status or target["status"]
+        removing_active_admin = (
+            target["role"] == "admin" and target["status"] == "active"
+            and (next_role != "admin" or next_status != "active")
+        )
+        if removing_active_admin:
+            count = database.execute(
+                "SELECT COUNT(*) FROM users WHERE role='admin' AND status='active'"
+            ).fetchone()[0]
+            if count <= 1:
+                raise LocalAuthError("last_administrator_required")
+        now = int(self._now())
+        database.execute(
+            "UPDATE users SET role=?,status=?,updated_at=? WHERE id=?",
+            (next_role, next_status, now, user_id),
+        )
+        if next_status == "disabled" or next_role != target["role"]:
+            database.execute(
+                "UPDATE auth_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+                (now, user_id),
+            )
+        database.commit()
+        row = database.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return self._public_user(row)
+
+    def create_password_reset(self, admin_id: str, user_id: str) -> tuple[dict, str]:
+        database = get_db()
+        if database.execute("SELECT 1 FROM users WHERE id=?", (user_id,)).fetchone() is None:
+            raise LocalAuthError("user_not_found")
+        code, reset_id, now = secrets.token_urlsafe(24), str(uuid.uuid4()), int(self._now())
+        database.execute(
+            """INSERT INTO password_reset_codes
+               (id,token_hash,user_id,created_by,created_at,expires_at)
+               VALUES (?,?,?,?,?,?)""",
+            (reset_id, _digest(code), user_id, admin_id, now, now + ONE_TIME_CODE_SECONDS),
+        )
+        database.commit()
+        return {"id": reset_id, "expires_at": now + ONE_TIME_CODE_SECONDS}, code
+
+    def reset_password(self, code: object, replacement: object) -> None:
+        validate_password(replacement)
+        if not isinstance(code, str) or not code:
+            raise LocalAuthError("invalid_reset_code")
+        database = get_db()
+        now = int(self._now())
+        row = database.execute(
+            "SELECT * FROM password_reset_codes WHERE token_hash=?", (_digest(code),)
+        ).fetchone()
+        if (
+            row is None or row["used_at"] is not None or row["revoked_at"] is not None
+            or row["expires_at"] <= now
+        ):
+            raise LocalAuthError("invalid_reset_code")
+        database.execute("BEGIN IMMEDIATE")
+        database.execute(
+            """UPDATE users SET password_hash=?,must_change_password=0,
+               password_changed_at=?,updated_at=? WHERE id=?""",
+            (self._passwords.hash(replacement), now, now, row["user_id"]),
+        )
+        changed = database.execute(
+            "UPDATE password_reset_codes SET used_at=? WHERE id=? AND used_at IS NULL",
+            (now, row["id"]),
+        ).rowcount
+        if changed != 1:
+            database.rollback()
+            raise LocalAuthError("invalid_reset_code")
+        database.execute(
+            "UPDATE auth_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+            (now, row["user_id"]),
+        )
+        database.commit()
+
     def register(self, username: object, password: object, invite_code: object) -> dict:
         normalized = normalize_username(username)
         validate_password(password)

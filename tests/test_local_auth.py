@@ -59,6 +59,20 @@ class TestLocalAuth(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(LocalAuthError):
                 normalize_username(value)
 
+    def test_last_active_administrator_is_protected(self):
+        admin = self.service.create_bootstrap_admin("ifzzh", "temporary12")
+        with self.assertRaisesRegex(LocalAuthError, "last_administrator_required"):
+            self.service.update_user(
+                admin["id"], admin["id"], role="user", status="active"
+            )
+
+    def test_password_reset_is_single_use(self):
+        admin = self.service.create_bootstrap_admin("ifzzh", "temporary12")
+        _metadata, code = self.service.create_password_reset(admin["id"], admin["id"])
+        self.service.reset_password(code, "replacement password")
+        with self.assertRaisesRegex(LocalAuthError, "invalid_reset_code"):
+            self.service.reset_password(code, "another replacement")
+
 
 if __name__ == "__main__":
     unittest.main()
