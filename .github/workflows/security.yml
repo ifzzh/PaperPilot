@@ -1,0 +1,47 @@
+name: Security gate
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main, personal-paper-reading]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Build locked test environment
+        run: docker build --target test --tag paperpilot:v0.8-test .
+
+      - name: Run dependency gate
+        run: ./scripts/security_scan.sh dependencies
+
+      - name: Build final images
+        run: |
+          docker build --target runtime --tag paperpilot:ci-web .
+          docker build --target translation-worker --tag paperpilot:ci-worker .
+          docker build --target document-worker --tag paperpilot:ci-document .
+
+      - name: Run source and image gates
+        env:
+          PAPERPILOT_WEB_IMAGE: paperpilot:ci-web
+          PAPERPILOT_WORKER_IMAGE: paperpilot:ci-worker
+          PAPERPILOT_DOCUMENT_IMAGE: paperpilot:ci-document
+        run: |
+          ./scripts/security_scan.sh filesystem
+          ./scripts/security_scan.sh images
+
+      - name: Upload reports and SBOMs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: paperpilot-security-${{ github.sha }}
+          path: /tmp/paperpilot-security
+          if-no-files-found: error
+          retention-days: 30

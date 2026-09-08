@@ -42,6 +42,9 @@ COPY app.py ./
 COPY paperpilot ./paperpilot
 COPY static ./static
 COPY templates ./templates
+COPY scripts ./scripts
+COPY security ./security
+COPY .github ./.github
 COPY tests ./tests
 RUN pytest -m "not integration" -q
 
