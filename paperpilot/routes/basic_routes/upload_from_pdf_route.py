@@ -4,6 +4,7 @@ import os
 import re
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Protocol
 
@@ -13,11 +14,17 @@ from werkzeug.utils import secure_filename
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import PaperStore
 from paperpilot.database.dao.user_data_dao import ReadingListDAO
-from paperpilot.security.paths import PathSecurityError, safe_join
-from paperpilot.tools.basic_tools.upload_paper import (
-    fetch_bibtex_from_dblp,
-    process_uploaded_pdf_fast,
+from paperpilot.database.dao.document_job_dao import DocumentJobDAO
+from paperpilot.document_worker.client import (
+    DocumentWorkerClient,
+    DocumentWorkerRejected,
+    DocumentWorkerUnavailable,
 )
+from paperpilot.document_worker.safety import DocumentLimitError, bounded_copy
+from paperpilot.security.paths import safe_join
+
+
+_document_monitors = ThreadPoolExecutor(max_workers=2, thread_name_prefix="document-monitor")
 
 
 class GetCategoriesFn(Protocol):
@@ -61,114 +68,83 @@ def register_upload_from_pdf_routes(
     save_paper_metadata: SavePaperMetadataFn,
     reading_list_file: str,
     paper_store: PaperStore,
+    document_client: DocumentWorkerClient | None = None,
 ) -> None:
+    document_client = document_client or DocumentWorkerClient()
     def _add_to_reading_list(paper_id: str) -> None:
         ReadingListDAO.add_item(paper_id, datetime.now().isoformat())
 
-    def _process_pdf_metadata_background(
-        paper_id: str,
-        file_path: str,
+    def _complete_pdf_job(
+        task_id: str,
         original_filename: str,
         category_id: str,
         category_path: list[str],
         category_folder: str,
-    ):
-        """Background processing: Use new unified interface processing PDF Upload (two stages: first arXiv,back DBLP）"""
+    ) -> None:
         try:
-            print(f"[Backstage] Start processingPDFmetadata: {file_path}")
-
-            # 【stage1】Get it quickly arXiv message(no wait DBLP）
-            paper_info = process_uploaded_pdf_fast(file_path, original_filename)
-
-            if not paper_info:
-                print("[Backstage] Unable to obtain paper information, keep original file name")
-                paper_info = {}
-
-            # Rename files based on title
-            current_filename = os.path.basename(file_path)
-            new_filename = current_filename
-            new_file_path = file_path
-
-            if paper_info.get("title"):
-                clean_title = _clean_filename(paper_info["title"])
-                if clean_title:
-                    new_filename = f"{clean_title}.pdf"
-                    new_file_path = str(safe_join(category_folder, new_filename))
-
-                    counter = 1
-                    original_new_filename = new_filename
-                    while os.path.exists(new_file_path):
-                        name, ext = os.path.splitext(original_new_filename)
-                        new_filename = f"{name}_{counter}{ext}"
-                        new_file_path = str(safe_join(category_folder, new_filename))
-                        counter += 1
-
-                    try:
-                        os.rename(file_path, new_file_path)
-                        print(f"[Backstage] File has been renamed to: {new_filename}")
-                    except Exception as exc:  # noqa: BLE001
-                        print(f"[Backstage] Failed to rename file: {exc}")
-                        new_file_path = file_path
-                        new_filename = current_filename
-
-            # 【stage1】Update now Paper object(arXiv information)
-            paper = paper_store.get(paper_id)
-            if paper:
-                paper.filename = new_filename
-                paper.file_path = new_file_path
-                paper.title = paper_info.get("title") or paper.title
-                paper.authors = paper_info.get("authors", "")
-                paper.arxiv_id = paper_info.get("arxiv_id")
-                # if there is arxiv_id,set up arxiv_url
-                if paper_info.get("arxiv_id"):
-                    paper.arxiv_url = (
-                        paper_info.get("arxiv_url")
-                        or f"https://arxiv.org/abs/{paper_info.get('arxiv_id')}"
-                    )
-                paper.arxiv_published_date = paper_info.get("published_date")
-                paper.affiliation = paper_info.get("affiliation", "")
-                paper.year = paper_info.get("year", "")
-                paper.abstract = paper_info.get("abstract", "")
-                paper.summary = paper_info.get("summary", "")
-                paper.bibtex = ""  # Temporarily empty
-                paper.keywords = paper_info.get("keywords", "")
-                paper.subject = paper_info.get("subject", "")
-
-                # Save the updated paper（arXiv information)
-                paper_store.upsert(
-                    paper, category_id=category_id, category_path=category_path
+            while True:
+                state = document_client.get(task_id)
+                if state["status"] in {"completed", "failed", "cancelled"}:
+                    break
+                DocumentJobDAO.update(
+                    task_id,
+                    state["status"],
+                    progress=max(0, min(99, int(state.get("progress") or 0))),
+                    error=state.get("error"),
                 )
-                save_paper_metadata(new_file_path, paper)
-                print(f"[Backstage stage1] ✅ arXiv Information has been updated: {new_filename}")
-
-                # 【stage2】Background acquisition BibTeX(priority DBLP, use after failure arXiv）
-                if paper_info.get("title") and paper_info.get("authors"):
-                    print(f"[Backstage stage2] Start getting BibTeX...")
-                    arxiv_id = paper_info.get("arxiv_id")
-                    bibtex = fetch_bibtex_from_dblp(
-                        title=paper_info["title"],
-                        authors=paper_info["authors"],
-                        arxiv_id=arxiv_id or "",
-                    )
-                    if bibtex:
-                        paper.bibtex = bibtex
-                        paper_store.upsert(
-                            paper, category_id=category_id, category_path=category_path
-                        )
-                        save_paper_metadata(new_file_path, paper)
-                        print(f"[Backstage stage2] ✅ BibTeX updated")
-                    else:
-                        print(f"[Backstage stage2] ❌ Not obtained BibTeX")
-
-                print(f"[Backstage] Paper metadata processing completed: {new_filename}")
-            else:
-                print(f"[Backstage] warn: not found paper {paper_id}")
-
-        except Exception as exc:  # noqa: BLE001
-            print(f"[Backstage] deal withPDFMetadata failed: {exc}")
-            import traceback
-
-            traceback.print_exc()
+                threading.Event().wait(0.5)
+            if state["status"] != "completed":
+                DocumentJobDAO.update(
+                    task_id,
+                    state["status"],
+                    progress=max(0, min(100, int(state.get("progress") or 0))),
+                    error=state.get("error"),
+                )
+                return
+            result = document_client.result_json(task_id)
+            metadata = result.get("metadata") if isinstance(result, dict) else {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            title = _clean_filename(str(metadata.get("title") or ""))
+            base_title = title or os.path.splitext(original_filename)[0]
+            filename = secure_filename(f"{base_title}.pdf") or f"{uuid.uuid4()}.pdf"
+            target = safe_join(category_folder, filename)
+            counter = 1
+            while target.exists():
+                stem, extension = os.path.splitext(filename)
+                target = safe_join(category_folder, f"{stem}_{counter}{extension}")
+                counter += 1
+            source = document_client.job_directory(task_id) / "work" / "input.pdf"
+            temporary = target.with_name(f".{target.name}.{task_id}.tmp")
+            with source.open("rb") as reader:
+                bounded_copy(reader, temporary, document_client.limits.max_pdf_bytes)
+            os.chmod(temporary, 0o660)
+            os.replace(temporary, target)
+            paper_id = str(uuid.uuid4())
+            paper = Paper.from_dict({
+                "id": paper_id,
+                "filename": target.name,
+                "original_filename": original_filename,
+                "file_path": str(target),
+                "upload_date": datetime.now().isoformat(),
+                "title": title or os.path.splitext(original_filename)[0],
+                "authors": str(metadata.get("author") or "")[:4096],
+                "subject": str(metadata.get("subject") or "")[:4096],
+                "keywords": str(metadata.get("keywords") or "")[:4096],
+                "notes": "",
+                "starred": False,
+            })
+            registered = paper_store.upsert(
+                paper, category_id=category_id, category_path=category_path
+            )
+            save_paper_metadata(str(target), registered)
+            _add_to_reading_list(registered.id)
+            DocumentJobDAO.update(task_id, "completed", progress=100, paper_id=registered.id)
+            document_client.cleanup(task_id)
+        except DocumentWorkerUnavailable:
+            DocumentJobDAO.update(task_id, "failed", error="document_worker_unavailable")
+        except Exception:
+            DocumentJobDAO.update(task_id, "failed", error="document_processing_failed")
 
     @app.route("/api/upload", methods=["POST"])
     def api_upload():
@@ -184,6 +160,9 @@ def register_upload_from_pdf_routes(
         if not file.filename.lower().endswith(".pdf"):
             return jsonify({"success": False, "error": "Only PDF files are allowed"})
 
+        if not document_client.health():
+            return jsonify({"success": False, "error": "document_worker_unavailable"}), 503
+
         categories = get_categories()
 
         # Special handling: To-be-read listcategory_id
@@ -195,80 +174,71 @@ def register_upload_from_pdf_routes(
                 return jsonify({"success": False, "error": "Category not found"})
 
         category_folder = create_category_folder(category_id)
-        filename = secure_filename(file.filename)
-        if not filename:
+        original_filename = file.filename
+        if not secure_filename(original_filename):
             return jsonify({"success": False, "error": "Invalid file name"}), 400
+        task_id = str(uuid.uuid4())
         try:
-            file_path = str(safe_join(category_folder, filename))
-        except PathSecurityError:
-            return jsonify({"success": False, "error": "Invalid file name"}), 400
+            document_client.stage(task_id, "pdf_inspect", file.stream)
+            DocumentJobDAO.create(task_id, "pdf_inspect")
+            document_client.create(task_id, "pdf_inspect")
+        except DocumentLimitError as exc:
+            try:
+                document_client.cleanup(task_id)
+            except Exception:
+                pass
+            return jsonify({"success": False, "error": exc.reason}), 413
+        except DocumentWorkerRejected as exc:
+            return jsonify({"success": False, "error": exc.reason}), exc.status_code
+        except Exception:
+            try:
+                document_client.cleanup(task_id)
+            except Exception:
+                pass
+            return jsonify({"success": False, "error": "document_worker_unavailable"}), 503
+        _document_monitors.submit(
+            _complete_pdf_job,
+            task_id,
+            original_filename,
+            category_id,
+            category_path,
+            category_folder,
+        )
+        return jsonify({"success": True, "task_id": task_id, "status": "queued"}), 202
 
-        # Handle file name conflicts
-        counter = 1
-        original_filename = filename
-        while os.path.exists(file_path):
-            name, ext = os.path.splitext(original_filename)
-            filename = f"{name}_{counter}{ext}"
-            file_path = str(safe_join(category_folder, filename))
-            counter += 1
-
-        # Save file now
-        file.save(file_path)
-        print(f"File saved: {file_path}")
-
-        # Create placeholder Paper Object (using original filename)
-        paper_id = str(uuid.uuid4())
-        paper_info = {
-            "id": paper_id,
-            "filename": filename,
-            "original_filename": file.filename,
-            "file_path": file_path,
-            "upload_date": datetime.now().isoformat(),
-            "title": os.path.splitext(file.filename)[0],  # Temporarily use filename as title
-            "authors": "",
-            "arxiv_id": None,
-            "arxiv_published_date": None,
-            "affiliation": "",
-            "year": "",
-            "journal": "",
-            "abstract": "",
-            "summary": "",
-            "bibtex": "",
-            "keywords": "",
-            "subject": "",
-            "notes": "",
-            "starred": False,
-            "read_time": 0,
-            "analysis_view_time": 0,
-            "translation_time": 0,
-            "analysis_time": 0,
+    @app.get("/api/upload/<task_id>")
+    def api_upload_status(task_id: str):
+        job = DocumentJobDAO.get(task_id)
+        if not job or job.get("kind") != "pdf_inspect":
+            return jsonify({"success": False, "error": "Task does not exist"}), 404
+        payload = {
+            "success": True,
+            "task_id": task_id,
+            "status": job["status"],
+            "progress": job["progress"],
+            "error": job["error"],
         }
+        if job.get("paper_id"):
+            paper = paper_store.get(job["paper_id"])
+            if paper:
+                payload["paper"] = paper.to_dict()
+        return jsonify(payload)
 
-        paper = Paper.from_dict(paper_info)
-        if not paper:
-            return jsonify({"success": False, "error": "Failed to create thesis object"}), 500
+    @app.delete("/api/upload/<task_id>")
+    def api_cancel_upload(task_id: str):
+        job = DocumentJobDAO.get(task_id)
+        if not job or job.get("kind") != "pdf_inspect":
+            return jsonify({"success": False, "error": "Task does not exist"}), 404
+        if job["status"] in {"completed", "failed", "cancelled"}:
+            return jsonify({"success": True, "status": job["status"]})
+        try:
+            document_client.cancel(task_id)
+            DocumentJobDAO.update(task_id, "cancelled", error="cancelled")
+            document_client.cleanup(task_id)
+        except DocumentWorkerUnavailable:
+            return jsonify({"success": False, "error": "document_worker_unavailable"}), 503
+        return jsonify({"success": True, "status": "cancelled"})
 
-        # Register now paper(Let users see)
-        registered_paper = paper_store.upsert(
-            paper, category_id=category_id, category_path=category_path
-        )
-        save_paper_metadata(file_path, registered_paper)
-        _add_to_reading_list(registered_paper.id)
-
-        # Start a background thread to process metadata
-        thread = threading.Thread(
-            target=_process_pdf_metadata_background,
-            args=(
-                paper_id,
-                file_path,
-                file.filename,
-                category_id,
-                category_path,
-                category_folder,
-            ),
-            daemon=True,
-        )
-        thread.start()
-
-        print(f"[Return immediately] The paper has been added and is being processed in the background: {filename}")
-        return jsonify({"success": True, "paper": registered_paper.to_dict()})
+    for interrupted in DocumentJobDAO.list_active():
+        if interrupted.get("kind") == "pdf_inspect":
+            DocumentJobDAO.update(interrupted["job_id"], "failed", error="interrupted")

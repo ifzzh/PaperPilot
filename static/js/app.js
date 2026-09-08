@@ -1925,34 +1925,8 @@ async function uploadFile(file, categoryId) {
         }).then(response => response.json())
             .then(async result => {
                 if (result.success) {
-                    // Refresh silently without displaying success prompt
-
-                    // Synchronously update category counts and to-be-read list counts
-                    updateCategoriesData();
-                    renderCategoryTreeWithState();
-                    const updatedPapers = await updateReadingListCount();
-
-                    // If uploaded to the currently selected category, refresh the list immediately（Show placeholder）
-                    if (currentCategoryId === categoryId) {
-                        loadPapers(currentCategoryId);
-                    }
-                    // If uploaded to the to-read list, refresh the to-read list
-                    if (categoryId === 'reading_list_temp' && currentViewMode === 'reading-list') {
-                        showReadingList(updatedPapers);
-                    }
-
-                    // Start background polling to check whether the metadata update is completed
-                    if (result.paper && result.paper.id) {
-                        // Use placeholders paper data as initial snapshot
-                        const initialSnapshot = {
-                            title: result.paper.title || '',
-                            authors: result.paper.authors || '',
-                            abstract: result.paper.abstract || '',
-                            bibtex: result.paper.bibtex || '',
-                            arxiv_id: result.paper.arxiv_id || '',
-                        };
-                        startPollingPaperUpdate(result.paper.id, categoryId, initialSnapshot);
-                    }
+                    showMessage(`${file.name} is queued for a security check`, 'info');
+                    pollDocumentUpload(result.task_id, file.name, categoryId);
                 } else {
                     // Only show error on failure
                     showMessage(`Upload failed: ${result.error}`, 'error');
@@ -1969,6 +1943,45 @@ async function uploadFile(file, categoryId) {
         console.error('Upload request failed:', error);
         showMessage('Upload failed', 'error');
     }
+}
+
+async function pollDocumentUpload(taskId, filename, categoryId) {
+    if (!taskId) {
+        showMessage(`${filename} Upload failed: missing task ID`, 'error');
+        return;
+    }
+    for (let attempt = 0; attempt < 450; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 800));
+        try {
+            const response = await fetch(`/api/upload/${encodeURIComponent(taskId)}`);
+            const state = await response.json();
+            if (!response.ok || !state.success) {
+                throw new Error(state.error || 'Unable to read upload status');
+            }
+            if (state.status === 'completed' && state.paper) {
+                showMessage(`${filename} passed the security check and was imported`, 'success');
+                updateCategoriesData();
+                renderCategoryTreeWithState();
+                const updatedPapers = await updateReadingListCount();
+                if (currentCategoryId === categoryId) {
+                    loadPapers(currentCategoryId);
+                }
+                if (categoryId === 'reading_list_temp' && currentViewMode === 'reading-list') {
+                    showReadingList(updatedPapers);
+                }
+                return;
+            }
+            if (state.status === 'failed' || state.status === 'cancelled') {
+                showMessage(`${filename} was rejected: ${state.error || state.status}`, 'error');
+                return;
+            }
+        } catch (error) {
+            console.error('Failed to poll document upload:', error);
+            showMessage(`${filename} status check failed`, 'error');
+            return;
+        }
+    }
+    showMessage(`${filename} security check timed out`, 'error');
 }
 
 // Polling to check for paper updates（For background metadata processing）

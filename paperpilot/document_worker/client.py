@@ -66,6 +66,15 @@ class DocumentWorkerClient:
             raise DocumentWorkerRejected(str(payload.get("error") or "worker_rejected"), response.status_code)
         return payload
 
+    def health(self) -> bool:
+        try:
+            response = requests.get(
+                self.base_url + "/healthz", timeout=(2, 3), allow_redirects=False
+            )
+            return response.status_code == 200
+        except requests.RequestException:
+            return False
+
     def job_directory(self, job_id: str) -> Path:
         root = self.jobs_root.resolve(strict=True)
         if root.is_symlink() or not root.is_dir():

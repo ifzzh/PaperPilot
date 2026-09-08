@@ -39,6 +39,7 @@ from paperpilot.core.search_index import SearchIndex
 from paperpilot.database.connection import DB_PATH
 from paperpilot.database.connection import init_db as register_db_teardown
 from paperpilot.database.dao.settings_dao import SettingsDAO
+from paperpilot.document_worker.client import DocumentWorkerClient
 from paperpilot.database.db_manager import init_db_schema
 from paperpilot.routes.agent_routes.agent_summary_route import (
     register_agent_summary_routes,
@@ -95,7 +96,7 @@ parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 
 app = Flask(__name__)
 register_db_teardown(app)
-app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max file size
+app.config["MAX_CONTENT_LENGTH"] = 210 * 1024 * 1024
 
 _auth_cache: dict[str, tuple[float, str]] = {}
 _auth_cache_lock = threading.Lock()
@@ -804,6 +805,7 @@ def register_routes():
         save_paper_metadata=save_paper_metadata,
         reading_list_file=READING_LIST_FILE,
         paper_store=paper_store,
+        document_client=DocumentWorkerClient(),
     )
 
     register_update_from_url_routes(
