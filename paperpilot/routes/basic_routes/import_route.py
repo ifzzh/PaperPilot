@@ -13,6 +13,7 @@ import shutil
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
@@ -75,6 +76,7 @@ import_tasks_lock = threading.Lock()
 
 # Currently active import tasksID(Only one import task is allowed globally)
 current_import_task_id: Optional[str] = None
+_import_workers = ThreadPoolExecutor(max_workers=4, thread_name_prefix="paper-import")
 
 
 def _extract_arxiv_id_from_url(url: str) -> Optional[str]:
@@ -812,19 +814,16 @@ def register_import_routes(
 
                 # Background acquisition DBLP BibTeX(asynchronous)
                 if paper_info.get("title") and paper_info.get("authors"):
-                    threading.Thread(
-                        target=_fetch_dblp_bibtex_async,
-                        args=(
-                            paper_id,
-                            paper_info["title"],
-                            paper_info["authors"],
-                            arxiv_id,
-                            file_path,
-                            category_id,
-                            full_category_path,
-                        ),
-                        daemon=True,
-                    ).start()
+                    _import_workers.submit(
+                        _fetch_dblp_bibtex_async,
+                        paper_id,
+                        paper_info["title"],
+                        paper_info["authors"],
+                        arxiv_id,
+                        file_path,
+                        category_id,
+                        full_category_path,
+                    )
 
             except Exception as e:
                 print(f"[Import] ❌ Failed to import paper: {e}")
@@ -931,11 +930,7 @@ def register_import_routes(
                 "start_time": datetime.now().isoformat(),
                 "last_update": datetime.now().isoformat(), "cancelled": False,
             }
-        threading.Thread(
-            target=_validate_rdf_then_import,
-            args=(task_id, target_category_id),
-            daemon=False,
-        ).start()
+        _import_workers.submit(_validate_rdf_then_import, task_id, target_category_id)
         return jsonify({
             "success": True, "task_id": task_id, "total_papers": 0,
             "message": "RDF queued for security validation",
@@ -1167,11 +1162,7 @@ def register_import_routes(
                 "last_update": datetime.now().isoformat(),
                 "cancelled": False,
             }
-        threading.Thread(
-            target=_validate_export_then_rebuild,
-            args=(task_id,),
-            daemon=False,
-        ).start()
+        _import_workers.submit(_validate_export_then_rebuild, task_id)
         return jsonify({
             "success": True,
             "task_id": task_id,

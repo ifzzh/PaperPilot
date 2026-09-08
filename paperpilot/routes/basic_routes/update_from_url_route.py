@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 import io
 import re
-import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Dict, Optional, Protocol
 
@@ -20,6 +20,9 @@ from paperpilot.document_worker.safety import DocumentLimitError, bounded_copy
 from paperpilot.security.paths import safe_join
 from paperpilot.tools.basic_tools.upload_paper import (
     fetch_bibtex_from_dblp, fetch_paper_by_arxiv_id_fast)
+
+
+_url_import_workers = ThreadPoolExecutor(max_workers=2, thread_name_prefix="url-import")
 
 
 class GetCategoriesFn(Protocol):
@@ -327,20 +330,16 @@ def register_update_from_url_routes(
 
             # 【Background acquisition BibTeX(priority DBLP, use after failure arXiv）】
             if metadata.get("title"):
-                thread = threading.Thread(
-                    target=_fetch_dblp_bibtex_background,
-                    args=(
-                        paper_id,
-                        metadata["title"],
-                        metadata.get("authors", ""),  # authors Can be empty
-                        arxiv_id,
-                        file_path,
-                        category_id,
-                        category_path,
-                    ),
-                    daemon=True,
+                _url_import_workers.submit(
+                    _fetch_dblp_bibtex_background,
+                    paper_id,
+                    metadata["title"],
+                    metadata.get("authors", ""),
+                    arxiv_id,
+                    file_path,
+                    category_id,
+                    category_path,
                 )
-                thread.start()
                 print(f"[Return immediately] Paper has been added,BibTeX Getting in the background...")
 
             return jsonify({"success": True, "paper": registered_paper.to_dict()})

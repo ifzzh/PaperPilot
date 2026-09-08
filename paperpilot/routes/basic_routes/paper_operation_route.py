@@ -4,8 +4,8 @@ import json
 import os
 import re
 import shutil
-import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Tuple
 
@@ -28,6 +28,9 @@ from paperpilot.tools.basic_tools.paper_repository import scan_papers_in_directo
 from paperpilot.tools.basic_tools.upload_paper import (
     search_arxiv_by_title_only,
 )
+
+
+_paper_workers = ThreadPoolExecutor(max_workers=4, thread_name_prefix="paper-metadata")
 
 
 class GetCategoriesFn(Protocol):
@@ -498,11 +501,7 @@ def register_paper_operation_routes(
                     except Exception as exc:  # noqa: BLE001
                         print(f"[Automatic recapture] fail: {exc}")
 
-                # Start background thread
-                thread = threading.Thread(
-                    target=_auto_refresh_on_title_change, daemon=True
-                )
-                thread.start()
+                _paper_workers.submit(_auto_refresh_on_title_change)
 
             return jsonify(
                 {
@@ -867,8 +866,7 @@ def register_paper_operation_routes(
                 except Exception as exc:  # noqa: BLE001
                     print(f"[Re-crawl] fail: {exc}")
 
-            thread = threading.Thread(target=_refresh_metadata_async, daemon=True)
-            thread.start()
+            _paper_workers.submit(_refresh_metadata_async)
 
             return jsonify(
                 {
