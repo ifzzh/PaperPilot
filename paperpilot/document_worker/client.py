@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import shutil
 import stat
+import time
 from pathlib import Path
+from pathlib import PurePosixPath
 
 import requests
 
@@ -108,6 +111,19 @@ class DocumentWorkerClient:
     def get(self, job_id: str) -> dict:
         return self._request("GET", f"/v1/jobs/{canonical_job_id(job_id)}")
 
+    def wait(self, job_id: str, *, timeout: float = 120.0) -> dict:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            state = self.get(job_id)
+            if state.get("status") in {"completed", "failed", "cancelled"}:
+                return state
+            time.sleep(0.5)
+        try:
+            self.cancel(job_id)
+        except (DocumentWorkerRejected, DocumentWorkerUnavailable):
+            pass
+        raise DocumentWorkerRejected("document_job_timeout", 408)
+
     def cancel(self, job_id: str) -> dict:
         return self._request("DELETE", f"/v1/jobs/{canonical_job_id(job_id)}")
 
@@ -127,6 +143,58 @@ class DocumentWorkerClient:
         if target.is_symlink() or not target.is_file() or target.stat().st_size > 4 * 1024 * 1024:
             raise DocumentWorkerRejected("unsafe_worker_output", 409)
         return json.loads(target.read_text(encoding="utf-8"))
+
+    def verified_manifest(self, job_id: str, expected_kind: str) -> dict:
+        output = self.output(job_id)
+        target = output / "manifest.json"
+        if target.is_symlink() or not target.is_file() or target.stat().st_size > 4 * 1024 * 1024:
+            raise DocumentWorkerRejected("unsafe_worker_output", 409)
+        try:
+            manifest = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise DocumentWorkerRejected("unsafe_worker_output", 409) from exc
+        if not isinstance(manifest, dict):
+            raise DocumentWorkerRejected("unsafe_worker_output", 409)
+        entries = manifest.get("entries")
+        if manifest.get("kind") != expected_kind or not isinstance(entries, list):
+            raise DocumentWorkerRejected("unsafe_worker_output", 409)
+        if len(entries) > self.limits.max_entries:
+            raise DocumentWorkerRejected("unsafe_worker_output", 409)
+        expected: set[str] = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise DocumentWorkerRejected("unsafe_worker_output", 409)
+            relative = entry.get("path")
+            if not isinstance(relative, str) or "\\" in relative:
+                raise DocumentWorkerRejected("unsafe_worker_output", 409)
+            path = PurePosixPath(relative)
+            if path.is_absolute() or not path.parts or any(part in {"", ".", ".."} for part in path.parts):
+                raise DocumentWorkerRejected("unsafe_worker_output", 409)
+            candidate = output.joinpath(*path.parts)
+            if candidate.is_symlink() or not candidate.is_file():
+                raise DocumentWorkerRejected("unsafe_worker_output", 409)
+            try:
+                candidate.resolve(strict=True).relative_to(output.resolve(strict=True))
+                size = int(entry.get("size"))
+            except (OSError, TypeError, ValueError) as exc:
+                raise DocumentWorkerRejected("unsafe_worker_output", 409) from exc
+            digest = hashlib.sha256()
+            actual = 0
+            with candidate.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    actual += len(chunk)
+                    digest.update(chunk)
+            if actual != size or digest.hexdigest() != entry.get("sha256"):
+                raise DocumentWorkerRejected("unsafe_worker_output", 409)
+            expected.add(relative)
+        actual_files = {
+            path.relative_to(output).as_posix()
+            for path in output.rglob("*")
+            if path.is_file() and path.name != "manifest.json"
+        }
+        if actual_files != expected:
+            raise DocumentWorkerRejected("unsafe_worker_output", 409)
+        return manifest
 
     def cleanup(self, job_id: str) -> None:
         job = self.job_directory(job_id)

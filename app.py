@@ -670,6 +670,7 @@ def register_routes():
         get_category_pdf_count=get_category_pdf_count,
         paper_store=paper_store,
         upload_folder=UPLOAD_FOLDER,
+        document_client=DocumentWorkerClient(),
     )
 
     register_search_routes(

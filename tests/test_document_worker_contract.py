@@ -1,4 +1,5 @@
 import json
+import hashlib
 import tempfile
 import threading
 import time
@@ -7,6 +8,7 @@ import uuid
 from pathlib import Path
 
 from paperpilot.document_worker.app import create_worker_app
+from paperpilot.document_worker.client import DocumentWorkerClient, DocumentWorkerRejected
 from paperpilot.document_worker.service import DocumentWorkerService
 
 
@@ -120,6 +122,33 @@ class DocumentWorkerContractTests(unittest.TestCase):
             restored = DocumentWorkerService(self.root).public_state(job_id)
             self.assertEqual(restored["status"], "failed")
             self.assertEqual(restored["error"], "interrupted")
+
+    def test_web_rechecks_worker_manifest_hashes_and_extra_files(self):
+        job_id, work = self._stage(kind="metadata_zip")
+        output = work / "output"
+        paper = output / "papers" / "paper.json"
+        paper.parent.mkdir(parents=True)
+        payload = b'{"title":"safe"}'
+        paper.write_bytes(payload)
+        (output / "manifest.json").write_text(json.dumps({
+            "kind": "metadata_zip",
+            "entries": [{
+                "path": "papers/paper.json",
+                "size": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }],
+            "ignored": [],
+            "expanded_bytes": len(payload),
+        }))
+        client = DocumentWorkerClient(jobs_root=self.root, token_file=self.root / "unused")
+        self.assertEqual(client.verified_manifest(job_id, "metadata_zip")["kind"], "metadata_zip")
+        paper.write_bytes(b"tampered")
+        with self.assertRaises(DocumentWorkerRejected):
+            client.verified_manifest(job_id, "metadata_zip")
+        paper.write_bytes(payload)
+        (output / "unlisted.json").write_text("{}")
+        with self.assertRaises(DocumentWorkerRejected):
+            client.verified_manifest(job_id, "metadata_zip")
 
 
 if __name__ == "__main__":

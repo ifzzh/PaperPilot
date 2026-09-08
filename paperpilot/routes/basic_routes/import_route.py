@@ -6,14 +6,13 @@ Process from Zotero The function of importing papers
 from __future__ import annotations
 
 import json
+import io
 import os
 import re
 import shutil
-import tempfile
 import threading
 import time
 import uuid
-import zipfile
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
@@ -23,6 +22,13 @@ from werkzeug.utils import secure_filename
 
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import PaperStore
+from paperpilot.database.dao.document_job_dao import DocumentJobDAO
+from paperpilot.document_worker.client import (
+    DocumentWorkerClient,
+    DocumentWorkerRejected,
+    DocumentWorkerUnavailable,
+)
+from paperpilot.document_worker.safety import DocumentLimitError, bounded_copy
 from paperpilot.security.paths import (
     PathSecurityError,
     ensure_confined_tree,
@@ -101,11 +107,24 @@ def _download_arxiv_pdf(arxiv_id: str) -> Optional[tuple[bytes, str]]:
             print(f"[Import] Removing from arXiv download PDF: {pdf_url}")
             response = requests.get(pdf_url, timeout=60, stream=True)
             response.raise_for_status()
-            pdf_content = response.content
+            maximum = int(os.getenv("PAPERPILOT_MAX_PDF_BYTES", str(100 * 1024 * 1024)))
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > maximum:
+                raise DocumentLimitError("upload_too_large")
+            output = io.BytesIO()
+            total = 0
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > maximum:
+                    raise DocumentLimitError("upload_too_large")
+                output.write(chunk)
+            pdf_content = output.getvalue()
             filename = f"{arxiv_id}.pdf"
             print(f"[Import] Successfully downloaded PDF, size: {len(pdf_content)} bytes")
             return pdf_content, filename
-        except requests.exceptions.RequestException as exc:
+        except (requests.exceptions.RequestException, DocumentLimitError, ValueError) as exc:
             print(f"[Import] from {pdf_url} Download failed: {exc}")
             continue
 
@@ -392,8 +411,55 @@ def register_import_routes(
     reading_list_file: str,
     paper_store: PaperStore,
     upload_folder: str,
+    document_client: DocumentWorkerClient | None = None,
 ) -> None:
     """Register and import related routes"""
+    document_client = document_client or DocumentWorkerClient()
+
+    def _run_document_job(task_id: str, kind: str, stream, *, timeout: float) -> dict:
+        document_client.stage(task_id, kind, stream)
+        DocumentJobDAO.create(task_id, kind)
+        document_client.create(task_id, kind)
+        state = document_client.wait(task_id, timeout=timeout)
+        DocumentJobDAO.update(
+            task_id,
+            state["status"],
+            progress=int(state.get("progress") or 0),
+            error=state.get("error"),
+        )
+        if state["status"] != "completed":
+            raise DocumentWorkerRejected(str(state.get("error") or "document_job_failed"), 422)
+        return document_client.result_json(task_id) if kind in {"pdf_inspect", "zotero_rdf"} else {}
+
+    def _promote_validated_pdf(data: bytes, category_id: str, filename: str) -> str:
+        validation_id = str(uuid.uuid4())
+        try:
+            _run_document_job(
+                validation_id,
+                "pdf_inspect",
+                io.BytesIO(data),
+                timeout=100,
+            )
+            category_folder = create_category_folder(category_id)
+            clean_name = secure_filename(filename) or f"{validation_id}.pdf"
+            target = safe_join(category_folder, clean_name)
+            stem, extension = os.path.splitext(clean_name)
+            counter = 1
+            while target.exists():
+                target = safe_join(category_folder, f"{stem}_{counter}{extension}")
+                counter += 1
+            source = document_client.job_directory(validation_id) / "work" / "input.pdf"
+            temporary = target.with_name(f".{target.name}.{validation_id}.tmp")
+            with source.open("rb") as reader:
+                bounded_copy(reader, temporary, document_client.limits.max_pdf_bytes)
+            os.chmod(temporary, 0o660)
+            os.replace(temporary, target)
+            return str(target)
+        finally:
+            try:
+                document_client.cleanup(validation_id)
+            except Exception:
+                pass
 
     def _load_reading_list() -> list[str]:
         try:
@@ -694,29 +760,12 @@ def register_import_routes(
 
                 pdf_content, pdf_filename = pdf_result
 
-                # Create category folder and save PDF(use full path)
-                category_folder = create_category_folder(category_id)
-
                 # Use the paper title as the file name
                 clean_title = _clean_filename(paper_info.get("title"))
                 if clean_title:
                     pdf_filename = f"{clean_title}.pdf"
-
-                file_path = str(safe_join(category_folder, pdf_filename))
-
-                # Handle file name conflicts
-                counter = 1
-                original_filename = pdf_filename
-                while os.path.exists(file_path):
-                    name, ext = os.path.splitext(original_filename)
-                    pdf_filename = f"{name}_{counter}{ext}"
-                    file_path = str(safe_join(category_folder, pdf_filename))
-                    counter += 1
-
-                # keep PDF
-                with open(file_path, "wb") as f:
-                    f.write(pdf_content)
-                print(f"[Import] PDF saved: {file_path}")
+                file_path = _promote_validated_pdf(pdf_content, category_id, pdf_filename)
+                pdf_filename = os.path.basename(file_path)
 
                 # create Paper object
                 paper_id = str(uuid.uuid4())
@@ -832,148 +881,109 @@ def register_import_routes(
 
     @app.route("/api/import/zotero", methods=["POST"])
     def api_import_zotero():
-        """Upload and parse Zotero RDF document"""
+        """Queue Zotero RDF validation and parsing in the Document Worker."""
+        global current_import_task_id
         if "file" not in request.files:
             return jsonify({"success": False, "error": "No document provided"}), 400
-
         file = request.files["file"]
         if file.filename == "":
             return jsonify({"success": False, "error": "No file selected"}), 400
-
         if not file.filename.lower().endswith(".rdf"):
             return jsonify({"success": False, "error": "Please upload .rdf format file"}), 400
-
-        # Get target directory parameters (optional)
         target_category_id = request.form.get("target_category_id", "").strip()
-        print(f"[Import] target directoryID: {target_category_id or '(according toZoteroClassification)'}")
-
-        try:
-            # Save temporary files
-            temp_dir = os.path.join(upload_folder, ".temp")
-            os.makedirs(temp_dir, exist_ok=True)
-
-            temp_filename = f"zotero_{uuid.uuid4().hex[:8]}.rdf"
-            temp_path = os.path.join(temp_dir, temp_filename)
-            file.save(temp_path)
-            print(f"[Import] RDF File saved: {temp_path}")
-
-            # parse RDF document
-            try:
-                from paperpilot.tools.basic_tools.zotero_parser import ZoteroRDFParser
-
-                parser = ZoteroRDFParser(temp_path)
-                papers = parser.parse()
-
-                # Convert to list of dictionaries
-                papers_data = []
-                for paper in papers:
-                    paper_dict = paper.to_dict()
-                    papers_data.append(paper_dict)
-
-                print(f"[Import] Analysis completed, found {len(papers_data)} papers")
-
-            finally:
-                # Clean temporary files
-                try:
-                    os.remove(temp_path)
-                    fixed_path = temp_path.replace(".rdf", "_fixed.rdf")
-                    if os.path.exists(fixed_path):
-                        os.remove(fixed_path)
-                except Exception:
-                    pass
-
-            if not papers_data:
-                return jsonify({"success": False, "error": "No papers found"}), 400
-
-            # Check if there is already an import task in progress
-            global current_import_task_id
-            if current_import_task_id:
-                with import_tasks_lock:
-                    existing_task = import_tasks.get(current_import_task_id)
-                    if existing_task and existing_task.get("status") not in [
-                        "completed",
-                        "error",
-                        "cancelled",
-                    ]:
-                        return (
-                            jsonify(
-                                {
-                                    "success": False,
-                                    "error": "There is an import task in progress",
-                                    "task_id": current_import_task_id,
-                                }
-                            ),
-                            400,
-                        )
-
-            # Check and filter imported papers (restore import function)
-            remaining_papers, already_imported_count = _filter_already_imported_papers(papers_data)
-            
-            if not remaining_papers:
-                return jsonify({
-                    "success": False,
-                    "error": "All papers have been imported",
-                    "already_imported": already_imported_count,
-                    "total": len(papers_data),
-                }), 400
-
-            # If there are imported papers, record the information
-            resume_message = ""
-            if already_imported_count > 0:
-                resume_message = f"detected {already_imported_count} papers have been imported and will be {already_imported_count + 1} Chapter starts and continues importing"
-                print(f"[Import] {resume_message}")
-
-            # Create import task
-            task_id = str(uuid.uuid4())
-            current_import_task_id = task_id
-
+        if not document_client.health():
+            return jsonify({"success": False, "error": "document_worker_unavailable"}), 503
+        if current_import_task_id:
             with import_tasks_lock:
-                import_tasks[task_id] = {
-                    "status": "starting",
-                    "progress": 0,
-                    "current": 0,
-                    "total": len(remaining_papers),
-                    "original_total": len(papers_data),  # raw total
-                    "already_imported_count": already_imported_count,  # Imported quantity
-                    "success_count": 0,
-                    "failed_count": 0,
-                    "skipped_count": 0,
-                    "duplicate_count": 0,
-                    "others_count": 0,
-                    "message": resume_message or "Preparing to import...",
-                    "start_time": datetime.now().isoformat(),
-                    "last_update": datetime.now().isoformat(),
-                    "cancelled": False,
-                }
+                existing = import_tasks.get(current_import_task_id)
+                if existing and existing.get("status") not in {"completed", "error", "cancelled"}:
+                    return jsonify({
+                        "success": False,
+                        "error": "There is an import task in progress",
+                        "task_id": current_import_task_id,
+                    }), 409
+        task_id = str(uuid.uuid4())
+        try:
+            document_client.stage(task_id, "zotero_rdf", file.stream)
+            DocumentJobDAO.create(task_id, "zotero_rdf")
+            document_client.create(task_id, "zotero_rdf")
+        except DocumentLimitError as exc:
+            document_client.cleanup(task_id)
+            return jsonify({"success": False, "error": exc.reason}), 413
+        except DocumentWorkerRejected as exc:
+            document_client.cleanup(task_id)
+            return jsonify({"success": False, "error": exc.reason}), exc.status_code
+        except Exception:
+            try:
+                document_client.cleanup(task_id)
+            except Exception:
+                pass
+            return jsonify({"success": False, "error": "document_worker_unavailable"}), 503
 
-            # Start the background import task (do not use daemon=True, ensure the task is completed)
-            thread = threading.Thread(
-                target=_import_papers_task,
-                args=(task_id, remaining_papers, target_category_id),
+        current_import_task_id = task_id
+        with import_tasks_lock:
+            import_tasks[task_id] = {
+                "status": "validating", "progress": 0, "current": 0, "total": 0,
+                "original_total": 0, "already_imported_count": 0,
+                "success_count": 0, "failed_count": 0, "skipped_count": 0,
+                "duplicate_count": 0, "others_count": 0,
+                "message": "Validating Zotero RDF...",
+                "start_time": datetime.now().isoformat(),
+                "last_update": datetime.now().isoformat(), "cancelled": False,
+            }
+        threading.Thread(
+            target=_validate_rdf_then_import,
+            args=(task_id, target_category_id),
+            daemon=False,
+        ).start()
+        return jsonify({
+            "success": True, "task_id": task_id, "total_papers": 0,
+            "message": "RDF queued for security validation",
+        }), 202
+
+    def _validate_rdf_then_import(task_id: str, target_category_id: str) -> None:
+        global current_import_task_id
+        try:
+            state = document_client.wait(task_id, timeout=120)
+            DocumentJobDAO.update(
+                task_id, state["status"], progress=int(state.get("progress") or 0),
+                error=state.get("error"),
             )
-            thread.start()
-
-            message = f"Start importing {len(remaining_papers)} papers"
-            if already_imported_count > 0:
-                message += f"(skipped {already_imported_count} imported papers)"
-
-            return jsonify(
-                {
-                    "success": True,
-                    "task_id": task_id,
-                    "total_papers": len(remaining_papers),
-                    "original_total": len(papers_data),
-                    "already_imported": already_imported_count,
-                    "message": message,
-                }
+            if state["status"] != "completed":
+                raise DocumentWorkerRejected(str(state.get("error") or "rdf_invalid"), 422)
+            result = document_client.result_json(task_id)
+            papers_data = result.get("papers") if isinstance(result, dict) else None
+            if not isinstance(papers_data, list) or not papers_data:
+                raise DocumentWorkerRejected("rdf_invalid", 422)
+            remaining, imported_count = _filter_already_imported_papers(papers_data)
+            if not remaining:
+                _update_task_progress(
+                    task_id, status="completed", progress=100,
+                    original_total=len(papers_data), already_imported_count=imported_count,
+                    message="All papers were already imported",
+                )
+                current_import_task_id = None
+                return
+            _update_task_progress(
+                task_id, status="starting", total=len(remaining),
+                original_total=len(papers_data), already_imported_count=imported_count,
+                message="RDF validated; importing papers...",
             )
-
-        except Exception as e:
-            print(f"[Import] parse RDF fail: {e}")
-            import traceback
-
-            traceback.print_exc()
-            return jsonify({"success": False, "error": f"Parsing failed: {str(e)}"}), 500
+            _import_papers_task(task_id, remaining, target_category_id)
+        except (DocumentWorkerRejected, DocumentWorkerUnavailable) as exc:
+            reason = getattr(exc, "reason", "document_worker_unavailable")
+            DocumentJobDAO.update(task_id, "failed", error=reason)
+            _update_task_progress(task_id, status="error", message=reason)
+            current_import_task_id = None
+        except Exception:
+            DocumentJobDAO.update(task_id, "failed", error="rdf_invalid")
+            _update_task_progress(task_id, status="error", message="rdf_invalid")
+            current_import_task_id = None
+        finally:
+            try:
+                document_client.cleanup(task_id)
+            except Exception:
+                pass
 
     @app.route("/api/import/zotero/status")
     def api_import_status():
@@ -1070,6 +1080,7 @@ def register_import_routes(
         """Cancel import task"""
         global current_import_task_id
 
+        cancel_document_job = False
         with import_tasks_lock:
             task = import_tasks.get(task_id)
             if not task:
@@ -1085,166 +1096,142 @@ def register_import_routes(
             task["status"] = "cancelling"
             task["message"] = "Canceling import..."
             task["last_update"] = datetime.now().isoformat()
+            cancel_document_job = status == "validating"
 
             # If this is the current task, clear the flag
             if current_import_task_id == task_id:
                 current_import_task_id = None
 
+        if cancel_document_job:
+            try:
+                document_client.cancel(task_id)
+            except (DocumentWorkerRejected, DocumentWorkerUnavailable):
+                pass
         print(f"[Import] Import tasks {task_id} Marked for cancellation")
         return jsonify({"success": True, "message": "Cancellation request sent"})
 
     @app.route("/api/import/from-export", methods=["POST"])
     def api_import_from_export():
-        """Import generated from export function ZIP document"""
-        import shutil
-        import tempfile
-        import zipfile
-
+        """Validate a metadata-only PaperPilot export before importing it."""
+        global current_import_task_id
         if "file" not in request.files:
             return jsonify({"success": False, "error": "No document provided"}), 400
-
         file = request.files["file"]
         if not file or file.filename == "":
             return jsonify({"success": False, "error": "No file selected"}), 400
-
-        # Check file extension
         if not file.filename.lower().endswith(".zip"):
             return jsonify({"success": False, "error": "Only supports ZIP document"}), 400
-
-        # Create temporary directory
-        temp_dir = tempfile.mkdtemp(prefix="import_export_")
-
-        try:
-            # Save uploaded ZIP document
-            zip_path = os.path.join(temp_dir, "export.zip")
-            file.save(zip_path)
-
-            # Unzip ZIP document
-            extract_dir = os.path.join(temp_dir, "extracted")
-            os.makedirs(extract_dir, exist_ok=True)
-
-            print(f"[Import] Unzip ZIP file to: {extract_dir}")
-            with zipfile.ZipFile(zip_path, "r") as zipf:
-                zipf.extractall(extract_dir)
-
-            # Check if there is papers folder
-            papers_folder = os.path.join(extract_dir, "papers")
-            if not os.path.exists(papers_folder) or not os.path.isdir(papers_folder):
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "error": "Invalid export file: missing papers folder",
-                        }
-                    ),
-                    400,
-                )
-
-            # 1. First copy the entire folder structure to the target location (so the directory tree is immediately visible)
-            print(f"[Import] Start copying folder structure to: {upload_folder}")
-            for item in os.listdir(papers_folder):
-                src_path = os.path.join(papers_folder, item)
-                dst_path = os.path.join(upload_folder, item)
-
-                if os.path.isdir(src_path):
-                    # copy entire directory
-                    if os.path.exists(dst_path):
-                        # If the target directory already exists, merge the contents
-                        shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
-                    else:
-                        shutil.copytree(src_path, dst_path)
-                else:
-                    # Copy files
-                    shutil.copy2(src_path, dst_path)
-
-            print(f"[Import] Folder copy completed")
-
-            # calculate JSON Number of documents (number of papers)
-            total_papers = sum(
-                [
-                    len([f for f in files if f.endswith(".json")])
-                    for _, _, files in os.walk(upload_folder)
-                ]
-            )
-
-            # Check if there is already an import task in progress
-            global current_import_task_id
-            if current_import_task_id:
-                with import_tasks_lock:
-                    existing_task = import_tasks.get(current_import_task_id)
-                    if existing_task and existing_task.get("status") not in [
-                        "completed",
-                        "error",
-                    ]:
-                        return (
-                            jsonify(
-                                {
-                                    "success": False,
-                                    "error": "There is an import task in progress",
-                                    "task_id": current_import_task_id,
-                                }
-                            ),
-                            400,
-                        )
-
-            # Create import task
-            task_id = str(uuid.uuid4())
-            current_import_task_id = task_id
-
+        if not document_client.health():
+            return jsonify({"success": False, "error": "document_worker_unavailable"}), 503
+        if current_import_task_id:
             with import_tasks_lock:
-                import_tasks[task_id] = {
-                    "status": "starting",
-                    "progress": 0,
-                    "current": 0,
-                    "total": total_papers,
-                    "success_count": 0,
-                    "failed_count": 0,
-                    "skipped_count": 0,
-                    "duplicate_count": 0,
-                    "others_count": 0,
-                    "message": "Folder copied, start rebuilding paper...",
-                    "start_time": datetime.now().isoformat(),
-                    "last_update": datetime.now().isoformat(),
-                    "cancelled": False,
-                }
+                existing = import_tasks.get(current_import_task_id)
+                if existing and existing.get("status") not in {"completed", "error", "cancelled"}:
+                    return jsonify({
+                        "success": False,
+                        "error": "There is an import task in progress",
+                        "task_id": current_import_task_id,
+                    }), 409
+        task_id = str(uuid.uuid4())
+        try:
+            document_client.stage(task_id, "metadata_zip", file.stream)
+            DocumentJobDAO.create(task_id, "metadata_zip")
+            document_client.create(task_id, "metadata_zip")
+        except DocumentLimitError as exc:
+            document_client.cleanup(task_id)
+            return jsonify({"success": False, "error": exc.reason}), 413
+        except DocumentWorkerRejected as exc:
+            document_client.cleanup(task_id)
+            return jsonify({"success": False, "error": exc.reason}), exc.status_code
+        except Exception:
+            try:
+                document_client.cleanup(task_id)
+            except Exception:
+                pass
+            return jsonify({"success": False, "error": "document_worker_unavailable"}), 503
 
-            # 2. Start a background task to rebuild the paper (from arXiv download PDF）
-            thread = threading.Thread(
-                target=_rebuild_papers_from_json,
-                args=(task_id, upload_folder),
-                daemon=False,
+        current_import_task_id = task_id
+        with import_tasks_lock:
+            import_tasks[task_id] = {
+                "status": "validating",
+                "progress": 0,
+                "current": 0,
+                "total": 0,
+                "success_count": 0,
+                "failed_count": 0,
+                "skipped_count": 0,
+                "duplicate_count": 0,
+                "others_count": 0,
+                "message": "Validating archive...",
+                "start_time": datetime.now().isoformat(),
+                "last_update": datetime.now().isoformat(),
+                "cancelled": False,
+            }
+        threading.Thread(
+            target=_validate_export_then_rebuild,
+            args=(task_id,),
+            daemon=False,
+        ).start()
+        return jsonify({
+            "success": True,
+            "task_id": task_id,
+            "total_papers": 0,
+            "message": "Archive queued for security validation",
+        }), 202
+
+    def _validate_export_then_rebuild(task_id: str) -> None:
+        global current_import_task_id
+        try:
+            state = document_client.wait(task_id, timeout=300)
+            DocumentJobDAO.update(
+                task_id,
+                state["status"],
+                progress=int(state.get("progress") or 0),
+                error=state.get("error"),
             )
-            thread.start()
-
-            # Clean up temporary directory
-            shutil.rmtree(temp_dir, ignore_errors=True)
-
-            return jsonify(
-                {
-                    "success": True,
-                    "task_id": task_id,
-                    "total_papers": total_papers,
-                    "message": "The folder has been imported and the paper is being reconstructed in the background",
+            if state["status"] != "completed":
+                raise DocumentWorkerRejected(str(state.get("error") or "archive_invalid"), 422)
+            output = document_client.output(task_id)
+            manifest = document_client.verified_manifest(task_id, "metadata_zip")
+            entries = manifest.get("entries", [])
+            paper_entries = [
+                item for item in entries
+                if item.get("path", "").startswith("papers/")
+                and os.path.basename(item.get("path", "")) not in {
+                    "categories.json", "reading_list.json", "user_settings.json",
+                    "reading_history.json", "agentic_settings.json", "daily_arxiv_settings.json",
                 }
+            ]
+            papers_folder = output / "papers"
+            if not papers_folder.is_dir():
+                raise DocumentWorkerRejected("archive_type_forbidden", 422)
+            _update_task_progress(
+                task_id,
+                status="importing",
+                total=len(paper_entries),
+                message="Archive validated; importing metadata...",
             )
-
-        except zipfile.BadZipFile:
-            return jsonify({"success": False, "error": "Invalid ZIP document"}), 400
-        except Exception as e:
-            print(f"Import failed: {e}")
-            import traceback
-
-            traceback.print_exc()
-            # Clean up temporary directory
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            return jsonify({"success": False, "error": str(e)}), 500
+            _rebuild_papers_from_json(task_id, str(papers_folder))
+        except (DocumentWorkerRejected, DocumentWorkerUnavailable) as exc:
+            reason = getattr(exc, "reason", "document_worker_unavailable")
+            DocumentJobDAO.update(task_id, "failed", error=reason)
+            _update_task_progress(task_id, status="error", message=reason)
+            current_import_task_id = None
+        except Exception:
+            DocumentJobDAO.update(task_id, "failed", error="archive_invalid")
+            _update_task_progress(task_id, status="error", message="archive_invalid")
+            current_import_task_id = None
+        finally:
+            try:
+                document_client.cleanup(task_id)
+            except Exception:
+                pass
 
     def _rebuild_papers_from_json(
         task_id: str,
         papers_folder: str,
     ):
-        """Background task: from JSON Metadata reconstruction paper (from arXiv download PDF）"""
+        """Rebuild papers only from Worker-validated metadata JSON files."""
         global current_import_task_id
 
         def update_progress(
@@ -1288,7 +1275,6 @@ def register_import_routes(
         duplicate_count = 0
 
         try:
-            # 1. collect all JSON files (exclude configuration files)
             json_files = []
             exclude_files = {
                 "categories.json",
@@ -1319,7 +1305,6 @@ def register_import_routes(
                 message="Start importing papers...",
             )
 
-            # 2. Process one by one JSON document
             for idx, json_path in enumerate(json_files):
                 # Check if canceled
                 with import_tasks_lock:
@@ -1367,81 +1352,54 @@ def register_import_routes(
                         duplicate_count=duplicate_count,
                     )
 
-                    # Get the directory where the paper is located
                     paper_dir = os.path.dirname(json_path)
+                    rel_dir = os.path.relpath(paper_dir, papers_folder)
+                    category_path_parts = rel_dir.split(os.sep) if rel_dir != "." else []
+                    category_id = "root"
+                    category_path = ["root"]
+                    if category_path_parts:
+                        category_id = _find_or_create_category(
+                            get_categories(), category_path_parts, save_categories, create_category_folder
+                        )
+                        if not category_id:
+                            failed_count += 1
+                            continue
+                        category_path = ["root"] + category_path_parts
+                    if _check_duplicate_in_folder(create_category_folder(category_id), title):
+                        duplicate_count += 1
+                        continue
 
-                    # Check if there is already one in this directory PDF
-                    pdf_exists = False
-                    expected_pdf_name = os.path.basename(json_path).replace(
-                        ".json", ".pdf"
-                    )
-                    expected_pdf_path = os.path.join(paper_dir, expected_pdf_name)
-
-                    if os.path.exists(expected_pdf_path):
-                        print(f"[Import] PDF Already exists, skip download: {title[:50]}")
-                        # But you still need to register to the system
-                        pdf_exists = True
-                        pdf_path = expected_pdf_path
-
-                    # 3. if PDF does not exist, from arXiv download
-                    if not pdf_exists:
-                        pdf_content = None
-                        pdf_filename = None
-
-                        if arxiv_id:
-                            # have arXiv ID, download directly
+                    pdf_content = None
+                    pdf_filename = None
+                    if arxiv_id:
+                        result = _download_arxiv_pdf(arxiv_id)
+                        if result:
+                            pdf_content, pdf_filename = result
+                    elif title and authors:
+                        paper_info = search_arxiv_by_title_and_author_fast(title, authors)
+                        if paper_info and paper_info.get("arxiv_id"):
+                            arxiv_id = paper_info["arxiv_id"]
+                            paper_meta["arxiv_id"] = arxiv_id
                             result = _download_arxiv_pdf(arxiv_id)
                             if result:
                                 pdf_content, pdf_filename = result
-                        else:
-                            # No arXiv ID, try searching
-                            if title and authors:
-                                print(f"[Import] try search arXiv: {title[:50]}...")
-                                paper_info = search_arxiv_by_title_and_author_fast(
-                                    title, authors
-                                )
-                                if paper_info and paper_info.get("arxiv_id"):
-                                    result = _download_arxiv_pdf(paper_info["arxiv_id"])
-                                    if result:
-                                        pdf_content, pdf_filename = result
-                                        # Update metadata in arXiv ID
-                                        paper_meta["arxiv_id"] = paper_info["arxiv_id"]
-                                        if not paper_meta.get("arxiv_url"):
-                                            paper_meta["arxiv_url"] = paper_info.get(
-                                                "url", ""
-                                            )
-
-                        if not pdf_content:
-                            print(f"[Import] Unable to download PDF: {title[:50]}")
-                            failed_count += 1
-                            continue
-
-                        # 4. keep PDF
-                        pdf_path = expected_pdf_path
-                        with open(pdf_path, "wb") as f:
-                            f.write(pdf_content)
-
-                    # 5. Update metadata
-                    paper_meta["file_path"] = pdf_path
-                    if not paper_meta.get("id"):
-                        paper_meta["id"] = str(uuid.uuid4())
-                    paper_meta["upload_source"] = "export_import"
-
-                    # Save the updated JSON
-                    with open(json_path, "w", encoding="utf-8") as f:
-                        json.dump(paper_meta, f, ensure_ascii=False, indent=2)
-
-                    # 6. Register to paper_store
-                    from paperpilot.core.base_paper import Paper
-
+                    if pdf_content is None or pdf_filename is None:
+                        failed_count += 1
+                        continue
+                    clean_title = _clean_filename(title)
+                    if clean_title:
+                        pdf_filename = f"{clean_title}.pdf"
+                    pdf_path = _promote_validated_pdf(pdf_content, category_id, pdf_filename)
+                    actual_filename = os.path.basename(pdf_path)
+                    paper_id = str(paper_meta.get("id") or uuid.uuid4())
                     new_paper = Paper(
-                        id=paper_meta["id"],
+                        id=paper_id,
                         title=paper_meta.get("title", ""),
                         authors=paper_meta.get("authors", ""),
                         file_path=pdf_path,
-                        upload_date=paper_meta.get("upload_date", ""),
-                        filename=paper_meta.get("filename", ""),
-                        original_filename=paper_meta.get("original_filename", ""),
+                        upload_date=paper_meta.get("upload_date") or datetime.now().isoformat(),
+                        filename=actual_filename,
+                        original_filename=actual_filename,
                         arxiv_url=paper_meta.get("arxiv_url")
                         or paper_meta.get("url", ""),
                         arxiv_id=paper_meta.get("arxiv_id", ""),
@@ -1463,36 +1421,10 @@ def register_import_routes(
                         analysis_time=paper_meta.get("analysis_time", 0),
                     )
 
-                    # Get the classification path (relative to papers_folder）
-                    rel_dir = os.path.relpath(paper_dir, papers_folder)
-                    category_path_parts = (
-                        rel_dir.split(os.sep) if rel_dir != "." else []
+                    registered = paper_store.upsert(
+                        new_paper, category_id=category_id, category_path=category_path
                     )
-
-                    if category_path_parts:
-                        # Find or create a category
-                        current_categories = get_categories()
-                        category_id = _find_or_create_category(
-                            current_categories,
-                            category_path_parts,
-                            save_categories,
-                            create_category_folder,
-                        )
-
-                        if category_id:
-                            category_path = ["root"] + category_path_parts
-                            paper_store.upsert(
-                                new_paper,
-                                category_id=category_id,
-                                category_path=category_path,
-                            )
-                            save_paper_metadata(pdf_path, new_paper)
-                    else:
-                        # Papers in the root directory
-                        paper_store.upsert(
-                            new_paper, category_id="root", category_path=["root"]
-                        )
-                        save_paper_metadata(pdf_path, new_paper)
+                    save_paper_metadata(pdf_path, registered)
 
                     success_count += 1
                     print(f"[Import] ✅ Imported successfully: {title[:50]}")
