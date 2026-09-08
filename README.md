@@ -180,17 +180,25 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   The maintained Compose file uses the v0.6.0 Web and translation-worker images. The Web service binds only `127.0.0.1:7191`; Worker port `7192` is internal only. Both run as non-root users. Copy `.env.example` to the deployment directory, create separate Worker and settings-encryption key files, and create the staging directory before running `docker compose up -d`.
+   The maintained Compose file uses the v0.7.0 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users. Copy `.env.example` to the deployment directory, create separate Worker tokens and the settings-encryption key, and create the translation staging directory before running `docker compose up -d`.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
    openssl rand -hex 32 > /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+   openssl rand -hex 32 > /mnt/raid1/projects/paperpilot/deploy/paperpilot-document-worker.token
    openssl rand -out /mnt/raid1/projects/paperpilot/deploy/paperpilot-settings.key 32
    chmod 0640 /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+   chmod 0640 /mnt/raid1/projects/paperpilot/deploy/paperpilot-document-worker.token
    chmod 0640 /mnt/raid1/projects/paperpilot/deploy/paperpilot-settings.key
    ```
 
-   The Worker receives only `/work/jobs` and its token secret. It does not mount the paper library, SQLite database, `.env`, or Docker socket. Successful output is validated and atomically copied into the paper library by the Web service.
+   The translation Worker receives only `/work/jobs` and its token. The Document Worker receives only a 3 GiB tmpfs mounted at `/work/document-jobs` and its separate token, and has no public network or host port. Neither Worker mounts the paper library, SQLite database, `.env`, settings key, or Docker socket. Successful output is validated and atomically copied into the paper library by the Web service.
+
+### Upgrading from v0.6.0
+
+v0.7.0 makes PDF uploads asynchronous and validates PDFs, metadata ZIPs, Zotero RDF, and MinerU result ZIPs in an isolated Document Worker. PDF files are limited to 100 MiB; archives are limited to 200 MiB compressed, 2 GiB expanded, 2,000 entries, and 500 paper records. Existing v0.3–v0.6 metadata-only exports remain supported, but archives containing PDFs or unknown attachments are rejected.
+
+Create the separate Document Worker token shown above, then update all three image digests together. The additive `document_jobs` table is created automatically and requires no storage migration. The Compose file keeps `7191` bound to localhost, gives the Web service 3 CPU/3 GiB/256 PID, and gives the Document Worker 2 CPU/3 GiB/128 PID with a 3 GiB ephemeral tmpfs. Rollback consists of stopping v0.7.0, pinning the Web and translation Worker to v0.6.0 digests, and removing the Document Worker; the additional table may remain.
 
 ### Upgrading from v0.5.0
 
