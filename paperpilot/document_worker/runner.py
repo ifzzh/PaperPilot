@@ -17,7 +17,7 @@ from .safety import (
 def run(job: Path, kind: str) -> None:
     work = job / "work"
     output = work / "output"
-    limits = DocumentLimits()
+    limits = DocumentLimits.from_env()
     if output.exists():
         raise RuntimeError("output_exists")
     if kind == "pdf_inspect":

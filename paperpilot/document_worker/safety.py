@@ -54,6 +54,45 @@ class DocumentLimits:
     max_result_image_pixels: int = 50_000_000
     max_thumbnail_bytes: int = 10 * MIB
 
+    @classmethod
+    def from_env(cls) -> "DocumentLimits":
+        def value(name: str, default: int) -> int:
+            raw = os.getenv(name)
+            if raw is None:
+                return default
+            try:
+                parsed = int(raw)
+            except ValueError as exc:
+                raise DocumentLimitError("invalid_document_limit") from exc
+            if parsed <= 0:
+                raise DocumentLimitError("invalid_document_limit")
+            return parsed
+
+        defaults = cls()
+        return cls(
+            max_pdf_bytes=value("PAPERPILOT_MAX_PDF_BYTES", defaults.max_pdf_bytes),
+            max_archive_bytes=value("PAPERPILOT_MAX_ARCHIVE_BYTES", defaults.max_archive_bytes),
+            max_expanded_bytes=value(
+                "PAPERPILOT_MAX_ARCHIVE_EXPANDED_BYTES", defaults.max_expanded_bytes
+            ),
+            max_entries=value("PAPERPILOT_MAX_ARCHIVE_ENTRIES", defaults.max_entries),
+            max_import_papers=value("PAPERPILOT_MAX_IMPORT_PAPERS", defaults.max_import_papers),
+            max_entry_bytes=defaults.max_entry_bytes,
+            max_compression_ratio=defaults.max_compression_ratio,
+            max_path_depth=defaults.max_path_depth,
+            max_path_bytes=defaults.max_path_bytes,
+            max_component_bytes=defaults.max_component_bytes,
+            max_json_bytes=defaults.max_json_bytes,
+            max_markdown_bytes=defaults.max_markdown_bytes,
+            max_rdf_bytes=defaults.max_rdf_bytes,
+            max_rdf_records=defaults.max_rdf_records,
+            max_pdf_pages=defaults.max_pdf_pages,
+            max_thumbnail_dimension=defaults.max_thumbnail_dimension,
+            max_thumbnail_pixels=defaults.max_thumbnail_pixels,
+            max_result_image_pixels=defaults.max_result_image_pixels,
+            max_thumbnail_bytes=defaults.max_thumbnail_bytes,
+        )
+
 
 @dataclass(frozen=True)
 class ArchiveEntry:

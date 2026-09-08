@@ -38,7 +38,7 @@ class DocumentWorkerClient:
         self.jobs_root = Path(jobs_root or os.getenv(
             "PAPERPILOT_DOCUMENT_JOBS_ROOT", "/work/document-jobs"
         ))
-        self.limits = limits or DocumentLimits()
+        self.limits = limits or DocumentLimits.from_env()
 
     def _token(self) -> str:
         try:

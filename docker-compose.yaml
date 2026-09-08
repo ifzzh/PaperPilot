@@ -1,6 +1,6 @@
 services:
   paperpilot:
-    image: ifzzh520/paperpilot:0.6.0
+    image: ifzzh520/paperpilot:0.7.0
     container_name: paperpilot
     ports:
       - "127.0.0.1:7191:7191"
@@ -14,6 +14,14 @@ services:
       PAPERPILOT_TRANSLATION_JOBS_ROOT: /work/jobs
       PAPERPILOT_WORKER_TOKEN_FILE: /run/secrets/paperpilot_worker_token
       PAPERPILOT_SETTINGS_KEY_FILE: /run/secrets/paperpilot_settings_key
+      PAPERPILOT_DOCUMENT_WORKER_URL: http://paperpilot-document-worker:7193
+      PAPERPILOT_DOCUMENT_JOBS_ROOT: /work/document-jobs
+      PAPERPILOT_DOCUMENT_WORKER_TOKEN_FILE: /run/secrets/paperpilot_document_worker_token
+      PAPERPILOT_MAX_PDF_BYTES: 104857600
+      PAPERPILOT_MAX_ARCHIVE_BYTES: 209715200
+      PAPERPILOT_MAX_ARCHIVE_EXPANDED_BYTES: 2147483648
+      PAPERPILOT_MAX_ARCHIVE_ENTRIES: 2000
+      PAPERPILOT_MAX_IMPORT_PAPERS: 500
       PAPERPILOT_AI_ALLOWED_ORIGINS: ${PAPERPILOT_AI_ALLOWED_ORIGINS:-}
       PAPERPILOT_AI_PRIVATE_ALLOWED_ORIGINS: ${PAPERPILOT_AI_PRIVATE_ALLOWED_ORIGINS:-}
       PAPERPILOT_MINERU_TRANSFER_ALLOWED_ORIGINS: ${PAPERPILOT_MINERU_TRANSFER_ALLOWED_ORIGINS:-}
@@ -22,6 +30,7 @@ services:
       - /srv/ifserver-fast/paperpilot/runtime/db:/app/db
       - /mnt/raid1/projects/paperpilot/data/papers:/data/papers
       - /mnt/raid1/projects/paperpilot/data/staging/translation:/work/jobs
+      - document_jobs:/work/document-jobs
     secrets:
       - paperpilot_worker_token
       - source: paperpilot_settings_key
@@ -29,17 +38,34 @@ services:
         uid: "10001"
         gid: "1001"
         mode: 0440
+      - source: paperpilot_document_worker_token
+        target: paperpilot_document_worker_token
+        uid: "10001"
+        gid: "1001"
+        mode: 0440
     depends_on:
       paperpilot-translation-worker:
         condition: service_healthy
+      paperpilot-document-worker:
+        condition: service_healthy
+    networks:
+      - default
+      - document_internal
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
+    cpus: 3.0
+    mem_limit: 3g
+    pids_limit: 256
+    stop_grace_period: 15s
     restart: unless-stopped
 
   paperpilot-translation-worker:
-    image: ifzzh520/paperpilot:0.6.0-worker
+    image: ifzzh520/paperpilot:0.7.0-worker
     container_name: paperpilot-translation-worker
     environment:
       PAPERPILOT_WORKER_JOBS_ROOT: /work/jobs
@@ -63,8 +89,58 @@ services:
     stop_grace_period: 15s
     restart: unless-stopped
 
+  paperpilot-document-worker:
+    image: ifzzh520/paperpilot:0.7.0-document-worker
+    container_name: paperpilot-document-worker
+    environment:
+      PAPERPILOT_DOCUMENT_JOBS_ROOT: /work/document-jobs
+      PAPERPILOT_DOCUMENT_WORKER_TOKEN_FILE: /run/secrets/paperpilot_document_worker_token
+      PAPERPILOT_MAX_PDF_BYTES: 104857600
+      PAPERPILOT_MAX_ARCHIVE_BYTES: 209715200
+      PAPERPILOT_MAX_ARCHIVE_EXPANDED_BYTES: 2147483648
+      PAPERPILOT_MAX_ARCHIVE_ENTRIES: 2000
+      PAPERPILOT_MAX_IMPORT_PAPERS: 500
+    volumes:
+      - document_jobs:/work/document-jobs
+    secrets:
+      - source: paperpilot_document_worker_token
+        target: paperpilot_document_worker_token
+        uid: "10003"
+        gid: "1001"
+        mode: 0440
+    expose:
+      - "7193"
+    networks:
+      - document_internal
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: 2.0
+    mem_limit: 3g
+    pids_limit: 128
+    stop_grace_period: 15s
+    restart: unless-stopped
+
 secrets:
   paperpilot_worker_token:
     file: /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
   paperpilot_settings_key:
     file: /mnt/raid1/projects/paperpilot/deploy/paperpilot-settings.key
+  paperpilot_document_worker_token:
+    file: /mnt/raid1/projects/paperpilot/deploy/paperpilot-document-worker.token
+
+volumes:
+  document_jobs:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=3g,uid=10001,gid=1001,mode=2770
+
+networks:
+  document_internal:
+    internal: true

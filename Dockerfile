@@ -25,6 +25,11 @@ COPY docker/requirements-web.txt /tmp/requirements.txt
 RUN uv venv /opt/venv \
  && uv pip sync --python /opt/venv/bin/python /tmp/requirements.txt
 
+FROM build-base AS document-dependencies
+COPY docker/requirements-document.txt /tmp/requirements.txt
+RUN uv venv /opt/venv \
+ && uv pip sync --python /opt/venv/bin/python /tmp/requirements.txt
+
 FROM build-base AS test
 COPY docker/requirements-test.txt /tmp/requirements.txt
 RUN uv venv /opt/venv \
@@ -58,7 +63,7 @@ RUN apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" upd
 
 FROM runtime-base AS translation-worker
 
-ARG APP_VERSION=0.6.0
+ARG APP_VERSION=0.7.0
 ARG VCS_REF=unknown
 
 ENV HOME=/tmp \
@@ -85,9 +90,37 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=30s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7192/healthz', timeout=4).read()"
 CMD ["python", "-m", "paperpilot.translation_worker"]
 
+FROM runtime-base AS document-worker
+
+ARG APP_VERSION=0.7.0
+ARG VCS_REF=unknown
+
+ENV HOME=/tmp \
+    XDG_CACHE_HOME=/tmp/.cache
+
+WORKDIR /app
+COPY --from=document-dependencies /opt/venv /opt/venv
+COPY paperpilot /app/paperpilot
+
+RUN groupadd --gid 1001 paperpilot \
+ && useradd --uid 10003 --gid 1001 --no-create-home --home-dir /app --shell /usr/sbin/nologin paperpilot-document \
+ && mkdir -p /work/document-jobs \
+ && chown 10003:1001 /work/document-jobs
+
+LABEL org.opencontainers.image.title="PaperPilot Document Worker" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.source="https://github.com/ifzzh/PaperPilot"
+
+USER 10003:1001
+EXPOSE 7193
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7193/healthz', timeout=4).read()"
+CMD ["python", "-m", "paperpilot.document_worker"]
+
 FROM runtime-base AS runtime
 
-ARG APP_VERSION=0.6.0
+ARG APP_VERSION=0.7.0
 ARG VCS_REF=unknown
 ARG ARXIV_PROXY=
 ARG ARXIV_API_PROXY=
@@ -108,8 +141,8 @@ COPY templates /app/templates
 
 RUN groupadd --gid 1001 paperpilot \
  && useradd --uid 10001 --gid 1001 --no-create-home --home-dir /app --shell /usr/sbin/nologin paperpilot \
- && mkdir -p /app/db /data/papers /work/jobs \
- && chown -R 10001:1001 /app /data/papers /work/jobs
+ && mkdir -p /app/db /data/papers /work/jobs /work/document-jobs \
+ && chown -R 10001:1001 /app /data/papers /work/jobs /work/document-jobs
 
 LABEL org.opencontainers.image.title="PaperPilot" \
       org.opencontainers.image.version="${APP_VERSION}" \

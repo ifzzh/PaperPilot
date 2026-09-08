@@ -95,8 +95,6 @@ idna==3.11
     #   requests
 imageio==2.37.2
     # via scikit-image
-isodate==0.7.2 ; python_full_version < '3.11'
-    # via rdflib
 itsdangerous==2.2.0
     # via flask
 jinja2==3.1.6
@@ -185,14 +183,8 @@ pydantic-core==2.41.5
     # via pydantic
 pydantic-settings==2.12.0
     # via pdftext
-pymupdf==1.28.2
-    # via paperpilot
-pyparsing==3.3.2
-    # via rdflib
 pypdf==6.6.2
     # via mineru
-pypdf2==3.0.1
-    # via paperpilot
 pypdfium2==4.30.0
     # via
     #   mineru
@@ -208,8 +200,6 @@ python-dotenv==1.2.1
     #   pydantic-settings
 pyyaml==6.0.3
     # via huggingface-hub
-rdflib==7.5.0
-    # via paperpilot
 reportlab==4.4.9
     # via mineru
 requests==2.32.5
