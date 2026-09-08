@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import threading
+import uuid
 from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Tuple
 
@@ -13,6 +14,8 @@ from flask import Flask, jsonify, request, send_file
 from paperpilot.core.base_paper import Paper, PaperUpdateError
 from paperpilot.core.paper_store import PaperStore
 from paperpilot.database.dao.user_data_dao import ReadingListDAO, ReadingHistoryDAO
+from paperpilot.database.dao.document_job_dao import DocumentJobDAO
+from paperpilot.document_worker.client import DocumentWorkerClient
 from paperpilot.security.paths import (
     PathSecurityError,
     ensure_confined,
@@ -23,7 +26,6 @@ from paperpilot.security.paths import (
 )
 from paperpilot.tools.basic_tools.paper_repository import scan_papers_in_directory
 from paperpilot.tools.basic_tools.upload_paper import (
-    process_uploaded_pdf,
     search_arxiv_by_title_only,
 )
 
@@ -83,7 +85,9 @@ def register_paper_operation_routes(
     reading_list_file: str,
     upload_folder: str,
     paper_store: PaperStore,
+    document_client: DocumentWorkerClient | None = None,
 ) -> None:
+    document_client = document_client or DocumentWorkerClient()
 
     def load_reading_list() -> List[str]:
         items = ReadingListDAO.get_list()
@@ -726,9 +730,33 @@ def register_paper_operation_routes(
                 try:
                     print(f"[Re-crawl] Start processing: {file_path}")
 
-                    # Processed using the new unified interface PDF
                     filename = os.path.basename(file_path)
-                    paper_info = process_uploaded_pdf(file_path, filename)
+                    validation_id = str(uuid.uuid4())
+                    try:
+                        with open(file_path, "rb") as source:
+                            document_client.stage(validation_id, "pdf_inspect", source)
+                        DocumentJobDAO.create(validation_id, "pdf_inspect", paper_id)
+                        document_client.create(validation_id, "pdf_inspect")
+                        state = document_client.wait(validation_id, timeout=100)
+                        DocumentJobDAO.update(
+                            validation_id, state["status"],
+                            progress=int(state.get("progress") or 0), error=state.get("error")
+                        )
+                        if state["status"] != "completed":
+                            return
+                        result = document_client.result_json(validation_id)
+                        raw_metadata = result.get("metadata", {})
+                        paper_info = {
+                            "title": raw_metadata.get("title", ""),
+                            "authors": raw_metadata.get("author", ""),
+                            "subject": raw_metadata.get("subject", ""),
+                            "keywords": raw_metadata.get("keywords", ""),
+                        }
+                    finally:
+                        try:
+                            document_client.cleanup(validation_id)
+                        except Exception:
+                            pass
 
                     if not paper_info:
                         print("[Re-crawl] Unable to obtain paper information")
@@ -738,8 +766,8 @@ def register_paper_operation_routes(
 
                     # Use the information obtained
                     metadata = paper_info
-                    arxiv_id = paper_info.get("arxiv_id")
-                    arxiv_published_date = paper_info.get("published_date")
+                    arxiv_id = paper.arxiv_id
+                    arxiv_published_date = paper.arxiv_published_date
 
                     # step2: Rename the file according to the new title (if the title changes)
                     current_filename = os.path.basename(file_path)
@@ -812,7 +840,7 @@ def register_paper_operation_routes(
                         paper_obj.filename = new_filename
                         paper_obj.file_path = new_file_path
                         paper_obj.title = metadata.get("title") or paper_obj.title
-                        paper_obj.authors = metadata.get("authors", "")
+                        paper_obj.authors = metadata.get("authors") or paper_obj.authors
                         paper_obj.arxiv_id = arxiv_id
                         # if there is arxiv_id,set up arxiv_url
                         if arxiv_id:
@@ -821,13 +849,8 @@ def register_paper_operation_routes(
                                 or f"https://arxiv.org/abs/{arxiv_id}"
                             )
                         paper_obj.arxiv_published_date = arxiv_published_date
-                        paper_obj.affiliation = metadata.get("affiliation", "")
-                        paper_obj.year = metadata.get("year", "")
-                        paper_obj.abstract = metadata.get("abstract", "")
-                        paper_obj.summary = metadata.get("summary", "")
-                        paper_obj.bibtex = metadata.get("bibtex", "")
-                        paper_obj.keywords = metadata.get("keywords", "")
-                        paper_obj.subject = metadata.get("subject", "")
+                        paper_obj.keywords = metadata.get("keywords") or paper_obj.keywords
+                        paper_obj.subject = metadata.get("subject") or paper_obj.subject
                         paper_obj.extra["updated_date"] = datetime.now().isoformat()
 
                         # Save updates

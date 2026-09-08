@@ -684,6 +684,7 @@ def register_routes():
     from paperpilot.tools.basic_tools.daily_arxiv import get_manager
 
     daily_arxiv_manager = get_manager(TEMP_PAPERS_DIR, DAILY_ARXIV_SETTINGS_FILE)
+    daily_arxiv_manager.set_document_client(DocumentWorkerClient())
 
     # Set LLM configuration callback
     def get_llm_config():
@@ -767,6 +768,7 @@ def register_routes():
         agentic_settings_file=AGENTIC_SETTINGS_FILE,
         credential_store=AGENTIC_CREDENTIAL_STORE,
         outbound_policy=OUTBOUND_POLICY,
+        document_client=DocumentWorkerClient(),
     )
 
     register_settings_routes(
@@ -795,6 +797,7 @@ def register_routes():
         reading_list_file=READING_LIST_FILE,
         upload_folder=UPLOAD_FOLDER,
         paper_store=paper_store,
+        document_client=DocumentWorkerClient(),
     )
 
     register_upload_from_pdf_routes(
@@ -817,6 +820,7 @@ def register_routes():
         reading_list_file=READING_LIST_FILE,
         reading_list_temp_dir=READING_LIST_TEMP_DIR,
         paper_store=paper_store,
+        document_client=DocumentWorkerClient(),
     )
 
     register_agent_summary_routes(

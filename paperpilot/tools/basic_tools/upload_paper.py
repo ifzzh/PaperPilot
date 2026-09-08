@@ -21,17 +21,11 @@ import re
 from typing import Any, Dict, Optional
 
 import arxiv
-import PyPDF2
 import html
 import xml.etree.ElementTree as ET
 
 from paperpilot.tools.basic_tools.arxiv_client import get_bibtex_enhanced
 from paperpilot.tools.basic_tools.arxiv_network import arxiv_get, configure_arxiv_client
-from paperpilot.tools.basic_tools.pdf_extractor import (
-    extract_title_by_fontsize,
-    extract_title_from_text,
-    preprocess_pdf_text,
-)
 
 # ============================================================================
 # Utility function

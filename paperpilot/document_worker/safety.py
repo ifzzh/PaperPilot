@@ -343,6 +343,7 @@ def inspect_pdf(
             metadata = document.metadata or {}
             result = {
                 "page_count": page_count,
+                "first_page_text": (page.get_text() or "")[:65536],
                 "metadata": {
                     name: str(metadata.get(name) or "")[:4096]
                     for name in ("title", "author", "subject", "keywords")

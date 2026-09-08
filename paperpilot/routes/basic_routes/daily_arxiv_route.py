@@ -18,6 +18,7 @@ from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.user_data_dao import DailyArxivReadDAO, ReadingListDAO
 from paperpilot.database.dao.settings_dao import SettingsDAO
+from paperpilot.document_worker.client import DocumentWorkerClient
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
 from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
 from paperpilot.security.paths import PathSecurityError, ensure_confined, safe_join
@@ -25,7 +26,6 @@ from paperpilot.tools.basic_tools.daily_arxiv import (
     DailyArxivManager,
     build_daily_arxiv_summary_prompt,
     extract_affiliations_with_llm,
-    extract_pdf_first_page_text,
     extract_summary_and_keywords_with_llm,
     get_manager,
     get_today_arxiv_date,
@@ -53,6 +53,7 @@ def register_daily_arxiv_routes(
     agentic_settings_file: str = None,
     credential_store: AgenticCredentialStore | None = None,
     outbound_policy: OutboundPolicy | None = None,
+    document_client: DocumentWorkerClient | None = None,
 ) -> None:
     """
     register Daily arXiv Related routes
@@ -94,6 +95,8 @@ def register_daily_arxiv_routes(
 
     # Get the manager instance (singleton mode, if already in app.py If created in, the same instance will be returned)
     manager = get_manager(temp_papers_dir, daily_arxiv_settings_file)
+    if document_client is not None:
+        manager.set_document_client(document_client)
 
     def is_daily_arxiv_enabled() -> bool:
         try:
@@ -814,7 +817,7 @@ def register_daily_arxiv_routes(
 
             # extraction mechanism,homepage and github
             extraction_result = extract_affiliations_with_llm(
-                extract_pdf_first_page_text(pdf_path) or "",
+                manager.extract_first_page_text(pdf_path) or "",
                 openai_base_url,
                 openai_api_key,
                 prompt=affiliation_prompt,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import io
 import re
 import threading
 import uuid
@@ -13,6 +14,9 @@ from flask import Flask, jsonify, request
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import PaperStore
 from paperpilot.database.dao.user_data_dao import ReadingListDAO
+from paperpilot.database.dao.document_job_dao import DocumentJobDAO
+from paperpilot.document_worker.client import DocumentWorkerClient
+from paperpilot.document_worker.safety import DocumentLimitError, bounded_copy
 from paperpilot.security.paths import safe_join
 from paperpilot.tools.basic_tools.upload_paper import (
     fetch_bibtex_from_dblp, fetch_paper_by_arxiv_id_fast)
@@ -72,11 +76,24 @@ def _download_arxiv_pdf(arxiv_id: str) -> Optional[tuple[bytes, str]]:
             content_type = response.headers.get("Content-Type", "")
             if "pdf" not in content_type.lower():
                 print(f"warn: Content-Type no PDF: {content_type}")
-            pdf_content = response.content
+            maximum = int(os.getenv("PAPERPILOT_MAX_PDF_BYTES", str(100 * 1024 * 1024)))
+            length = response.headers.get("Content-Length")
+            if length and int(length) > maximum:
+                raise DocumentLimitError("upload_too_large")
+            output = io.BytesIO()
+            total = 0
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > maximum:
+                    raise DocumentLimitError("upload_too_large")
+                output.write(chunk)
+            pdf_content = output.getvalue()
             filename = f"{arxiv_id}.pdf"
             print(f"Successfully downloaded PDF, size: {len(pdf_content)} bytes")
             return pdf_content, filename
-        except requests.exceptions.RequestException as exc:
+        except (requests.exceptions.RequestException, DocumentLimitError, ValueError) as exc:
             print(f"from {pdf_url} Download failed: {exc}")
             continue
 
@@ -105,7 +122,9 @@ def register_update_from_url_routes(
     reading_list_file: str,
     reading_list_temp_dir: str,
     paper_store: PaperStore,
+    document_client: DocumentWorkerClient | None = None,
 ) -> None:
+    document_client = document_client or DocumentWorkerClient()
     def _add_to_reading_list(paper_id: str) -> None:
         ReadingListDAO.add_item(paper_id, datetime.now().isoformat())
 
@@ -182,6 +201,26 @@ def register_update_from_url_routes(
                 return jsonify({"success": False, "error": "download PDF fail"}), 500
 
             pdf_content, filename = result
+            validation_id = str(uuid.uuid4())
+            try:
+                document_client.stage(validation_id, "pdf_inspect", io.BytesIO(pdf_content))
+                DocumentJobDAO.create(validation_id, "pdf_inspect")
+                document_client.create(validation_id, "pdf_inspect")
+                state = document_client.wait(validation_id, timeout=100)
+                DocumentJobDAO.update(
+                    validation_id, state["status"], progress=int(state.get("progress") or 0),
+                    error=state.get("error"),
+                )
+                if state["status"] != "completed":
+                    document_client.cleanup(validation_id)
+                    return jsonify({"success": False, "error": state.get("error") or "pdf_invalid"}), 422
+                source_pdf = document_client.job_directory(validation_id) / "work" / "input.pdf"
+            except Exception:
+                try:
+                    document_client.cleanup(validation_id)
+                except Exception:
+                    pass
+                return jsonify({"success": False, "error": "document_worker_unavailable"}), 503
             file_path = str(safe_join(category_folder, filename))
 
             counter = 1
@@ -192,8 +231,17 @@ def register_update_from_url_routes(
                 file_path = str(safe_join(category_folder, filename))
                 counter += 1
 
-            with open(file_path, "wb") as f:
-                f.write(pdf_content)
+            temporary = f"{file_path}.{validation_id}.tmp"
+            try:
+                with source_pdf.open("rb") as reader:
+                    bounded_copy(reader, temporary, document_client.limits.max_pdf_bytes)
+                os.chmod(temporary, 0o660)
+                os.replace(temporary, file_path)
+            finally:
+                try:
+                    document_client.cleanup(validation_id)
+                except Exception:
+                    pass
 
             print(f"PDF saved to: {file_path}")
 
