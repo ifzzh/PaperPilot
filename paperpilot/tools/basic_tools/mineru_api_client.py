@@ -6,18 +6,27 @@ Provides integration with MinerU cloud API for PDF parsing
 import os
 import shutil
 import time
-import zipfile
+import uuid
+from pathlib import Path, PurePosixPath
 from typing import Callable, Dict, Optional
 
 import requests
 
+from paperpilot.database.dao.document_job_dao import DocumentJobDAO
+from paperpilot.document_worker.client import DocumentWorkerClient
+from paperpilot.document_worker.safety import bounded_copy
 from paperpilot.security.outbound import OutboundPolicy, guarded_request
 
 
 class MinerUAPIClient:
     """MinerU API client for PDF parsing via cloud API"""
 
-    def __init__(self, token: str, outbound_policy: OutboundPolicy | None = None):
+    def __init__(
+        self,
+        token: str,
+        outbound_policy: OutboundPolicy | None = None,
+        document_client: DocumentWorkerClient | None = None,
+    ):
         """
         Initialize MinerU API client
 
@@ -26,6 +35,7 @@ class MinerUAPIClient:
         """
         self.token = token
         self.outbound_policy = outbound_policy
+        self.document_client = document_client
         self.base_url = "https://mineru.net/api/v4"
         self.headers = {
             "Content-Type": "application/json",
@@ -232,11 +242,6 @@ class MinerUAPIClient:
             Extracted directory path or None
         """
         try:
-            # Create extract directory
-            os.makedirs(extract_dir, exist_ok=True)
-
-            # Download ZIP file
-            zip_filename = os.path.join(extract_dir, "result.zip")
             print(f"Downloading result ZIP...")
 
             if self.outbound_policy is None:
@@ -253,21 +258,43 @@ class MinerUAPIClient:
             if response.status_code != 200:
                 print(f"Download failed: HTTP {response.status_code}")
                 return None
-
-            with open(zip_filename, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-
-            print(f"Download completed, extracting...")
-
-            # Extract ZIP
-            with zipfile.ZipFile(zip_filename, "r") as zip_ref:
-                zip_ref.extractall(extract_dir)
-
-            # Delete ZIP file
-            os.remove(zip_filename)
-
-            print(f"Extraction completed: {extract_dir}")
+            if self.document_client is None:
+                raise RuntimeError("document_worker_required")
+            job_id = str(uuid.uuid4())
+            try:
+                response.raw.decode_content = True
+                self.document_client.stage(job_id, "mineru_zip", response.raw)
+                DocumentJobDAO.create(job_id, "mineru_zip")
+                self.document_client.create(job_id, "mineru_zip")
+                state = self.document_client.wait(job_id, timeout=300)
+                DocumentJobDAO.update(
+                    job_id, state["status"], progress=int(state.get("progress") or 0),
+                    error=state.get("error"),
+                )
+                if state["status"] != "completed":
+                    return None
+                manifest = self.document_client.verified_manifest(job_id, "mineru_zip")
+                source_root = self.document_client.output(job_id)
+                destination_root = Path(extract_dir)
+                if destination_root.is_symlink():
+                    raise RuntimeError("unsafe_output")
+                destination_root.mkdir(parents=True, exist_ok=True)
+                destination_root = destination_root.resolve(strict=True)
+                for entry in manifest["entries"]:
+                    relative = PurePosixPath(entry["path"])
+                    source = source_root.joinpath(*relative.parts)
+                    destination = destination_root.joinpath(*relative.parts)
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    if destination.is_symlink():
+                        raise RuntimeError("unsafe_output")
+                    with source.open("rb") as reader:
+                        bounded_copy(reader, destination, int(entry["size"]))
+                print(f"Validated extraction completed: {extract_dir}")
+            finally:
+                try:
+                    self.document_client.cleanup(job_id)
+                except Exception:
+                    pass
             return extract_dir
 
         except Exception:

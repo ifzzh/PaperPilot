@@ -14,6 +14,7 @@ from flask import jsonify, request, send_file
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.settings_dao import SettingsDAO
+from paperpilot.document_worker.client import DocumentWorkerClient
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
 from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
 from paperpilot.security.paths import (
@@ -45,6 +46,7 @@ def register_agent_summary_routes(
     upload_folder: str,
     credential_store: AgenticCredentialStore | None = None,
     outbound_policy: OutboundPolicy | None = None,
+    document_client: DocumentWorkerClient | None = None,
 ) -> None:
     del agentic_settings_file
     def resolve_paper_file(paper: Paper) -> str:
@@ -78,6 +80,8 @@ def register_agent_summary_routes(
                 )
             if credential_store is None or outbound_policy is None:
                 return jsonify({"success": False, "error": "agentic_security_unavailable"}), 503
+            if document_client is None:
+                return jsonify({"success": False, "error": "document_worker_unavailable"}), 503
 
             agentic_settings = SettingsDAO.get_setting("agentic_settings", {}) or {}
 
@@ -263,6 +267,7 @@ def register_agent_summary_routes(
                 get_papers_in_category=get_papers_in_category,
                 save_paper_metadata=save_paper_metadata,
                 outbound_policy=outbound_policy,
+                document_client=document_client,
             )
 
             ai_language = data.get("ai_language", "zh")

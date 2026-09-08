@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, List
 
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
+from paperpilot.document_worker.client import DocumentWorkerClient
 from paperpilot.security.outbound import OutboundPolicy
 from paperpilot.tools.api_test_utils import create_openai_client
 
@@ -27,6 +28,7 @@ class AnalysisDependencies:
     get_papers_in_category: Callable[[str, CategoryPath], PaperList]
     save_paper_metadata: Callable[[str, Paper], None]
     outbound_policy: OutboundPolicy
+    document_client: DocumentWorkerClient
 
 
 def analyze_paper_task(
@@ -122,7 +124,9 @@ INPUT: <MARKDOWN>"""
             if not api_token:
                 raise Exception("MinerU API token is not configured")
 
-            client = MinerUAPIClient(api_token, deps.outbound_policy)
+            client = MinerUAPIClient(
+                api_token, deps.outbound_policy, deps.document_client
+            )
 
             # Progress callback
             def on_progress(state, extracted_pages, total_pages):

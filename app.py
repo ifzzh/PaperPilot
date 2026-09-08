@@ -670,7 +670,6 @@ def register_routes():
         get_category_pdf_count=get_category_pdf_count,
         paper_store=paper_store,
         upload_folder=UPLOAD_FOLDER,
-        document_client=DocumentWorkerClient(),
     )
 
     register_search_routes(
@@ -832,6 +831,7 @@ def register_routes():
         upload_folder=UPLOAD_FOLDER,
         credential_store=AGENTIC_CREDENTIAL_STORE,
         outbound_policy=OUTBOUND_POLICY,
+        document_client=DocumentWorkerClient(),
     )
 
     register_agent_chat_routes(
@@ -868,6 +868,7 @@ def register_routes():
         reading_list_file=READING_LIST_FILE,
         paper_store=paper_store,
         upload_folder=UPLOAD_FOLDER,
+        document_client=DocumentWorkerClient(),
     )
 
     register_export_routes(
