@@ -137,7 +137,7 @@ class WorkerContractTests(unittest.TestCase):
             time.sleep(0.01)
         self.assertEqual(state["status"], "completed")
 
-    def test_restart_marks_incomplete_job_interrupted(self):
+    def test_restart_marks_incomplete_job_paused_and_recoverable(self):
         job_id, _ = self._job()
         status = {
             "job_id": job_id,
@@ -152,8 +152,26 @@ class WorkerContractTests(unittest.TestCase):
 
         recovered = TranslationWorkerService(self.root).public_state(job_id)
 
-        self.assertEqual(recovered["status"], "failed")
+        self.assertEqual(recovered["status"], "paused")
         self.assertEqual(recovered["error"], "interrupted")
+
+    def test_structured_progress_is_exposed_without_terminal_formatting(self):
+        job_id, _ = self._job()
+        service = TranslationWorkerService(self.root)
+        state = {
+            "job_id": job_id, "logs": [], "progress": 0, "stage": None,
+            "event_sequence": 0, "created_at": time.time(), "updated_at": time.time(),
+            "status": "running", "error": None, "output": None,
+        }
+        service._consume_output_line(
+            state,
+            'PAPERPILOT_EVENT\t{"type":"progress_update","stage":"translate","overall_progress":37.5,"stage_progress":50,"stage_current":2,"stage_total":4}\n',
+            (),
+        )
+        self.assertEqual(state["progress"], 37)
+        self.assertEqual(state["stage"], "translate")
+        self.assertEqual(state["stage_current"], 2)
+        self.assertEqual(service._read_events(job_id)[0]["kind"], "progress")
 
     def test_output_limit_fails_job(self):
         job_id, work = self._job()

@@ -64,4 +64,8 @@ def create_worker_app(
     def delete_job(job_id: str):
         return jsonify(service.cancel(job_id))
 
+    @app.post("/v1/jobs/<job_id>/pause")
+    def pause_job(job_id: str):
+        return jsonify(service.pause(job_id))
+
     return app

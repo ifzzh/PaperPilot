@@ -114,6 +114,9 @@ class TranslationWorkerClient:
     def cancel(self, job_id: str) -> dict:
         return self._request("DELETE", f"/v1/jobs/{canonical_job_id(job_id)}")
 
+    def pause(self, job_id: str) -> dict:
+        return self._request("POST", f"/v1/jobs/{canonical_job_id(job_id)}/pause")
+
     def _root(self) -> Path:
         root = self.jobs_root.resolve(strict=True)
         if root.is_symlink() or not root.is_dir():
@@ -242,7 +245,7 @@ class TranslationWorkerClient:
                     candidate.rmdir()
         job.rmdir()
 
-    def cleanup_failed_older_than(self, seconds: int = 86400) -> None:
+    def cleanup_failed_older_than(self, seconds: int = 7 * 86400) -> None:
         cutoff = time.time() - seconds
         root = self._root()
         for child in root.iterdir():

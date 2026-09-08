@@ -5,6 +5,7 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -21,6 +22,7 @@ JOB_TIMEOUT_SECONDS = 3600
 TERMINATE_GRACE_SECONDS = 10
 TERMINAL_STATES = frozenset({"completed", "failed", "cancelled"})
 _PROGRESS_RE = re.compile(r"(?<!\d)(\d{1,3})(?:\.\d+)?\s*%")
+_EVENT_PREFIX = "PAPERPILOT_EVENT\t"
 
 
 class WorkerRequestError(ValueError):
@@ -96,6 +98,10 @@ class TranslationWorkerService:
                 raise WorkerRequestError("unsafe_job_path", 409) from exc
         return job, work, status
 
+    def _events_path(self, job_id: str) -> Path:
+        job, _, _ = self._paths(job_id)
+        return job / "events.jsonl"
+
     def _write_status(self, job_id: str, state: dict) -> None:
         job, _, status_path = self._paths(job_id)
         job.mkdir(mode=0o770, parents=False, exist_ok=True)
@@ -103,6 +109,13 @@ class TranslationWorkerService:
             "job_id": job_id,
             "status": state["status"],
             "progress": int(state.get("progress", 0)),
+            "stage": state.get("stage"),
+            "stage_progress": int(state.get("stage_progress", 0)),
+            "stage_current": int(state.get("stage_current", 0)),
+            "stage_total": int(state.get("stage_total", 0)),
+            "attempt": int(state.get("attempt", 0)),
+            "heartbeat_at": state.get("heartbeat_at"),
+            "event_sequence": int(state.get("event_sequence", 0)),
             "created_at": state["created_at"],
             "updated_at": state["updated_at"],
             "error": state.get("error"),
@@ -123,7 +136,7 @@ class TranslationWorkerService:
                 job_id = canonical_job_id(state.get("job_id"))
                 if state.get("status") in {"queued", "running"}:
                     state.update(
-                        status="failed",
+                        status="paused",
                         error="interrupted",
                         updated_at=time.time(),
                     )
@@ -164,13 +177,21 @@ class TranslationWorkerService:
         with self._lock:
             if any(item["status"] in {"queued", "running"} for item in self._jobs.values()):
                 raise WorkerRequestError("worker_busy", 409)
-            if job_id in self._jobs:
+            previous = self._jobs.get(job_id)
+            if previous and previous.get("status") not in {"paused", "failed"}:
                 raise WorkerRequestError("job_exists", 409)
             now = time.time()
             state = {
                 "job_id": job_id,
                 "status": "queued",
                 "progress": 0,
+                "stage": "queued",
+                "stage_progress": 0,
+                "stage_current": 0,
+                "stage_total": 0,
+                "attempt": int((previous or {}).get("attempt", 0)) + 1,
+                "heartbeat_at": now,
+                "event_sequence": int((previous or {}).get("event_sequence", 0)),
                 "created_at": now,
                 "updated_at": now,
                 "error": None,
@@ -178,6 +199,7 @@ class TranslationWorkerService:
                 "process": None,
                 "cancel": threading.Event(),
                 "logs": [],
+                "requested_terminal": None,
             }
             self._jobs[job_id] = state
             self._write_status(job_id, state)
@@ -188,6 +210,21 @@ class TranslationWorkerService:
             )
             thread.start()
         return self.public_state(job_id)
+
+    def _append_event(self, state: dict, event: dict) -> None:
+        state["event_sequence"] = int(state.get("event_sequence", 0)) + 1
+        payload = {
+            "sequence": state["event_sequence"],
+            "timestamp": time.time(),
+            **event,
+        }
+        path = self._events_path(state["job_id"])
+        encoded = (json.dumps(payload, ensure_ascii=True) + "\n").encode("utf-8")
+        if path.exists() and path.stat().st_size + len(encoded) > self.limits.max_log_bytes:
+            return
+        with path.open("ab") as handle:
+            handle.write(encoded)
+            handle.flush()
 
     def _append_log(self, state: dict, line: str, secrets: tuple[str, ...]) -> None:
         safe = line.rstrip().replace(str(self.root / state["job_id"]), "<job>")
@@ -203,9 +240,51 @@ class TranslationWorkerService:
         safe = encoded.decode("utf-8", errors="ignore")
         if safe:
             state["logs"].append(safe)
+            level_match = re.search(r"\b(DEBUG|INFO|WARNING|ERROR|CRITICAL)\b", safe)
+            self._append_event(
+                state,
+                {
+                    "kind": "log",
+                    "level": level_match.group(1).lower() if level_match else "info",
+                    "message": safe,
+                },
+            )
         match = _PROGRESS_RE.search(safe)
         if match:
             state["progress"] = max(state["progress"], min(100, int(match.group(1))))
+
+    def _consume_output_line(self, state: dict, line: str, secrets: tuple[str, ...]) -> None:
+        if line.startswith(_EVENT_PREFIX):
+            try:
+                event = json.loads(line[len(_EVENT_PREFIX):])
+                progress = int(float(event.get("overall_progress", state.get("progress", 0))))
+                stage_progress = int(float(event.get("stage_progress", 0)))
+                state.update(
+                    progress=max(0, min(100, progress)),
+                    stage=str(event.get("stage") or state.get("stage") or "translate"),
+                    stage_progress=max(0, min(100, stage_progress)),
+                    stage_current=int(event.get("stage_current") or 0),
+                    stage_total=int(event.get("stage_total") or 0),
+                    heartbeat_at=time.time(),
+                    updated_at=time.time(),
+                )
+                self._append_event(
+                    state,
+                    {
+                        "kind": "progress",
+                        "level": "info",
+                        "stage": state["stage"],
+                        "progress": state["progress"],
+                        "stage_progress": state["stage_progress"],
+                        "stage_current": state["stage_current"],
+                        "stage_total": state["stage_total"],
+                    },
+                )
+                self._write_status(state["job_id"], state)
+                return
+            except (ValueError, TypeError, KeyError):
+                pass
+        self._append_log(state, line, secrets)
 
     def _run(self, job_id: str, model: str, base_url: str, api_key: str) -> None:
         state = self._jobs[job_id]
@@ -216,7 +295,8 @@ class TranslationWorkerService:
         try:
             self._executor(job_id, model, base_url, api_key, state)
             if state["cancel"].is_set():
-                final.update(status="cancelled", error="cancelled")
+                terminal = state.get("requested_terminal") or "cancelled"
+                final.update(status=terminal, error=terminal)
             else:
                 output = self._validate_output(job_id)
                 final.update(status="completed", progress=100, output=output.name)
@@ -234,20 +314,26 @@ class TranslationWorkerService:
 
     def _execute_babeldoc(self, job_id: str, model: str, base_url: str, api_key: str, state: dict) -> None:
         _, work, _ = self._paths(job_id)
-        command = [
-            "babeldoc", "--openai", "--openai-model", model,
-            "--openai-base-url", base_url, "--openai-api-key", api_key,
-            "--files", "input.pdf",
-        ]
+        command = [sys.executable, "-m", "paperpilot.translation_worker.babeldoc_runner"]
+        environment = os.environ.copy()
+        environment["PYTHONUNBUFFERED"] = "1"
+        environment["XDG_CACHE_HOME"] = str(work / "cache")
         process = subprocess.Popen(
             command,
             cwd=work,
+            env=environment,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             start_new_session=True,
         )
         state["process"] = process
+        assert process.stdin is not None
+        process.stdin.write(json.dumps({
+            "model": model, "base_url": base_url, "api_key": api_key,
+        }) + "\n")
+        process.stdin.close()
         assert process.stdout is not None
         reader = threading.Thread(
             target=self._read_output,
@@ -276,7 +362,7 @@ class TranslationWorkerService:
     def _read_output(self, pipe, state: dict, secrets: tuple[str, ...]) -> None:
         try:
             for line in iter(pipe.readline, ""):
-                self._append_log(state, line, secrets)
+                self._consume_output_line(state, line, secrets)
         finally:
             pipe.close()
 
@@ -328,12 +414,34 @@ class TranslationWorkerService:
                 "job_id": job_id,
                 "status": state["status"],
                 "progress": int(state.get("progress", 0)),
+                "stage": state.get("stage"),
+                "stage_progress": int(state.get("stage_progress", 0)),
+                "stage_current": int(state.get("stage_current", 0)),
+                "stage_total": int(state.get("stage_total", 0)),
+                "attempt": int(state.get("attempt", 0)),
+                "heartbeat_at": state.get("heartbeat_at"),
+                "event_sequence": int(state.get("event_sequence", 0)),
+                "events": self._read_events(job_id),
                 "logs": list(state.get("logs", [])),
                 "created_at": state.get("created_at"),
                 "updated_at": state.get("updated_at"),
                 "error": state.get("error"),
                 "output": state.get("output"),
             }
+
+    def _read_events(self, job_id: str, *, after: int = 0) -> list[dict]:
+        path = self._events_path(job_id)
+        if path.is_symlink() or not path.is_file():
+            return []
+        result: list[dict] = []
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                item = json.loads(line)
+                if int(item.get("sequence", 0)) > after:
+                    result.append(item)
+        except (OSError, ValueError, TypeError):
+            return []
+        return result[-500:]
 
     def cancel(self, job_id: str) -> dict:
         job_id = canonical_job_id(job_id)
@@ -343,6 +451,22 @@ class TranslationWorkerService:
                 raise WorkerRequestError("job_not_found", 404)
             if state["status"] in TERMINAL_STATES:
                 return self.public_state(job_id)
+            state["cancel"].set()
+            state["requested_terminal"] = "cancelled"
+            process = state.get("process")
+        if process is not None:
+            self._terminate_process_group(process)
+        return self.public_state(job_id)
+
+    def pause(self, job_id: str) -> dict:
+        job_id = canonical_job_id(job_id)
+        with self._lock:
+            state = self._jobs.get(job_id)
+            if state is None:
+                raise WorkerRequestError("job_not_found", 404)
+            if state["status"] in TERMINAL_STATES or state["status"] == "paused":
+                return self.public_state(job_id)
+            state["requested_terminal"] = "paused"
             state["cancel"].set()
             process = state.get("process")
         if process is not None:
