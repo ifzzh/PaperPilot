@@ -120,7 +120,7 @@ function ensureAppLoaded() {
     appLoading = true;
     const script = document.createElement('script');
     script.id = 'paperpilot-app-script';
-    script.src = '/static/js/app.js?v=0.9.0';
+    script.src = '/static/js/app.js?v=0.9.1';
     script.onload = () => { appLoaded = true; appLoading = false; };
     script.onerror = () => { appLoading = false; setAuthError('应用脚本加载失败'); };
     document.body.appendChild(script);

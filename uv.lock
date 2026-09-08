@@ -3233,7 +3233,7 @@ wheels = [
 
 [[package]]
 name = "paperpilot"
-version = "0.9.0"
+version = "0.9.1"
 source = { editable = "." }
 dependencies = [
     { name = "argon2-cffi" },
