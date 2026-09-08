@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import Callable, TypeVar
 
 from flask import g, has_request_context
 
@@ -22,6 +23,7 @@ class Identity:
 _background_identity: ContextVar[Identity | None] = ContextVar(
     "paperpilot_identity", default=None
 )
+T = TypeVar("T")
 
 
 def current_identity(*, required: bool = True) -> Identity | None:
@@ -46,3 +48,12 @@ def set_background_identity(identity: Identity):
 
 def reset_background_identity(token) -> None:
     _background_identity.reset(token)
+
+
+def run_as_identity(identity: Identity, callback: Callable[..., T], *args, **kwargs) -> T:
+    """Run background work as one user without copying Flask request state."""
+    token = set_background_identity(identity)
+    try:
+        return callback(*args, **kwargs)
+    finally:
+        reset_background_identity(token)

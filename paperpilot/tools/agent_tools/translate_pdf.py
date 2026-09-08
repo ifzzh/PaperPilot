@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.translation_job_dao import TranslationJobDAO
+from paperpilot.security.identity import current_identity, run_as_identity
 from paperpilot.security.paths import PathSecurityError, paper_asset_paths, verified_paper_path
 from paperpilot.tools.agent_tools.translation_worker_client import (
     TranslationWorkerClient,
@@ -199,9 +200,10 @@ def monitor_worker_task(
 
 
 def start_monitor(task_id: str, paper_id: str, deps: TranslationDependencies) -> threading.Thread:
+    identity = current_identity()
     thread = threading.Thread(
-        target=monitor_worker_task,
-        args=(task_id, paper_id, deps),
+        target=run_as_identity,
+        args=(identity, monitor_worker_task, task_id, paper_id, deps),
         daemon=True,
     )
     thread.start()

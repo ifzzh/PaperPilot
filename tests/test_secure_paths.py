@@ -12,6 +12,7 @@ from paperpilot.security.paths import (
     remove_confined_tree,
     safe_join,
     validate_category_name,
+    user_storage_root,
     verified_paper_path,
     validate_filename,
 )
@@ -122,7 +123,7 @@ class TestSecurePaths(unittest.TestCase):
                 validate_category_name(value)
 
     def test_category_directory_does_not_depend_on_display_hierarchy(self):
-        expected = self.root / ".categories" / category_storage_id("category-id")
+        expected = user_storage_root(self.root) / ".categories" / category_storage_id("category-id")
         self.assertEqual(category_directory(self.root, "category-id"), expected)
 
     def test_paper_path_uses_category_id_and_reserved_reading_list(self):
@@ -130,9 +131,9 @@ class TestSecurePaths(unittest.TestCase):
         temporary = paper_path(self.root, "reading_list_temp", "paper.pdf")
         self.assertEqual(
             regular.parent,
-            self.root / ".categories" / category_storage_id("category-id"),
+            user_storage_root(self.root) / ".categories" / category_storage_id("category-id"),
         )
-        self.assertEqual(temporary.parent, self.root / "_ReadingListTemp")
+        self.assertEqual(temporary.parent, user_storage_root(self.root) / "_ReadingListTemp")
 
     def test_stored_path_must_match_server_derived_path(self):
         expected = paper_path(

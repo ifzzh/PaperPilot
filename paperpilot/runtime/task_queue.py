@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import threading
-from contextvars import copy_context
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Callable, TypeVar
+from paperpilot.security.identity import current_identity, run_as_identity
 
 
 T = TypeVar("T")
@@ -38,8 +38,10 @@ class BoundedExecutor:
             if not self._capacity.acquire(blocking=False):
                 raise QueueFull("executor queue is full")
             try:
-                context = copy_context()
-                future = self._executor.submit(context.run, function, *args, **kwargs)
+                identity = current_identity()
+                future = self._executor.submit(
+                    run_as_identity, identity, function, *args, **kwargs
+                )
             except BaseException:
                 self._capacity.release()
                 raise

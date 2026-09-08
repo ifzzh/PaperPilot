@@ -17,6 +17,7 @@ from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.document_worker.client import DocumentWorkerClient
 from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
+from paperpilot.security.identity import current_user_id
 from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
 from paperpilot.security.paths import (
     PathSecurityError,
@@ -254,6 +255,7 @@ def register_agent_summary_routes(
 
             with analysis_tasks_lock:
                 analysis_tasks[task_id] = {
+                    "owner_id": current_user_id(),
                     "paper_id": paper_id,
                     "status": "queued",
                     "step": None,
@@ -331,7 +333,10 @@ def register_agent_summary_routes(
         with analysis_tasks_lock:
             active_tasks = []
             for task_id, task_info in analysis_tasks.items():
-                if task_info["status"] in ["queued", "running"]:
+                if (
+                    task_info.get("owner_id") == current_user_id()
+                    and task_info["status"] in ["queued", "running"]
+                ):
                     active_tasks.append(
                         {
                             "task_id": task_id,
@@ -347,7 +352,10 @@ def register_agent_summary_routes(
     def api_get_analysis_logs(task_id):
         """Get the log of the interpretation task"""
         with analysis_tasks_lock:
-            if task_id not in analysis_tasks:
+            if (
+                task_id not in analysis_tasks
+                or analysis_tasks[task_id].get("owner_id") != current_user_id()
+            ):
                 return jsonify({"success": False, "error": "Task does not exist"}), 404
 
             task_info = analysis_tasks[task_id]
@@ -371,7 +379,10 @@ def register_agent_summary_routes(
     def api_cancel_analysis(task_id):
         """Cancel interpretation task"""
         with analysis_tasks_lock:
-            if task_id not in analysis_tasks:
+            if (
+                task_id not in analysis_tasks
+                or analysis_tasks[task_id].get("owner_id") != current_user_id()
+            ):
                 return jsonify({"success": False, "error": "Task does not exist"}), 404
 
             task_info = analysis_tasks[task_id]

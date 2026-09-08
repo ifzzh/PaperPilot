@@ -193,6 +193,9 @@ def register_agent_translate_routes(
 
     @app.get("/api/paper/translate/<task_id>/logs")
     def api_get_translation_logs(task_id: str):
+        persisted = TranslationJobDAO.get(task_id)
+        if not persisted:
+            return jsonify({"success": False, "error": "Task does not exist"}), 404
         with translation_tasks_lock:
             task = translation_tasks.get(task_id)
             if task:
@@ -207,9 +210,6 @@ def register_agent_translate_routes(
                             "result": task.get("result"),
                         }
                     )
-        persisted = TranslationJobDAO.get(task_id)
-        if not persisted:
-            return jsonify({"success": False, "error": "Task does not exist"}), 404
         return jsonify(
             {
                 "success": True,

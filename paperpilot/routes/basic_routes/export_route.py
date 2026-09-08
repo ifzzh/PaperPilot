@@ -11,6 +11,7 @@ import shutil
 import tempfile
 import threading
 import time
+import uuid
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Protocol
 from flask import Flask, Response, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
+from paperpilot.security.identity import current_user_id
 
 
 # Export task status storage
@@ -124,12 +126,13 @@ def register_export_routes(
         export_options = {}  # Options no longer needed
         
         # Create taskID
-        task_id = f"export_{int(time.time() * 1000)}"
+        task_id = f"export_{uuid.uuid4()}"
         
         # Initialize task status
         with export_tasks_lock:
             export_tasks[task_id] = {
                 "task_id": task_id,
+                "owner_id": current_user_id(),
                 "status": "pending",
                 "progress": 0,
                 "total": 0,
@@ -166,7 +169,7 @@ def register_export_routes(
     def api_export_status(task_id: str):
         """Query export task status"""
         with export_tasks_lock:
-            if task_id not in export_tasks:
+            if task_id not in export_tasks or export_tasks[task_id].get("owner_id") != current_user_id():
                 return jsonify({
                     "success": False,
                     "error": "Task does not exist"
@@ -190,7 +193,7 @@ def register_export_routes(
     def api_export_download(task_id: str):
         """Download the exported ZIP document"""
         with export_tasks_lock:
-            if task_id not in export_tasks:
+            if task_id not in export_tasks or export_tasks[task_id].get("owner_id") != current_user_id():
                 return jsonify({
                     "success": False,
                     "error": "Task does not exist"
@@ -225,7 +228,7 @@ def register_export_routes(
     def api_export_cancel(task_id: str):
         """Cancel export task"""
         with export_tasks_lock:
-            if task_id not in export_tasks:
+            if task_id not in export_tasks or export_tasks[task_id].get("owner_id") != current_user_id():
                 return jsonify({
                     "success": False,
                     "error": "Task does not exist"

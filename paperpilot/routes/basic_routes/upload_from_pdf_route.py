@@ -21,6 +21,7 @@ from paperpilot.document_worker.client import (
     DocumentWorkerUnavailable,
 )
 from paperpilot.document_worker.safety import DocumentLimitError, bounded_copy
+from paperpilot.security.identity import current_identity, run_as_identity
 from paperpilot.security.paths import safe_join
 
 
@@ -196,7 +197,10 @@ def register_upload_from_pdf_routes(
             except Exception:
                 pass
             return jsonify({"success": False, "error": "document_worker_unavailable"}), 503
+        identity = current_identity()
         _document_monitors.submit(
+            run_as_identity,
+            identity,
             _complete_pdf_job,
             task_id,
             original_filename,
