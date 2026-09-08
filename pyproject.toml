@@ -3,7 +3,7 @@ name = "paperpilot"
 version = "0.8.0"
 description = "PaperPilot: A fully open-source, modern paper reading and management platform for Vibe Coding"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 license = {text = "CC BY-NC 4.0"}
 authors = [
     {name = "PaperPilot Team"}
@@ -26,8 +26,8 @@ dependencies = [
     "openai>=1.70.0,<2",
     "requests==2.34.2",
     "cryptography==50.0.1",
-    "mineru==2.5.3",
-    "mineru_vl_utils==0.1.16",
+    "mineru==3.4.5",
+    "mineru_vl_utils==1.0.5",
     "python-dotenv==1.2.3",
 ]
 
@@ -45,15 +45,31 @@ document = [
     "rdflib==7.5.0",
 ]
 server = [
-    "mineru[vlm]==2.5.3",
-    "mineru[pipeline]==2.5.3",
-    "mineru[api]==2.5.3",
-    "mineru[vllm]==2.5.3",
+    "mineru[vlm]==3.4.5",
+    "mineru[pipeline]==3.4.5",
+    "mineru[vllm]==3.4.5",
     "huggingface-hub>=0.20.0",
     "modelscope>=1.17.0",
 ]
 test = [
     "pytest>=8.0.0",
+]
+
+[tool.uv]
+# Security floors for transitive packages pulled in by MinerU and Flask. Keep
+# these explicit so a normal lock refresh cannot silently reintroduce a known
+# vulnerable release.
+constraint-dependencies = [
+    "click>=8.3.3",
+    "idna>=3.15",
+    "json-repair>=0.60.1",
+    "pdfminer-six>=20251230",
+    "pydantic-settings>=2.14.2",
+    "pypdf>=6.16.1",
+    "pygments>=2.20.0",
+    "python-multipart>=0.0.31",
+    "soupsieve>=2.8.4",
+    "urllib3>=2.7.0",
 ]
 
 [tool.pytest.ini_options]

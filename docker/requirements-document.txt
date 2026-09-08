@@ -2,8 +2,10 @@
 #    uv pip compile docker/requirements-document.in --output-file docker/requirements-document.txt
 blinker==1.9.0
     # via flask
-click==8.3.1
-    # via flask
+click==8.5.0
+    # via
+    #   -c (workspace)
+    #   flask
 flask==3.1.3
     # via -r docker/requirements-document.in
 itsdangerous==2.2.0

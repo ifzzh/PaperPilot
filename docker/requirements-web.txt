@@ -2,24 +2,21 @@
 #    uv export --frozen --no-dev --no-emit-project --no-hashes --extra web --output-file docker/requirements-web.txt
 aiofiles==25.1.0
     # via mineru-vl-utils
+annotated-doc==0.0.4
+    # via fastapi
 annotated-types==0.7.0
     # via pydantic
 anyio==4.12.1
     # via
     #   httpx
     #   openai
+    #   starlette
 arxiv==4.0.1
     # via paperpilot
 beautifulsoup4==4.14.3
     # via mineru
 blinker==1.9.0
     # via flask
-boto3==1.42.43
-    # via mineru
-botocore==1.42.43
-    # via
-    #   boto3
-    #   s3transfer
 certifi==2026.1.4
     # via
     #   httpcore
@@ -29,18 +26,19 @@ cffi==2.0.0 ; platform_python_implementation != 'PyPy'
     # via cryptography
 charset-normalizer==3.4.4
     # via
-    #   pdfminer-six
     #   reportlab
     #   requests
-click==8.3.1
+click==8.5.0
     # via
     #   flask
     #   magika
     #   mineru
     #   pdftext
+    #   uvicorn
+cobble==0.1.4
+    # via mammoth
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
-    #   click
     #   colorlog
     #   loguru
     #   tqdm
@@ -49,14 +47,16 @@ coloredlogs==15.0.1 ; python_full_version < '3.11'
 colorlog==6.10.1
     # via robust-downloader
 cryptography==50.0.1
-    # via
-    #   paperpilot
-    #   pdfminer-six
+    # via paperpilot
 distro==1.9.0
     # via openai
+et-xmlfile==2.0.0
+    # via openpyxl
 exceptiongroup==1.3.1 ; python_full_version < '3.11'
     # via anyio
 fast-langdetect==0.2.5
+    # via mineru
+fastapi==0.128.2
     # via mineru
 fasttext-predict==0.9.2.4
     # via fast-langdetect
@@ -73,7 +73,9 @@ fsspec==2026.2.0
 gunicorn==26.2.0
     # via paperpilot
 h11==0.16.0
-    # via httpcore
+    # via
+    #   httpcore
+    #   uvicorn
 hf-xet==1.2.0 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'
     # via huggingface-hub
 httpcore==1.0.9
@@ -90,41 +92,41 @@ huggingface-hub==0.36.1
     # via mineru
 humanfriendly==10.0 ; python_full_version < '3.11'
     # via coloredlogs
-idna==3.11
+idna==3.19
     # via
     #   anyio
     #   httpx
     #   requests
-imageio==2.37.2
-    # via scikit-image
 itsdangerous==2.2.0
     # via flask
 jinja2==3.1.6
     # via flask
 jiter==0.13.0
     # via openai
-jmespath==1.1.0
-    # via
-    #   boto3
-    #   botocore
-json-repair==0.56.0
+json-repair==0.63.4
     # via mineru
-lazy-loader==0.4
-    # via scikit-image
 loguru==0.7.3
-    # via mineru
+    # via
+    #   mineru
+    #   mineru-vl-utils
 lxml==6.1.3
-    # via arxiv
+    # via
+    #   arxiv
+    #   mineru
+    #   pypptx-with-oxml
+    #   python-docx
 magika==0.6.2
+    # via mineru
+mammoth==1.12.1
     # via mineru
 markupsafe==3.0.3
     # via
     #   flask
     #   jinja2
     #   werkzeug
-mineru==2.5.3
+mineru==3.4.5
     # via paperpilot
-mineru-vl-utils==0.1.16
+mineru-vl-utils==1.0.5
     # via
     #   mineru
     #   paperpilot
@@ -132,20 +134,12 @@ modelscope==1.34.0
     # via mineru
 mpmath==1.3.0
     # via sympy
-networkx==3.4.2 ; python_full_version < '3.11'
-    # via scikit-image
-networkx==3.6.1 ; python_full_version >= '3.11'
-    # via scikit-image
 numpy==2.2.6
     # via
-    #   imageio
     #   magika
     #   mineru
     #   onnxruntime
     #   opencv-python
-    #   scikit-image
-    #   scipy
-    #   tifffile
 onnxruntime==1.23.2 ; python_full_version < '3.11'
     # via magika
 onnxruntime==1.24.1 ; python_full_version >= '3.11'
@@ -156,52 +150,56 @@ openai==1.109.1
     #   paperpilot
 opencv-python==4.13.0.92
     # via mineru
+openpyxl==3.1.5
+    # via mineru
 packaging==26.0
     # via
     #   huggingface-hub
-    #   lazy-loader
     #   onnxruntime
-    #   scikit-image
-pdfminer-six==20250506
-    # via mineru
 pdftext==0.6.3
     # via mineru
 pillow==12.3.0
     # via
-    #   imageio
     #   mineru
     #   mineru-vl-utils
+    #   pypptx-with-oxml
     #   reportlab
-    #   scikit-image
 protobuf==6.33.5
     # via onnxruntime
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
 pydantic==2.12.5
     # via
+    #   fastapi
     #   mineru-vl-utils
     #   openai
     #   pdftext
     #   pydantic-settings
 pydantic-core==2.41.5
     # via pydantic
-pydantic-settings==2.12.0
+pydantic-settings==2.15.0
     # via pdftext
-pypdf==6.6.2
+pylatexenc==2.11
+    # via mineru
+pypdf==6.18.0
     # via mineru
 pypdfium2==4.30.0
     # via
     #   mineru
     #   pdftext
+pypptx-with-oxml==1.0.3
+    # via mineru
 pyreadline3==3.5.6 ; python_full_version < '3.11' and sys_platform == 'win32'
     # via humanfriendly
-python-dateutil==2.9.0.post0
-    # via botocore
+python-docx==1.2.0
+    # via mineru
 python-dotenv==1.2.3
     # via
     #   magika
     #   paperpilot
     #   pydantic-settings
+python-multipart==0.0.32
+    # via mineru
 pyyaml==6.0.3
     # via huggingface-hub
 reportlab==4.4.9
@@ -217,30 +215,16 @@ requests==2.34.2
     #   robust-downloader
 robust-downloader==0.0.2
     # via fast-langdetect
-s3transfer==0.16.0
-    # via boto3
-scikit-image==0.25.2 ; python_full_version < '3.11'
-    # via mineru
-scikit-image==0.26.0 ; python_full_version >= '3.11'
-    # via mineru
-scipy==1.15.3 ; python_full_version < '3.11'
-    # via scikit-image
-scipy==1.17.0 ; python_full_version >= '3.11'
-    # via scikit-image
 setuptools==79.0.1
     # via modelscope
-six==1.17.0
-    # via python-dateutil
 sniffio==1.3.1
     # via openai
-soupsieve==2.8.3
+soupsieve==2.9.2
     # via beautifulsoup4
+starlette==0.50.0
+    # via fastapi
 sympy==1.14.0
     # via onnxruntime
-tifffile==2025.5.10 ; python_full_version < '3.11'
-    # via scikit-image
-tifffile==2026.1.28 ; python_full_version >= '3.11'
-    # via scikit-image
 tqdm==4.67.3
     # via
     #   huggingface-hub
@@ -255,24 +239,33 @@ typing-extensions==4.15.0
     #   beautifulsoup4
     #   cryptography
     #   exceptiongroup
+    #   fastapi
     #   huggingface-hub
     #   openai
     #   pydantic
     #   pydantic-core
     #   pypdf
+    #   pypptx-with-oxml
+    #   python-docx
+    #   starlette
     #   typing-inspection
+    #   uvicorn
 typing-inspection==0.4.2
     # via
+    #   fastapi
     #   pydantic
     #   pydantic-settings
-urllib3==2.6.3
+urllib3==2.7.0
     # via
-    #   botocore
     #   modelscope
     #   requests
+uvicorn==0.40.0
+    # via mineru
 werkzeug==3.1.8
     # via
     #   flask
     #   paperpilot
 win32-setctime==1.2.0 ; sys_platform == 'win32'
     # via loguru
+xlsxwriter==3.2.9
+    # via pypptx-with-oxml
