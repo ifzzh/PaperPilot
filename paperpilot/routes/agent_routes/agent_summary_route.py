@@ -15,6 +15,7 @@ from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.document_worker.client import DocumentWorkerClient
+from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
 from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
 from paperpilot.security.paths import (
@@ -31,6 +32,9 @@ from paperpilot.tools.agent_tools.summary_pdf import (
 from paperpilot.tools.api_test_utils import test_llm_api, test_mineru_api
 
 CategoryPath = List[str]
+_default_analysis_executor = BoundedExecutor(
+    max_workers=1, max_queue=2, thread_name_prefix="analysis"
+)
 
 
 def register_agent_summary_routes(
@@ -47,8 +51,10 @@ def register_agent_summary_routes(
     credential_store: AgenticCredentialStore | None = None,
     outbound_policy: OutboundPolicy | None = None,
     document_client: DocumentWorkerClient | None = None,
+    task_executor: BoundedExecutor | None = None,
 ) -> None:
     del agentic_settings_file
+    task_executor = task_executor or _default_analysis_executor
     def resolve_paper_file(paper: Paper) -> str:
         entry = paper_store.get_entry(paper.id)
         if not entry:
@@ -274,9 +280,9 @@ def register_agent_summary_routes(
             if ai_language not in {"zh", "en"}:
                 ai_language = "zh"
 
-            thread = threading.Thread(
-                target=analyze_paper_task,
-                args=(
+            try:
+                future = task_executor.submit(
+                    analyze_paper_task,
                     task_id,
                     paper_id,
                     pdf_path,
@@ -289,10 +295,18 @@ def register_agent_summary_routes(
                     system_prompt,
                     ai_language,
                     deps,
-                ),
-            )
-            thread.daemon = True
-            thread.start()
+                )
+            except QueueFull:
+                with analysis_tasks_lock:
+                    analysis_tasks.pop(task_id, None)
+                response = jsonify(
+                    {"success": False, "error": "analysis_queue_full"}
+                )
+                response.headers["Retry-After"] = "60"
+                return response, 429
+            with analysis_tasks_lock:
+                if task_id in analysis_tasks:
+                    analysis_tasks[task_id]["future"] = future
 
             return jsonify(
                 {
@@ -374,12 +388,15 @@ def register_agent_summary_routes(
                 )
 
             process = task_info.get("process")
+            future = task_info.get("future")
+            if future is not None:
+                future.cancel()
             if process and process.poll() is None:
                 try:
-                    process.terminate()
+                    os.killpg(process.pid, 15)
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    process.kill()
+                    os.killpg(process.pid, 9)
                     process.wait()
                 except Exception as exc:  # noqa: BLE001
                     print(f"Failed to terminate process: {exc}")

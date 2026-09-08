@@ -19,6 +19,7 @@ from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.user_data_dao import DailyArxivReadDAO, ReadingListDAO
 from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.document_worker.client import DocumentWorkerClient
+from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
 from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
 from paperpilot.security.paths import PathSecurityError, ensure_confined, safe_join
@@ -38,6 +39,14 @@ from paperpilot.tools.basic_tools.daily_arxiv_quality import normalize_quality_c
 from paperpilot.tools.basic_tools.upload_paper import fetch_bibtex_from_dblp
 
 
+_default_daily_executor = BoundedExecutor(
+    max_workers=1, max_queue=1, thread_name_prefix="daily-arxiv"
+)
+_default_auxiliary_executor = BoundedExecutor(
+    max_workers=2, max_queue=8, thread_name_prefix="daily-aux"
+)
+
+
 def register_daily_arxiv_routes(
     app: Flask,
     *,
@@ -54,11 +63,20 @@ def register_daily_arxiv_routes(
     credential_store: AgenticCredentialStore | None = None,
     outbound_policy: OutboundPolicy | None = None,
     document_client: DocumentWorkerClient | None = None,
+    task_executor: BoundedExecutor | None = None,
+    auxiliary_executor: BoundedExecutor | None = None,
 ) -> None:
     """
     register Daily arXiv Related routes
     """
     del agentic_settings_file
+    task_executor = task_executor or _default_daily_executor
+    auxiliary_executor = auxiliary_executor or _default_auxiliary_executor
+
+    def queue_full_response():
+        response = jsonify({"success": False, "error": "daily_arxiv_queue_full"})
+        response.headers["Retry-After"] = "60"
+        return response, 429
 
     def _fetch_bibtex_background(
         paper_id: str,
@@ -466,8 +484,10 @@ def register_daily_arxiv_routes(
                     cache_key = f"{date_str}_{category}"
                     _thumbnail_cache.pop(cache_key, None)
 
-            thread = threading.Thread(target=do_fetch, daemon=True)
-            thread.start()
+            try:
+                task_executor.submit(do_fetch)
+            except QueueFull:
+                return queue_full_response()
 
             return jsonify(
                 {
@@ -554,8 +574,10 @@ def register_daily_arxiv_routes(
                 with _thumbnail_cache_lock:
                     _thumbnail_cache.clear()
 
-            thread = threading.Thread(target=do_fetch_all, daemon=True)
-            thread.start()
+            try:
+                task_executor.submit(do_fetch_all)
+            except QueueFull:
+                return queue_full_response()
 
             return jsonify(
                 {
@@ -731,9 +753,9 @@ def register_daily_arxiv_routes(
 
             # 【Background acquisition BibTeX(priority DBLP, use after failure arXiv）】
             if paper.title:
-                thread = threading.Thread(
-                    target=_fetch_bibtex_background,
-                    args=(
+                try:
+                    auxiliary_executor.submit(
+                        _fetch_bibtex_background,
                         paper.id,
                         paper.title,
                         paper.authors or "",  # authors Can be empty
@@ -741,11 +763,10 @@ def register_daily_arxiv_routes(
                         target_path,
                         category_id,
                         category_path,
-                    ),
-                    daemon=True,
-                )
-                thread.start()
-                print(f"[DailyArxiv] Paper has been added,BibTeX Getting in the background...")
+                    )
+                    print("[DailyArxiv] Paper added; BibTeX queued")
+                except QueueFull:
+                    print("[DailyArxiv] BibTeX skipped because the auxiliary queue is full")
 
             return jsonify(
                 {

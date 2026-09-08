@@ -11,6 +11,7 @@ from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
 from paperpilot.security.credentials import CredentialError
 from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError, guarded_request
+from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
 from paperpilot.tools.api_test_utils import create_openai_client
 
 
@@ -69,6 +70,7 @@ def register_settings_routes(
     start_daily_arxiv_callback=None,
     credential_store: AgenticCredentialStore | None = None,
     outbound_policy: OutboundPolicy | None = None,
+    daily_task_executor: BoundedExecutor | None = None,
 ) -> None:
 
     # ========================================
@@ -519,8 +521,6 @@ def register_settings_routes(
                     if "yes" in reply.lower():
                         if llm_config_type in (None, "", "dailyArxiv"):
                             try:
-                                import threading
-
                                 from paperpilot.tools.basic_tools.daily_arxiv import (
                                     get_manager,
                                 )
@@ -559,13 +559,16 @@ def register_settings_routes(
                                                 f"[Settings] trigger Daily arXiv Fetch failed: {e}"
                                             )
 
-                                    thread = threading.Thread(
-                                        target=trigger_fetch, daemon=True
-                                    )
-                                    thread.start()
-                                    print(
-                                        "[Settings] LLM API The test is successful and has been triggered in the background Daily arXiv crawl"
-                                    )
+                                    if daily_task_executor is not None:
+                                        try:
+                                            daily_task_executor.submit(trigger_fetch)
+                                            print(
+                                                "[Settings] LLM API test queued a Daily arXiv crawl"
+                                            )
+                                        except QueueFull:
+                                            print(
+                                                "[Settings] Daily arXiv crawl skipped because the queue is full"
+                                            )
                             except Exception as e:
                                 print(
                                     f"[Settings] deal with Daily arXiv An error occurred in the failed state (does not affect testing): {e}"

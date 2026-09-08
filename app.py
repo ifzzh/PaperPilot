@@ -42,6 +42,7 @@ from paperpilot.database.connection import DB_PATH
 from paperpilot.database.connection import init_db as register_db_teardown
 from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.document_worker.client import DocumentWorkerClient
+from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
 from paperpilot.tools.agent_tools.translation_worker_client import TranslationWorkerClient
 from paperpilot.database.db_manager import init_db_schema
 from paperpilot.routes.agent_routes.agent_summary_route import (
@@ -596,6 +597,24 @@ _application_initialized = False
 _application_papers_dir: Optional[str] = None
 _daily_arxiv_manager = None
 _shutdown_registered = False
+_analysis_executor = BoundedExecutor(
+    max_workers=1, max_queue=2, thread_name_prefix="analysis"
+)
+_export_executor = BoundedExecutor(
+    max_workers=1, max_queue=2, thread_name_prefix="export"
+)
+_daily_arxiv_executor = BoundedExecutor(
+    max_workers=1, max_queue=1, thread_name_prefix="daily-arxiv"
+)
+_daily_aux_executor = BoundedExecutor(
+    max_workers=2, max_queue=8, thread_name_prefix="daily-aux"
+)
+_search_executor = BoundedExecutor(
+    max_workers=1, max_queue=1, thread_name_prefix="search-rebuild"
+)
+_search_rebuild_lock = threading.Lock()
+_search_rebuild_running = False
+_search_rebuild_pending = False
 
 
 @app.route("/")
@@ -761,6 +780,15 @@ def register_routes():
 
     daily_arxiv_manager.set_user_settings_callback(get_user_settings)
 
+    def submit_daily_arxiv(function, *args, **kwargs):
+        try:
+            return _daily_arxiv_executor.submit(function, *args, **kwargs)
+        except QueueFull:
+            print("[DailyArxiv] scheduled fetch skipped because the queue is full")
+            return None
+
+    daily_arxiv_manager.set_scheduler_dispatch_callback(submit_daily_arxiv)
+
     # Check if LLM configuration is complete
     def is_llm_configured() -> bool:
         llm_config = get_llm_config()
@@ -803,6 +831,8 @@ def register_routes():
         credential_store=AGENTIC_CREDENTIAL_STORE,
         outbound_policy=OUTBOUND_POLICY,
         document_client=DocumentWorkerClient(),
+        task_executor=_daily_arxiv_executor,
+        auxiliary_executor=_daily_aux_executor,
     )
 
     register_settings_routes(
@@ -816,6 +846,7 @@ def register_routes():
         start_daily_arxiv_callback=start_daily_arxiv_if_configured,
         credential_store=AGENTIC_CREDENTIAL_STORE,
         outbound_policy=OUTBOUND_POLICY,
+        daily_task_executor=_daily_arxiv_executor,
     )
 
     register_paper_operation_routes(
@@ -832,6 +863,7 @@ def register_routes():
         upload_folder=UPLOAD_FOLDER,
         paper_store=paper_store,
         document_client=DocumentWorkerClient(),
+        task_executor=_analysis_executor,
     )
 
     register_upload_from_pdf_routes(
@@ -912,6 +944,7 @@ def register_routes():
     register_export_routes(
         app,
         papers_dir=UPLOAD_FOLDER,
+        task_executor=_export_executor,
     )
 
     register_institution_mapping_routes(
@@ -997,54 +1030,60 @@ def _initialize_application(papers_dir: str) -> None:
     # Rebuild search index (in background thread to avoid blocking startup)
     def rebuild_search_index():
         """Rebuild search index in background thread to avoid blocking startup"""
-        import threading
-        import time
-
         def _rebuild():
-            time.sleep(1)  # Wait 1 second to ensure other initialization is complete
-            print("Start rebuilding search index...")
-            try:
-                categories = get_categories()
-                papers_with_categories = []
+            global _search_rebuild_running, _search_rebuild_pending
+            while True:
+                time.sleep(1)
+                print("Start rebuilding search index...")
+                try:
+                    categories = get_categories()
+                    papers_with_categories = []
 
-                def collect_papers(node, category_path):
-                    """Recursively collect all papers"""
-                    node_path = get_category_path(categories, node.get("id"))
-                    if node_path and len(node_path) > 1:
-                        directory_path = str(
-                            paper_directory(UPLOAD_FOLDER, node.get("id"))
-                        )
-                        if os.path.exists(directory_path):
-                            papers = scan_papers_in_directory(
-                                directory_path,
-                                category_id=node.get("id"),
-                                category_path=node_path,
+                    def collect_papers(node, category_path):
+                        node_path = get_category_path(categories, node.get("id"))
+                        if node_path and len(node_path) > 1:
+                            directory_path = str(
+                                paper_directory(UPLOAD_FOLDER, node.get("id"))
                             )
-                            for paper in papers:
-                                papers_with_categories.append((paper, node.get("id")))
+                            if os.path.exists(directory_path):
+                                papers = scan_papers_in_directory(
+                                    directory_path,
+                                    category_id=node.get("id"),
+                                    category_path=node_path,
+                                )
+                                papers_with_categories.extend(
+                                    (paper, node.get("id")) for paper in papers
+                                )
+                        for child in node.get("children", []):
+                            collect_papers(child, node_path or [])
 
-                    for child in node.get("children", []):
-                        collect_papers(child, node_path or [])
+                    for child in categories.get("children", []):
+                        collect_papers(child, [])
+                    if papers_with_categories:
+                        search_index.rebuild_index(papers_with_categories)
+                    else:
+                        print("No papers found, skip index reconstruction")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"Failed to rebuild search index: {exc}")
+                with _search_rebuild_lock:
+                    if _search_rebuild_pending:
+                        _search_rebuild_pending = False
+                        continue
+                    _search_rebuild_running = False
+                    return
 
-                for child in categories.get("children", []):
-                    collect_papers(child, [])
-
-                if papers_with_categories:
-                    print(
-                        f"Start rebuilding search index, {len(papers_with_categories)} papers..."
-                    )
-                    search_index.rebuild_index(papers_with_categories)
-                    # Information completed in rebuild_index, no need to repeat here
-                else:
-                    print("No papers found, skip index reconstruction")
-            except Exception as e:
-                print(f"Failed to rebuild search index: {e}")
-                import traceback
-
-                traceback.print_exc()
-
-        thread = threading.Thread(target=_rebuild, daemon=True)
-        thread.start()
+        global _search_rebuild_running, _search_rebuild_pending
+        with _search_rebuild_lock:
+            if _search_rebuild_running:
+                _search_rebuild_pending = True
+                return
+            _search_rebuild_running = True
+        try:
+            _search_executor.submit(_rebuild)
+        except (QueueFull, RuntimeError):
+            with _search_rebuild_lock:
+                _search_rebuild_running = False
+            print("Search index rebuild skipped because the executor is unavailable")
 
     # Set rebuild index callback (after defining rebuild_search_index)
     if search_index:
@@ -1066,6 +1105,29 @@ def shutdown_application() -> None:
         _daily_arxiv_manager, "_scheduler_running", False
     ):
         _daily_arxiv_manager.stop_scheduler()
+    with analysis_tasks_lock:
+        for task in analysis_tasks.values():
+            if task.get("status") not in {"queued", "running"}:
+                continue
+            future = task.get("future")
+            if future is not None:
+                future.cancel()
+            process = task.get("process")
+            if process is not None and process.poll() is None:
+                try:
+                    os.killpg(process.pid, 15)
+                except (OSError, ProcessLookupError):
+                    pass
+            task["status"] = "interrupted"
+            task["result"] = {"success": False, "error": "interrupted"}
+    for executor in (
+        _analysis_executor,
+        _export_executor,
+        _daily_arxiv_executor,
+        _daily_aux_executor,
+        _search_executor,
+    ):
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def create_app(papers_dir: Optional[str] = None) -> Flask:

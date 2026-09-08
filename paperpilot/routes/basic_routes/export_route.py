@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Protocol
 
 from flask import Flask, Response, jsonify, request, send_file
 from werkzeug.utils import secure_filename
+from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
 
 
 # Export task status storage
@@ -25,7 +26,9 @@ export_tasks: Dict[str, Dict[str, Any]] = {}
 export_tasks_lock = threading.Lock()
 
 # Currently active export tasksID
-current_export_task_id: Optional[str] = None
+_default_export_executor = BoundedExecutor(
+    max_workers=1, max_queue=2, thread_name_prefix="export"
+)
 
 
 def _should_exclude_file(rel_path: str) -> bool:
@@ -109,25 +112,14 @@ def _export_papers_folder_to_zip(
 def register_export_routes(
     app: Flask,
     papers_dir: str,
+    task_executor: BoundedExecutor | None = None,
 ):
     """Register and export related routes"""
+    task_executor = task_executor or _default_export_executor
     
     @app.route("/api/export/start", methods=["POST"])
     def api_export_start():
         """Start export task"""
-        global current_export_task_id
-        
-        # Check if there is already an export task running
-        with export_tasks_lock:
-            if current_export_task_id and current_export_task_id in export_tasks:
-                task = export_tasks[current_export_task_id]
-                if task["status"] in ["running", "pending"]:
-                    return jsonify({
-                        "success": False,
-                        "error": "An export task is already running",
-                        "task_id": current_export_task_id
-                    }), 400
-        
         # Export options fixed to export only JSON metadata
         export_options = {}  # Options no longer needed
         
@@ -147,19 +139,22 @@ def register_export_routes(
                 "options": export_options,
                 "created_at": datetime.now().isoformat(),
             }
-            current_export_task_id = task_id
-        
-        # Start background export task
-        thread = threading.Thread(
-            target=_export_task,
-            args=(
+        try:
+            future = task_executor.submit(
+                _export_task,
                 task_id,
                 papers_dir,
                 export_options,
-            ),
-            daemon=True,
-        )
-        thread.start()
+            )
+        except QueueFull:
+            with export_tasks_lock:
+                export_tasks.pop(task_id, None)
+            response = jsonify({"success": False, "error": "export_queue_full"})
+            response.headers["Retry-After"] = "60"
+            return response, 429
+        with export_tasks_lock:
+            if task_id in export_tasks:
+                export_tasks[task_id]["future"] = future
         
         return jsonify({
             "success": True,
@@ -229,8 +224,6 @@ def register_export_routes(
     @app.route("/api/export/cancel/<task_id>", methods=["POST"])
     def api_export_cancel(task_id: str):
         """Cancel export task"""
-        global current_export_task_id
-        
         with export_tasks_lock:
             if task_id not in export_tasks:
                 return jsonify({
@@ -248,9 +241,9 @@ def register_export_routes(
             # Mark as canceled
             task["status"] = "cancelled"
             task["error"] = "User cancels"
-            
-            if current_export_task_id == task_id:
-                current_export_task_id = None
+            future = task.get("future")
+            if future is not None:
+                future.cancel()
         
         return jsonify({
             "success": True,
@@ -264,8 +257,6 @@ def _export_task(
     export_options: Dict[str, Any],
 ):
     """Background export task (export only JSON metadata)"""
-    global current_export_task_id
-    
     def update_progress(progress: int, total: int, current_item: str):
         with export_tasks_lock:
             if task_id in export_tasks:
@@ -277,6 +268,8 @@ def _export_task(
         # Update status is running
         with export_tasks_lock:
             if task_id not in export_tasks:
+                return
+            if export_tasks[task_id]["status"] == "cancelled":
                 return
             export_tasks[task_id]["status"] = "running"
         
@@ -299,7 +292,7 @@ def _export_task(
             
             # Update task status to complete
             with export_tasks_lock:
-                if task_id in export_tasks:
+                if task_id in export_tasks and export_tasks[task_id]["status"] != "cancelled":
                     export_tasks[task_id]["status"] = "completed"
                     export_tasks[task_id]["zip_path"] = zip_path
                     export_tasks[task_id]["current_paper"] = "Export completed"
@@ -311,7 +304,7 @@ def _export_task(
             
             # Update task status is failed
             with export_tasks_lock:
-                if task_id in export_tasks:
+                if task_id in export_tasks and export_tasks[task_id]["status"] != "cancelled":
                     export_tasks[task_id]["status"] = "failed"
                     export_tasks[task_id]["error"] = str(e)
             
@@ -320,7 +313,4 @@ def _export_task(
                 shutil.rmtree(temp_dir, ignore_errors=True)
     
     finally:
-        # Clean up current tasksID
-        with export_tasks_lock:
-            if current_export_task_id == task_id:
-                current_export_task_id = None
+        pass

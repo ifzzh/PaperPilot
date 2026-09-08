@@ -201,6 +201,7 @@ INPUT: <MARKDOWN>"""
                 text=True,
                 bufsize=1,
                 universal_newlines=True,
+                start_new_session=True,
             )
 
             with deps.analysis_tasks_lock:

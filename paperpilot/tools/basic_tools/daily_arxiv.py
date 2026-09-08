@@ -1001,6 +1001,7 @@ class DailyArxivManager:
         # scheduler
         self._scheduler_thread = None
         self._scheduler_running = False
+        self._scheduler_dispatch_callback = None
         self._last_fetch_time: Dict[str, datetime] = {}
 
         # LLM Configure callback
@@ -2286,6 +2287,16 @@ class DailyArxivManager:
         self._scheduler_thread.start()
         print("[DailyArxiv] Scheduler started")
 
+    def set_scheduler_dispatch_callback(self, callback):
+        """Send scheduled work through the Web process bounded executor."""
+        self._scheduler_dispatch_callback = callback
+
+    def _dispatch_scheduled_fetch(self):
+        if self._scheduler_dispatch_callback is not None:
+            self._scheduler_dispatch_callback(self._do_scheduled_fetch)
+        else:
+            self._do_scheduled_fetch()
+
     def stop_scheduler(self):
         """Stop scheduler"""
         self._scheduler_running = False
@@ -2298,7 +2309,7 @@ class DailyArxivManager:
         # Execute once immediately on startup
         settings = self.get_settings()
         if settings.get("enabled", False):
-            self._do_scheduled_fetch()
+            self._dispatch_scheduled_fetch()
 
         while self._scheduler_running:
             settings = self.get_settings()
@@ -2321,7 +2332,7 @@ class DailyArxivManager:
                 time.sleep(1)
 
             # Perform crawling
-            self._do_scheduled_fetch()
+            self._dispatch_scheduled_fetch()
 
     def _get_recent_weekdays(self, days: int) -> List[str]:
         """

@@ -9,6 +9,22 @@ from paperpilot.tools.basic_tools.daily_arxiv import DailyArxivManager
 
 
 class TestDailyArxivSchedulerNoLLM(unittest.TestCase):
+    def test_scheduler_dispatches_through_configured_executor(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = DailyArxivManager(
+                base_dir=tmpdir,
+                settings_file=os.path.join(tmpdir, "settings.json"),
+            )
+            submitted = []
+            manager.set_scheduler_dispatch_callback(
+                lambda function, *args, **kwargs: submitted.append(
+                    (function, args, kwargs)
+                )
+            )
+            manager._dispatch_scheduled_fetch()
+            self.assertEqual(len(submitted), 1)
+            self.assertEqual(submitted[0][0], manager._do_scheduled_fetch)
+
     def test_scheduled_fetch_runs_without_llm(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             settings_file = os.path.join(tmpdir, "daily_arxiv_settings.json")

@@ -50,6 +50,40 @@ class WebTaskQueueContractTests(unittest.TestCase):
             time.sleep(0.01)
         self.assertTrue(queued.cancelled())
 
+    def test_export_returns_stable_429_when_queue_is_full(self):
+        from flask import Flask
+
+        from paperpilot.routes.basic_routes import export_route
+        from paperpilot.runtime.task_queue import QueueFull
+
+        class FullExecutor:
+            def submit(self, *_args, **_kwargs):
+                raise QueueFull("full")
+
+        export_route.export_tasks.clear()
+        application = Flask(__name__)
+        export_route.register_export_routes(
+            application,
+            papers_dir="/managed",
+            task_executor=FullExecutor(),
+        )
+        response = application.test_client().post("/api/export/start")
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.get_json()["error"], "export_queue_full")
+        self.assertEqual(response.headers["Retry-After"], "60")
+
+    def test_request_routes_do_not_spawn_unbounded_threads(self):
+        route_files = [
+            "paperpilot/routes/agent_routes/agent_summary_route.py",
+            "paperpilot/routes/basic_routes/export_route.py",
+            "paperpilot/routes/basic_routes/daily_arxiv_route.py",
+            "paperpilot/routes/basic_routes/settings_route.py",
+        ]
+        for path in route_files:
+            with self.subTest(path=path):
+                source = Path(path).read_text(encoding="utf-8")
+                self.assertNotIn("threading.Thread", source)
+
 
 class ApplicationFactoryContractTests(unittest.TestCase):
     def test_gunicorn_is_single_process_with_eight_threads(self):
