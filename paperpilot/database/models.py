@@ -1,4 +1,56 @@
 SCHEMA_SCRIPT = """
+-- Local identities. Passwords and bearer-equivalent values are never stored raw.
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    username_normalized TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    must_change_password INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    password_changed_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    csrf_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    revoked_at INTEGER,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS invite_codes (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_by TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER,
+    used_by TEXT,
+    revoked_at INTEGER,
+    FOREIGN KEY(created_by) REFERENCES users(id),
+    FOREIGN KEY(used_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_codes (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    user_id TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER,
+    revoked_at INTEGER,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(created_by) REFERENCES users(id)
+);
+
 -- Papers table
 CREATE TABLE IF NOT EXISTS papers (
     id TEXT PRIMARY KEY,

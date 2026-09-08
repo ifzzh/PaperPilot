@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from contextvars import copy_context
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Callable, TypeVar
 
@@ -37,7 +38,8 @@ class BoundedExecutor:
             if not self._capacity.acquire(blocking=False):
                 raise QueueFull("executor queue is full")
             try:
-                future = self._executor.submit(function, *args, **kwargs)
+                context = copy_context()
+                future = self._executor.submit(context.run, function, *args, **kwargs)
             except BaseException:
                 self._capacity.release()
                 raise

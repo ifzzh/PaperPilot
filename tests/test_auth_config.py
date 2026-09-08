@@ -4,18 +4,11 @@ from paperpilot.auth import AuthConfig, AuthConfigurationError
 
 
 class TestAuthConfig(unittest.TestCase):
-    def test_secure_defaults_require_complete_supabase_configuration(self):
-        with self.assertRaisesRegex(AuthConfigurationError, "SUPABASE_URL"):
-            AuthConfig.from_environ({})
-
-    def test_partial_supabase_configuration_is_rejected(self):
-        with self.assertRaisesRegex(AuthConfigurationError, "SUPABASE_ANON_KEY"):
-            AuthConfig.from_environ(
-                {
-                    "SUPABASE_URL": "https://example.supabase.co",
-                    "PAPERPILOT_ALLOWED_EMAILS": "admin@example.com",
-                }
-            )
+    def test_secure_defaults_use_local_authentication(self):
+        config = AuthConfig.from_environ({})
+        self.assertTrue(config.enabled)
+        self.assertEqual(config.mode, "local")
+        self.assertTrue(config.cookie_secure)
 
     def test_production_cannot_disable_authentication(self):
         with self.assertRaisesRegex(AuthConfigurationError, "production"):
@@ -38,23 +31,19 @@ class TestAuthConfig(unittest.TestCase):
         self.assertFalse(config.enabled)
         self.assertFalse(config.cookie_secure)
 
-    def test_allowed_emails_are_normalized(self):
+    def test_production_local_authentication_is_enabled(self):
         config = AuthConfig.from_environ(
             {
                 "PAPERPILOT_ENV": "production",
-                "PAPERPILOT_AUTH_MODE": "supabase",
-                "SUPABASE_URL": "https://example.supabase.co/",
-                "SUPABASE_ANON_KEY": "public-key",
-                "PAPERPILOT_ALLOWED_EMAILS": " Admin@Example.com,other@example.com ",
+                "PAPERPILOT_AUTH_MODE": "local",
             }
         )
-
-        self.assertEqual(config.supabase_url, "https://example.supabase.co")
-        self.assertEqual(
-            config.allowed_emails,
-            frozenset({"admin@example.com", "other@example.com"}),
-        )
+        self.assertTrue(config.enabled)
         self.assertTrue(config.cookie_secure)
+
+    def test_supabase_mode_is_rejected(self):
+        with self.assertRaisesRegex(AuthConfigurationError, "local or disabled"):
+            AuthConfig.from_environ({"PAPERPILOT_AUTH_MODE": "supabase"})
 
     def test_invalid_boolean_is_rejected(self):
         with self.assertRaisesRegex(AuthConfigurationError, "true or false"):

@@ -26,6 +26,7 @@ dependencies = [
     "openai>=1.70.0,<2",
     "requests==2.34.2",
     "cryptography==50.0.1",
+    "argon2-cffi==25.1.0",
     "mineru==3.4.5",
     "mineru_vl_utils==1.0.5",
     "python-dotenv==1.2.3",
