@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from paperpilot.database.models import SCHEMA_SCRIPT
+from paperpilot.database.db_manager import _ensure_translation_columns
 from paperpilot.tools.basic_tools.daily_arxiv_profile import DEFAULT_RESEARCH_TOPICS
 
 
@@ -59,6 +60,18 @@ def _write_json(path: Path, data: dict) -> None:
     temporary.replace(path)
 
 
+def _write_existing_settings(path: Path, data: dict) -> None:
+    """Preserve the container-owned inode and its group-writable permissions."""
+    if not path.exists():
+        _write_json(path, data)
+        return
+    with path.open("w", encoding="utf-8") as stream:
+        json.dump(data, stream, ensure_ascii=False, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
 def apply(db_path: Path, settings_path: Path, backup_dir: Path) -> Path:
     report = inspect(db_path, settings_path)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -92,6 +105,7 @@ def apply(db_path: Path, settings_path: Path, backup_dir: Path) -> Path:
     try:
         with sqlite3.connect(db_path) as connection:
             connection.row_factory = sqlite3.Row
+            _ensure_translation_columns(connection)
             connection.executescript(SCHEMA_SCRIPT)
             now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             owners = [row[0] for row in connection.execute("SELECT id FROM users")]
@@ -121,11 +135,11 @@ def apply(db_path: Path, settings_path: Path, backup_dir: Path) -> Path:
                 )
             connection.commit()
         settings_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_json(settings_path, data)
+        _write_existing_settings(settings_path, data)
     except Exception:
         shutil.copy2(db_backup, db_path)
         if settings_backup.exists():
-            shutil.copy2(settings_backup, settings_path)
+            shutil.copyfile(settings_backup, settings_path)
         raise
 
     _write_json(manifest, {
@@ -150,7 +164,7 @@ def rollback(db_path: Path, settings_path: Path, manifest_path: Path) -> None:
         source = Path(manifest["settings_backup"])
         if _sha256(source) != manifest["settings_sha256"]:
             raise WorkflowMigrationError("settings_backup_hash_mismatch")
-        shutil.copy2(source, settings_path)
+        shutil.copyfile(source, settings_path)
     manifest["state"] = "rolled_back"
     _write_json(manifest_path, manifest)
 
