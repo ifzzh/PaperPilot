@@ -150,11 +150,23 @@ class PaperDAO:
         db = get_db()
         sql = 'SELECT * FROM papers WHERE owner_id=? AND is_daily = 1 AND daily_date = ?'
         params = [current_user_id(), date]
-        if category:
-            sql += ' AND category = ?'
-            params.append(category)
         rows = db.execute(sql, params).fetchall()
-        return [PaperDAO._row_to_dict(row) for row in rows]
+        papers = [PaperDAO._row_to_dict(row) for row in rows]
+        if not category or category == "all":
+            return papers
+        wanted = category.strip().lower()
+        result = []
+        for paper in papers:
+            categories = {str(value).strip().lower() for value in paper.get('categories', [])}
+            categories.add(str(paper.get('subject') or '').strip().lower())
+            categories.add(str(paper.get('fetch_category') or '').strip().lower())
+            topic_ids = {
+                str(value.get('id') or '').strip().lower()
+                for value in paper.get('matched_topics', []) if isinstance(value, dict)
+            }
+            if wanted in categories or wanted in topic_ids:
+                result.append(paper)
+        return result
 
     @staticmethod
     def get_available_daily_dates():

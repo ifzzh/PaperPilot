@@ -84,6 +84,7 @@ from paperpilot.tools.basic_tools.daily_arxiv import (
     DEFAULT_REPLACEMENT_CANDIDATE_LIMIT,
 )
 from paperpilot.tools.basic_tools.daily_arxiv_quality import get_default_quality_config
+from paperpilot.tools.basic_tools.daily_arxiv_profile import DEFAULT_RESEARCH_TOPICS
 
 parser = argparse.ArgumentParser(description="PaperPilot")
 parser.add_argument(
@@ -334,12 +335,14 @@ DEFAULT_AGENTIC_SETTINGS = {
 # Default Daily arXiv settings
 DEFAULT_DAILY_ARXIV_SETTINGS = {
     "enabled": False,  # Default to disabled
-    "categories": ["cs.CV"],  # arXiv category list
+    "categories": ["cs.RO", "cs.CV", "cs.AI", "cs.LG", "cs.DC", "cs.NI", "cs.OS", "cs.PF", "cs.CL"],
     "checkIntervalMinutes": 30,  # Check interval (minutes)
-    "retentionDays": 2,  # Retention days for papers
-    "maxDailyPapers": DEFAULT_MAX_DAILY_PAPERS,  # Maximum papers fetched per date
+    "retentionDays": 7,  # arXiv release dates retained
+    "maxDailyPapers": 24,
     "maxNewPapersPerCategoryPerFetch": DEFAULT_MAX_NEW_PAPERS_PER_CATEGORY_PER_FETCH,
     "replacementCandidateLimit": DEFAULT_REPLACEMENT_CANDIDATE_LIMIT,
+    "researchTopics": DEFAULT_RESEARCH_TOPICS,
+    "topicFilteringEnabled": True,
     "maxKeywords": 2,  # Maximum number of keywords (1-3)
     "keywordList": [
         "LLM",

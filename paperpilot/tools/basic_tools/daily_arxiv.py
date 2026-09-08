@@ -37,8 +37,12 @@ from paperpilot.tools.basic_tools.arxiv_network import (
     new_arxiv_requests_session,
 )
 from paperpilot.tools.basic_tools.daily_arxiv_quality import normalize_quality_config
+from paperpilot.tools.basic_tools.daily_arxiv_profile import (
+    normalize_research_topics,
+    score_paper_topics,
+)
 
-DEFAULT_MAX_DAILY_PAPERS = 50
+DEFAULT_MAX_DAILY_PAPERS = 24
 MIN_MAX_DAILY_PAPERS = 1
 MAX_MAX_DAILY_PAPERS = 500
 DEFAULT_MAX_NEW_PAPERS_PER_CATEGORY_PER_FETCH = 3
@@ -442,6 +446,12 @@ def normalize_daily_arxiv_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     normalized["qualityConfig"] = normalize_quality_config(
         normalized.get("qualityConfig", {})
     )
+    normalized["researchTopics"] = normalize_research_topics(
+        normalized.get("researchTopics")
+    )
+    normalized["topicFilteringEnabled"] = bool(
+        normalized.get("topicFilteringEnabled", False)
+    )
     normalized["maxDailyPapers"] = _normalize_int_setting(
         normalized.get("maxDailyPapers"),
         DEFAULT_MAX_DAILY_PAPERS,
@@ -747,6 +757,12 @@ class ArxivPaper:
 
     # PDF Download status
     pdf_downloaded: bool = False  # PDF Has the download been successful?
+    artifact_status: str = "candidate"
+    asset_retry_count: int = 0
+    asset_next_retry_at: Optional[str] = None
+    selection_reason: Optional[str] = None
+    matched_topics: List[Dict[str, Any]] = field(default_factory=list)
+    relevance_score: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -776,6 +792,12 @@ class ArxivPaper:
             "fetch_category": self.fetch_category,
             "fetch_date": self.fetch_date,
             "pdf_downloaded": self.pdf_downloaded,
+            "artifact_status": self.artifact_status,
+            "asset_retry_count": self.asset_retry_count,
+            "asset_next_retry_at": self.asset_next_retry_at,
+            "selection_reason": self.selection_reason,
+            "matched_topics": self.matched_topics,
+            "relevance_score": self.relevance_score,
         }
 
     @classmethod
@@ -819,6 +841,12 @@ class ArxivPaper:
             fetch_category=data.get("fetch_category"),
             fetch_date=data.get("fetch_date"),
             pdf_downloaded=data.get("pdf_downloaded", False),
+            artifact_status=data.get("artifact_status", "candidate"),
+            asset_retry_count=int(data.get("asset_retry_count", 0) or 0),
+            asset_next_retry_at=data.get("asset_next_retry_at"),
+            selection_reason=data.get("selection_reason"),
+            matched_topics=data.get("matched_topics", []),
+            relevance_score=float(data.get("relevance_score", 0.0) or 0.0),
         )
 
     @classmethod
@@ -1124,15 +1152,15 @@ class DailyArxivManager:
 
         result_papers = []
         for paper_data in papers:
-            # Check if PDF exists
             local_pdf_path = paper_data.get("file_path")
-            if local_pdf_path and not os.path.exists(local_pdf_path):
-                continue
-
             paper_data['local_pdf_path'] = local_pdf_path
-            paper_data['pdf_downloaded'] = True
+            paper_data['pdf_downloaded'] = bool(local_pdf_path and os.path.exists(local_pdf_path))
+            if paper_data['pdf_downloaded']:
+                paper_data['artifact_status'] = 'ready'
+            else:
+                paper_data['artifact_status'] = paper_data.get('artifact_status') or 'retry_wait'
 
-            if keyword_list:
+            if keyword_list and not settings.get("topicFilteringEnabled"):
                 matched = match_any_keyword_in_title_or_abstract(
                     paper_data.get("title", ""),
                     paper_data.get("abstract", ""),
@@ -1396,6 +1424,7 @@ class DailyArxivManager:
             min_check_count = 100  # Minimum number of papers examined
             max_consecutive_older = 20  # Maximum number of older papers found consecutively, stopping if exceeded
             matched_keywords_by_arxiv_id: Dict[str, List[str]] = {}
+            topic_matches_by_arxiv_id: Dict[str, List[Dict[str, Any]]] = {}
 
             for result in self.client.results(search):
                 checked_count += 1
@@ -1409,6 +1438,13 @@ class DailyArxivManager:
                     continue
 
                 if paper_date and paper_date == target_date:
+                    topic_matches = []
+                    if settings.get("topicFilteringEnabled"):
+                        topic_matches = score_paper_topics(
+                            paper_tmp.to_dict(), settings.get("researchTopics")
+                        )
+                        if not topic_matches:
+                            continue
                     matched_keywords = (
                         match_any_keyword_in_title_or_abstract(
                             paper_tmp.title, paper_tmp.abstract, keyword_list
@@ -1416,9 +1452,10 @@ class DailyArxivManager:
                         if keyword_list
                         else []
                     )
-                    if keyword_list and not matched_keywords:
+                    if keyword_list and not settings.get("topicFilteringEnabled") and not matched_keywords:
                         continue
                     all_results.append(result)
+                    topic_matches_by_arxiv_id[paper_tmp.arxiv_id] = topic_matches
                     if matched_keywords:
                         matched_keywords_by_arxiv_id[paper_tmp.arxiv_id] = matched_keywords
                     consecutive_older_count = 0  # Reset consecutive earlier date count
@@ -1524,6 +1561,10 @@ class DailyArxivManager:
                     paper = ArxivPaper.from_arxiv_result(
                         result, fetch_category=category
                     )
+                    paper.matched_topics = topic_matches_by_arxiv_id.get(paper.arxiv_id, [])
+                    if paper.matched_topics:
+                        paper.relevance_score = paper.matched_topics[0]["score"]
+                        paper.selection_reason = f"命中主题：{paper.matched_topics[0]['name']}"
                     if paper.arxiv_id in matched_keywords_by_arxiv_id:
                         paper.matched_keywords = matched_keywords_by_arxiv_id[paper.arxiv_id]
                     elif keyword_list:
@@ -1585,24 +1626,41 @@ class DailyArxivManager:
                         )
                         continue
 
+                    if not force and existing_paper_dict:
+                        retry_count = int(existing_paper_dict.get("asset_retry_count", 0) or 0)
+                        retry_at = existing_paper_dict.get("asset_next_retry_at")
+                        if retry_count >= 5:
+                            progress.update(i + 1, f"[下载失败] {paper.title[:40]}")
+                            continue
+                        if retry_at:
+                            try:
+                                if datetime.fromisoformat(retry_at) > datetime.now():
+                                    progress.update(i + 1, f"[等待重试] {paper.title[:40]}")
+                                    continue
+                            except ValueError:
+                                pass
+
                     # Update progress (update before starting the download so the frontend can see the current paper immediately)
                     # Set up first PDF Path (even if the file doesn't exist yet so the frontend can display it)
                     progress.update(i + 1, paper.title[:50], pdf_path=pdf_path)
 
-                    keep_paper, tier_reason = self._prefilter_paper_by_institution_tier(
-                        paper, settings, llm_config, affiliation_prompt
-                    )
-                    if not keep_paper:
-                        print(
-                            f"[DailyArxiv] Skip {paper.arxiv_id} by institution tier filter before full PDF download: {tier_reason}"
+                    if not settings.get("topicFilteringEnabled"):
+                        keep_paper, tier_reason = self._prefilter_paper_by_institution_tier(
+                            paper, settings, llm_config, affiliation_prompt
                         )
-                        continue
+                        if not keep_paper:
+                            print(
+                                f"[DailyArxiv] Skip {paper.arxiv_id} by institution tier filter: {tier_reason}"
+                            )
+                            continue
 
-                    # download PDF to the correct date directory only after hard filters pass
+                    # In topic mode, institution is only a weak ranking signal. The PDF
+                    # is streamed exactly once before isolated validation.
                     pdf_path = self._download_pdf(paper, paper_cat_dir, progress)
                     if pdf_path:
                         paper.local_pdf_path = pdf_path
                         paper.pdf_downloaded = True  # mark PDF Successfully downloaded
+                        paper.artifact_status = "ready"
 
                         # Generate thumbnails (PDFFirst half of the first page)
                         thumbnail_path = self._generate_thumbnail(
@@ -1613,6 +1671,19 @@ class DailyArxivManager:
                     else:
                         # PDF Download failed
                         paper.pdf_downloaded = False
+                        paper.artifact_status = "retry_wait"
+                        previous_attempts = int(
+                            (existing_paper_dict or {}).get("asset_retry_count", 0) or 0
+                        )
+                        paper.asset_retry_count = previous_attempts + 1
+                        retry_minutes = [5, 30, 120, 360][
+                            min(previous_attempts, 3)
+                        ]
+                        paper.asset_next_retry_at = (
+                            datetime.now() + timedelta(minutes=retry_minutes)
+                        ).isoformat()
+                        if paper.asset_retry_count >= 5:
+                            paper.artifact_status = "failed"
                         print(
                             f"[DailyArxiv] PDF Download failed, will try again at next check: {paper.arxiv_id}"
                         )
@@ -1689,6 +1760,7 @@ class DailyArxivManager:
         limit: int,
         existing_daily_ids: set,
         keyword_list: List[str],
+        settings: Dict,
     ) -> tuple[List[Any], Dict[str, List[str]]]:
         if limit <= 0:
             return [], {}
@@ -1715,6 +1787,13 @@ class DailyArxivManager:
             if not paper_date or paper_date != target_date:
                 continue
 
+            topic_matches = []
+            if settings.get("topicFilteringEnabled"):
+                topic_matches = score_paper_topics(
+                    paper_tmp.to_dict(), settings.get("researchTopics")
+                )
+                if not topic_matches:
+                    continue
             matched_keywords = (
                 match_any_keyword_in_title_or_abstract(
                     paper_tmp.title, paper_tmp.abstract, keyword_list
@@ -1722,7 +1801,7 @@ class DailyArxivManager:
                 if keyword_list
                 else []
             )
-            if keyword_list and not matched_keywords:
+            if keyword_list and not settings.get("topicFilteringEnabled") and not matched_keywords:
                 continue
 
             candidates.append(result)
@@ -1746,7 +1825,7 @@ class DailyArxivManager:
     ) -> List[Dict]:
         progress = self.progress[category]
         candidates, matched_keywords_by_arxiv_id = self._collect_candidate_results(
-            category, date_str, limit, existing_daily_ids, keyword_list
+            category, date_str, limit, existing_daily_ids, keyword_list, settings
         )
         if not candidates:
             progress.set_done("No replacement candidates found")
@@ -1886,27 +1965,32 @@ class DailyArxivManager:
 
         progress.update(index + 1, paper.title[:50], pdf_path=pdf_path)
         llm_config = self._get_llm_config() if self._get_llm_config else {}
-        keep_paper, tier_reason = self._prefilter_paper_by_institution_tier(
-            paper,
-            settings,
-            llm_config,
-            settings.get("affiliationPrompt"),
-        )
-        if not keep_paper:
-            print(
-                f"[DailyArxiv] Skip {paper.arxiv_id} by institution tier filter before full PDF download: {tier_reason}"
+        if not settings.get("topicFilteringEnabled"):
+            keep_paper, tier_reason = self._prefilter_paper_by_institution_tier(
+                paper,
+                settings,
+                llm_config,
+                settings.get("affiliationPrompt"),
             )
-            return None
+            if not keep_paper:
+                print(
+                    f"[DailyArxiv] Skip {paper.arxiv_id} by institution tier filter: {tier_reason}"
+                )
+                return None
 
         pdf_path = self._download_pdf(paper, paper_cat_dir, progress)
         if pdf_path:
             paper.local_pdf_path = pdf_path
             paper.pdf_downloaded = True
+            paper.artifact_status = "ready"
             thumbnail_path = self._generate_thumbnail(pdf_path, paper_cat_dir)
             if thumbnail_path:
                 paper.thumbnail_path = thumbnail_path
         else:
             paper.pdf_downloaded = False
+            paper.artifact_status = "retry_wait"
+            paper.asset_retry_count = 1
+            paper.asset_next_retry_at = (datetime.now() + timedelta(minutes=5)).isoformat()
 
         paper_dict = paper.to_dict()
         self._save_paper(paper_dict, paper_cat_dir)
@@ -2150,6 +2234,48 @@ class DailyArxivManager:
         except Exception as e:
             print(f"[DailyArxiv] Failed to generate thumbnail: {e}")
             return None
+
+    def retry_paper_asset(self, arxiv_id: str) -> bool:
+        """Retry one failed Daily arXiv asset using only server-derived paths."""
+        existing = PaperDAO.get_paper_by_arxiv_id(arxiv_id)
+        if not existing or not existing.get("is_daily"):
+            return False
+        date_str = existing.get("daily_date") or get_today_arxiv_date()
+        category = existing.get("fetch_category") or existing.get("subject") or "cs.AI"
+        paper = ArxivPaper.from_dict({
+            **existing,
+            "published": existing.get("arxiv_published_date"),
+            "updated": existing.get("arxiv_published_date"),
+            "announced": existing.get("daily_date"),
+            "pdf_url": existing.get("arxiv_url"),
+            "primary_category": existing.get("subject"),
+            "fetch_category": category,
+            "fetch_date": date_str,
+        })
+        target_dir = self.get_category_dir(date_str, category)
+        os.makedirs(target_dir, exist_ok=True)
+        pdf_path = self._download_pdf(paper, target_dir)
+        updated = dict(existing)
+        if pdf_path:
+            safe_id = arxiv_id.replace("/", "_").replace(":", "_")
+            updated.update({
+                "file_path": pdf_path,
+                "thumbnail_path": os.path.join(target_dir, f"{safe_id}_thumbnail.jpg"),
+                "artifact_status": "ready",
+                "asset_retry_count": int(existing.get("asset_retry_count", 0) or 0) + 1,
+                "asset_next_retry_at": None,
+            })
+            PaperDAO.save_paper(updated)
+            return True
+        attempts = int(existing.get("asset_retry_count", 0) or 0) + 1
+        delay = [5, 30, 120, 360][min(max(attempts - 1, 0), 3)]
+        updated.update({
+            "artifact_status": "failed" if attempts >= 5 else "retry_wait",
+            "asset_retry_count": attempts,
+            "asset_next_retry_at": (datetime.now() + timedelta(minutes=delay)).isoformat(),
+        })
+        PaperDAO.save_paper(updated)
+        return False
 
     def _extract_affiliations(
         self,

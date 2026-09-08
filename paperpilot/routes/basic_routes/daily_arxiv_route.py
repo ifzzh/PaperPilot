@@ -17,6 +17,7 @@ from flask import Flask, jsonify, request, send_file
 from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.user_data_dao import DailyArxivReadDAO, ReadingListDAO
+from paperpilot.database.dao.paper_dao import PaperDAO
 from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.document_worker.client import DocumentWorkerClient
 from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
@@ -522,6 +523,17 @@ def register_daily_arxiv_routes(
             )
         except Exception as exc:
             return jsonify({"success": False, "error": str(exc)}), 500
+
+    @app.route("/api/daily-arxiv/papers/<path:arxiv_id>/retry", methods=["POST"])
+    def api_retry_daily_arxiv_asset(arxiv_id: str):
+        """Queue a retry for one failed PDF without reranking the whole day."""
+        if not PaperDAO.get_paper_by_arxiv_id(arxiv_id):
+            return jsonify({"success": False, "error": "paper_not_found"}), 404
+        try:
+            task_executor.submit(manager.retry_paper_asset, arxiv_id)
+        except QueueFull:
+            return queue_full_response()
+        return jsonify({"success": True, "status": "queued"}), 202
 
     # ========================================
     # Fetch All Categories
