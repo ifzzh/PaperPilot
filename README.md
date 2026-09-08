@@ -157,7 +157,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.9.1 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
+   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.10.0 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -188,6 +188,12 @@ python -m paperpilot.migrations.tenant_storage --db /app/db/paperpilot.db \
 ```
 
 The password prompts are hidden; never put a password in shell history. Existing records and files are assigned to `ifzzh` and moved under `.users/<user-uuid>/`. The generated manifest supports `--rollback <manifest>`. After deployment, public HTTPS AI Providers can be approved immediately from the administrator page; private targets remain deployment-only.
+
+### Upgrading from v0.9.1
+
+v0.10.0 adds a persistent per-user translation task center with structured progress, pause/resume/retry and seven-day task-local cache recovery. It also defaults the UI to Simplified Chinese and `YYYY-MM-DD`, provides self-service password changes with an 8-character minimum, and configures personalized Daily arXiv topics with a daily maximum of 24 papers retained for seven arXiv release dates.
+
+Stop all services first, back up SQLite and the paper directory, then run `python -m paperpilot.migrations.v010_workflows --dry-run` followed by `--apply` as documented in [the v0.10.0 release notes](docs/releases/v0.10.0.md). The migration is additive and does not move PDFs. Deploy all three v0.10.0 image digests together; rollback restores the migration manifest backup and all three v0.9.1 image digests.
 
 ### Upgrading from v0.9.0
 
@@ -377,7 +383,7 @@ This keeps niche categories visible, avoids consuming all daily slots too early,
 ### Mid-Term (Mid)
 - [ ] Semantic search: local embeddings index (optional vector store) with cross-library search
 - [ ] Personal knowledge base: turn notes/summaries into a queryable research log (topics/timeline)
-- [ ] Job queue & progress center: unified queue for translation/interpretation/indexing with retries and priorities
+- [x] Translation queue & progress center: persistent per-user queue with structured progress, pause, resume and retry
 
 ### Long-Term (Future)
 - [ ] Multi-tenancy: isolate libraries and settings per user/team
