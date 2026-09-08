@@ -10,3 +10,11 @@ accesslog = None
 errorlog = "-"
 capture_output = True
 worker_tmp_dir = "/tmp"
+control_socket_disable = True
+
+
+def on_starting(server):
+    """Refuse unsafe configuration before Gunicorn creates its listener."""
+    from paperpilot.runtime.preflight import preflight_environment
+
+    preflight_environment()

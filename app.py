@@ -863,7 +863,6 @@ def register_routes():
         upload_folder=UPLOAD_FOLDER,
         paper_store=paper_store,
         document_client=DocumentWorkerClient(),
-        task_executor=_analysis_executor,
     )
 
     register_upload_from_pdf_routes(
@@ -902,6 +901,7 @@ def register_routes():
         credential_store=AGENTIC_CREDENTIAL_STORE,
         outbound_policy=OUTBOUND_POLICY,
         document_client=DocumentWorkerClient(),
+        task_executor=_analysis_executor,
     )
 
     register_agent_chat_routes(

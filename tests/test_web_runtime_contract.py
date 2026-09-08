@@ -3,7 +3,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 class WebTaskQueueContractTests(unittest.TestCase):
@@ -92,8 +92,43 @@ class ApplicationFactoryContractTests(unittest.TestCase):
         self.assertIn("workers = 1", config)
         self.assertIn("threads = 8", config)
         self.assertIn("timeout = 300", config)
+        self.assertIn("control_socket_disable = True", config)
+        self.assertIn("preflight_environment()", config)
         dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
         self.assertIn('"gunicorn", "--config", "gunicorn.conf.py"', dockerfile)
+
+    def test_master_preflight_validates_state_and_closes_sqlite_connection(self):
+        from paperpilot.runtime import preflight
+
+        store = Mock()
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            "os.environ",
+            {
+                "PAPERPILOT_PAPERS_DIR": str(Path(temporary) / "papers"),
+                "PAPERPILOT_SETTINGS_KEY_FILE": str(Path(temporary) / "settings.key"),
+            },
+            clear=False,
+        ), patch.object(preflight.AuthConfig, "from_environ"), patch.object(
+            preflight, "init_db_schema"
+        ) as init_schema, patch.object(
+            preflight, "assert_no_plaintext_credentials"
+        ), patch.object(
+            preflight.AgenticCredentialStore,
+            "from_key_file",
+            return_value=store,
+        ), patch.object(
+            preflight.OutboundPolicy, "from_environ"
+        ), patch.object(
+            preflight, "assert_storage_migrated"
+        ) as storage_check, patch.object(
+            preflight, "close_db"
+        ) as close_db:
+            preflight.preflight_environment()
+
+        init_schema.assert_called_once_with(preflight.DB_PATH)
+        store.validate_all.assert_called_once_with()
+        storage_check.assert_called_once()
+        close_db.assert_called_once_with()
 
     def test_factory_initializes_once_for_one_paper_root(self):
         import app as app_module
