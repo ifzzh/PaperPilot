@@ -12,9 +12,9 @@ from paperpilot.local_auth import LocalAuthService
 from paperpilot.database.connection import DB_PATH, close_db
 from paperpilot.database.db_manager import init_db_schema
 from paperpilot.migrations.agentic_secrets import assert_no_plaintext_credentials
-from paperpilot.migrations.category_storage import assert_storage_migrated
+from paperpilot.migrations.tenant_storage import assert_tenant_migrated
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
-from paperpilot.security.outbound import OutboundPolicy
+from paperpilot.security.outbound import DynamicOutboundPolicy
 
 
 def preflight_environment() -> None:
@@ -39,8 +39,8 @@ def preflight_environment() -> None:
         assert_no_plaintext_credentials(DB_PATH)
         credential_store = AgenticCredentialStore.from_key_file(key_file)
         credential_store.validate_all()
-        OutboundPolicy.from_environ(os.environ)
-        assert_storage_migrated(str(papers_root), DB_PATH)
+        DynamicOutboundPolicy.from_environ(os.environ)
+        assert_tenant_migrated(str(papers_root), DB_PATH)
     finally:
         # Credential validation uses the non-request SQLite connection. Never let
         # that connection survive Gunicorn's subsequent worker fork.
