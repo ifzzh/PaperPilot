@@ -97,6 +97,24 @@ class ApplicationFactoryContractTests(unittest.TestCase):
         dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
         self.assertIn('"gunicorn", "--config", "gunicorn.conf.py"', dockerfile)
 
+    def test_runtime_does_not_log_managed_storage_paths(self):
+        source = Path("app.py").read_text(encoding="utf-8")
+        for label in (
+            "Paper directory:",
+            "SQLite database:",
+            "Category configuration (file):",
+            "Daily arXiv settings (file):",
+            "Avatar directory:",
+            "Daily arXiv temporary directory:",
+            "Search index database:",
+        ):
+            with self.subTest(label=label):
+                self.assertNotIn(label, source)
+
+    def test_compose_allows_the_full_gunicorn_graceful_window(self):
+        compose = Path("docker-compose.yaml").read_text(encoding="utf-8")
+        self.assertIn("stop_grace_period: 35s", compose)
+
     def test_master_preflight_validates_state_and_closes_sqlite_connection(self):
         from paperpilot.runtime import preflight
 
