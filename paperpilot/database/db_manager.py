@@ -1,9 +1,12 @@
-from .models import SCHEMA_SCRIPT
 import sqlite3
 
-def init_db_schema():
-    conn = sqlite3.connect('db/paperpilot.db') # Use direct connection for initialization script outside request context
-    cursor = conn.cursor()
-    cursor.executescript(SCHEMA_SCRIPT)
-    conn.commit()
-    conn.close()
+from .models import SCHEMA_SCRIPT
+
+
+def init_db_schema(db_path: str = "db/paperpilot.db") -> None:
+    """Initialize and verify the SQLite schema before serving requests."""
+    with sqlite3.connect(db_path) as connection:
+        connection.executescript(SCHEMA_SCRIPT)
+        result = connection.execute("PRAGMA integrity_check").fetchone()
+        if not result or result[0] != "ok":
+            raise sqlite3.DatabaseError("database integrity check failed")

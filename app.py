@@ -1,4 +1,5 @@
 import argparse
+import atexit
 import json
 import os
 import threading
@@ -509,12 +510,8 @@ def delete_paper_files(pdf_path: str) -> None:
 
 def init_app(papers_dir=None):
     """Initialize application configuration and directories"""
-    # Initialize DB Schema
-    try:
-        os.makedirs(os.path.join(os.getcwd(), 'db'), exist_ok=True)
-        init_db_schema()
-    except Exception as e:
-        print(f"Failed to initialize database schema: {e}")
+    os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
+    init_db_schema(DB_PATH)
 
     global UPLOAD_FOLDER, CATEGORIES_FILE, READING_LIST_FILE
     global USER_SETTINGS_FILE, READING_HISTORY_FILE, AGENTIC_SETTINGS_FILE, AVATARS_DIR
@@ -592,6 +589,12 @@ analysis_tasks = (
 )  # {task_id: {paper_id, process, logs, status, start_time, log_lock, step}}
 analysis_tasks_lock = threading.Lock()  # Protect interpretation task dictionary
 
+_application_lock = threading.RLock()
+_application_initialized = False
+_application_papers_dir: Optional[str] = None
+_daily_arxiv_manager = None
+_shutdown_registered = False
+
 
 @app.route("/")
 def index():
@@ -659,6 +662,7 @@ def auth_session():
 
 def register_routes():
     """Register all routes (must be called after init_app)"""
+    global _daily_arxiv_manager
     register_category_routes(
         app,
         get_categories=get_categories,
@@ -684,6 +688,7 @@ def register_routes():
     from paperpilot.tools.basic_tools.daily_arxiv import get_manager
 
     daily_arxiv_manager = get_manager(TEMP_PAPERS_DIR, DAILY_ARXIV_SETTINGS_FILE)
+    _daily_arxiv_manager = daily_arxiv_manager
     daily_arxiv_manager.set_document_client(DocumentWorkerClient())
 
     # Set LLM configuration callback
@@ -915,14 +920,12 @@ def analysis_viewer(paper_id):
     )
 
 
-if __name__ == "__main__":
-    # Parse command line arguments
-    args = parser.parse_args()
-
+def _initialize_application(papers_dir: str) -> None:
+    global AUTH_CONFIG, AGENTIC_CREDENTIAL_STORE, OUTBOUND_POLICY
     try:
         AUTH_CONFIG = AuthConfig.from_environ()
     except AuthConfigurationError as exc:
-        parser.error(f"unsafe authentication configuration: {exc}")
+        raise RuntimeError(f"unsafe authentication configuration: {exc}") from exc
 
     if not AUTH_CONFIG.enabled:
         print(
@@ -931,7 +934,7 @@ if __name__ == "__main__":
         )
 
     # Initialize application (configure paper directory etc.)
-    init_app(papers_dir=args.papers_dir)
+    init_app(papers_dir=papers_dir)
 
     settings_key_file = os.getenv(
         "PAPERPILOT_SETTINGS_KEY_FILE", "/run/secrets/paperpilot_settings_key"
@@ -948,7 +951,7 @@ if __name__ == "__main__":
         OSError,
         ValueError,
     ) as exc:
-        parser.error(f"unsafe agentic configuration: {exc}")
+        raise RuntimeError(f"unsafe agentic configuration: {exc}") from exc
 
     # Initialize category system
     init_categories()
@@ -957,7 +960,7 @@ if __name__ == "__main__":
     try:
         assert_storage_migrated(UPLOAD_FOLDER, DB_PATH)
     except CategoryStorageMigrationError as exc:
-        parser.error(str(exc))
+        raise RuntimeError(str(exc)) from exc
 
     # Register routes only after storage has passed migration checks.
     register_routes()
@@ -1028,5 +1031,40 @@ if __name__ == "__main__":
         return jsonify({"success": True, "path": os.path.abspath(UPLOAD_FOLDER)})
 
     # Paper data is now directly stored in the JSON file next to the PDF file
-    print(f"Start server: http://{args.host}:{args.port}")
+def shutdown_application() -> None:
+    """Stop process-owned schedulers before the WSGI worker exits."""
+    if _daily_arxiv_manager is not None and getattr(
+        _daily_arxiv_manager, "_scheduler_running", False
+    ):
+        _daily_arxiv_manager.stop_scheduler()
+
+
+def create_app(papers_dir: Optional[str] = None) -> Flask:
+    """Create the process-local application exactly once."""
+    global _application_initialized, _application_papers_dir, _shutdown_registered
+    selected_papers_dir = papers_dir or os.getenv(
+        "PAPERPILOT_PAPERS_DIR", "./papers"
+    )
+    selected_papers_dir = os.path.abspath(selected_papers_dir)
+    with _application_lock:
+        if _application_initialized:
+            if selected_papers_dir != _application_papers_dir:
+                raise RuntimeError("application is already initialized for another paper root")
+            return app
+        _initialize_application(selected_papers_dir)
+        _application_papers_dir = selected_papers_dir
+        _application_initialized = True
+        if not _shutdown_registered:
+            atexit.register(shutdown_application)
+            _shutdown_registered = True
+        return app
+
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+    try:
+        create_app(args.papers_dir)
+    except RuntimeError as exc:
+        parser.error(str(exc))
+    print(f"Start development server: http://{args.host}:{args.port}")
     app.run(host=args.host, port=args.port, debug=args.debug)
