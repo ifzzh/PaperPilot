@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS password_reset_codes (
 -- Papers table
 CREATE TABLE IF NOT EXISTS papers (
     id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     title TEXT,
     authors TEXT, 
     abstract TEXT,
@@ -76,6 +77,7 @@ CREATE TABLE IF NOT EXISTS papers (
 -- Categories table
 CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     name TEXT NOT NULL,
     parent_id TEXT,
     display_name TEXT,
@@ -83,9 +85,11 @@ CREATE TABLE IF NOT EXISTS categories (
 );
 
 -- User Settings table (Key-Value store)
-CREATE TABLE IF NOT EXISTS user_settings (
-    key TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS user_settings_v2 (
+    owner_id TEXT NOT NULL,
+    key TEXT NOT NULL,
     value TEXT -- JSON string
+    ,PRIMARY KEY(owner_id, key)
 );
 
 -- Reading History
@@ -95,12 +99,14 @@ CREATE TABLE IF NOT EXISTS reading_history (
     paper_id TEXT,
     duration INTEGER,
     timestamp INTEGER, -- Unix timestamp
+    owner_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     FOREIGN KEY(paper_id) REFERENCES papers(id)
 );
 
 -- Chat History
 CREATE TABLE IF NOT EXISTS chats (
     session_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     paper_id TEXT,
     history TEXT, -- JSON array of messages
     created_at TEXT,
@@ -112,35 +118,42 @@ CREATE TABLE IF NOT EXISTS chats (
 -- Reading List
 CREATE TABLE IF NOT EXISTS reading_list (
     paper_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     added_at TEXT,
     status TEXT, -- 'unread', 'reading', 'read'
     FOREIGN KEY(paper_id) REFERENCES papers(id)
 );
 
 -- Daily Arxiv Task Status
-CREATE TABLE IF NOT EXISTS daily_arxiv_tasks (
+CREATE TABLE IF NOT EXISTS daily_arxiv_tasks_v2 (
+    owner_id TEXT NOT NULL,
     date TEXT,
     category TEXT,
     status TEXT,
     metadata TEXT, -- JSON
-    PRIMARY KEY (date, category)
+    PRIMARY KEY (owner_id, date, category)
 );
 
 -- Institution Mapping
-CREATE TABLE IF NOT EXISTS institution_map (
-    original_name TEXT PRIMARY KEY,
-    normalized_name TEXT
+CREATE TABLE IF NOT EXISTS institution_map_v2 (
+    owner_id TEXT NOT NULL,
+    original_name TEXT NOT NULL,
+    normalized_name TEXT,
+    PRIMARY KEY(owner_id, original_name)
 );
 
 -- Daily arXiv Read Status
-CREATE TABLE IF NOT EXISTS daily_arxiv_reads (
-    arxiv_id TEXT PRIMARY KEY,
-    read_at INTEGER
+CREATE TABLE IF NOT EXISTS daily_arxiv_reads_v2 (
+    owner_id TEXT NOT NULL,
+    arxiv_id TEXT NOT NULL,
+    read_at INTEGER,
+    PRIMARY KEY(owner_id, arxiv_id)
 );
 
 -- Isolated translation worker jobs. Credentials are deliberately never stored.
 CREATE TABLE IF NOT EXISTS translation_jobs (
     job_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     paper_id TEXT NOT NULL,
     status TEXT NOT NULL,
     progress INTEGER NOT NULL DEFAULT 0,
@@ -157,6 +170,7 @@ CREATE INDEX IF NOT EXISTS idx_translation_jobs_paper_status
 -- Isolated document validation/import jobs. No file paths or secrets are stored.
 CREATE TABLE IF NOT EXISTS document_jobs (
     job_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     kind TEXT NOT NULL,
     paper_id TEXT,
     status TEXT NOT NULL,
@@ -172,11 +186,24 @@ CREATE INDEX IF NOT EXISTS idx_document_jobs_status
     ON document_jobs(status, created_at);
 
 -- API credentials encrypted with the deployment-only settings key.
-CREATE TABLE IF NOT EXISTS agentic_secrets (
-    name TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS agentic_secrets_v2 (
+    owner_id TEXT NOT NULL,
+    name TEXT NOT NULL,
     ciphertext TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    CHECK (name IN ('translate', 'interpret', 'dailyArxiv', 'mineru'))
+    CHECK (name IN ('translate', 'interpret', 'dailyArxiv', 'mineru')),
+    PRIMARY KEY(owner_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS ai_providers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    origin TEXT NOT NULL UNIQUE,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_by TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY(created_by) REFERENCES users(id)
 );
 """

@@ -1,6 +1,7 @@
 import json
 import sqlite3
 from ..connection import get_db
+from paperpilot.security.identity import current_user_id
 
 class PaperDAO:
     COLUMN_MAP = {
@@ -69,12 +70,22 @@ class PaperDAO:
         try:
             db = get_db()
             row = PaperDAO._dict_to_row(paper_data)
+            row['owner_id'] = current_user_id()
             
             cols = list(row.keys())
             placeholders = ', '.join(['?'] * len(cols))
-            sql = f'INSERT OR REPLACE INTO papers ({", ".join(cols)}) VALUES ({placeholders})'
-            
-            db.execute(sql, list(row.values()))
+            assignments = ", ".join(
+                f"{column}=excluded.{column}" for column in cols if column != "id"
+            )
+            sql = (
+                f'INSERT INTO papers ({", ".join(cols)}) VALUES ({placeholders}) '
+                f'ON CONFLICT(id) DO UPDATE SET {assignments} '
+                'WHERE papers.owner_id=excluded.owner_id'
+            )
+            cursor = db.execute(sql, list(row.values()))
+            if cursor.rowcount != 1:
+                db.rollback()
+                raise PermissionError("paper_not_found")
             db.commit()
         except Exception as e:
             print(f"Error saving paper {paper_data.get('id')}: {e}")
@@ -83,7 +94,7 @@ class PaperDAO:
     @staticmethod
     def get_paper(paper_id):
         db = get_db()
-        row = db.execute('SELECT * FROM papers WHERE id = ?', (paper_id,)).fetchone()
+        row = db.execute('SELECT * FROM papers WHERE id=? AND owner_id=?', (paper_id, current_user_id())).fetchone()
         if row:
             return PaperDAO._row_to_dict(row)
         return None
@@ -91,7 +102,7 @@ class PaperDAO:
     @staticmethod
     def get_paper_by_arxiv_id(arxiv_id):
         db = get_db()
-        row = db.execute('SELECT * FROM papers WHERE arxiv_id = ?', (arxiv_id,)).fetchone()
+        row = db.execute('SELECT * FROM papers WHERE arxiv_id=? AND owner_id=?', (arxiv_id, current_user_id())).fetchone()
         if row:
             return PaperDAO._row_to_dict(row)
         return None
@@ -99,7 +110,7 @@ class PaperDAO:
     @staticmethod
     def get_paper_by_path(file_path):
         db = get_db()
-        row = db.execute('SELECT * FROM papers WHERE file_path = ?', (file_path,)).fetchone()
+        row = db.execute('SELECT * FROM papers WHERE file_path=? AND owner_id=?', (file_path, current_user_id())).fetchone()
         if row:
             return PaperDAO._row_to_dict(row)
         return None
@@ -107,8 +118,8 @@ class PaperDAO:
     @staticmethod
     def list_papers(filter_dict=None):
         db = get_db()
-        sql = 'SELECT * FROM papers'
-        params = []
+        sql = 'SELECT * FROM papers WHERE owner_id=?'
+        params = [current_user_id()]
         if filter_dict:
             clauses = []
             for k, v in filter_dict.items():
@@ -117,7 +128,7 @@ class PaperDAO:
                 clauses.append(f"{col} = ?")
                 params.append(v)
             if clauses:
-                sql += ' WHERE ' + ' AND '.join(clauses)
+                sql += ' AND ' + ' AND '.join(clauses)
         
         rows = db.execute(sql, params).fetchall()
         return [PaperDAO._row_to_dict(row) for row in rows]
@@ -125,20 +136,20 @@ class PaperDAO:
     @staticmethod
     def delete_paper(paper_id):
         db = get_db()
-        db.execute('DELETE FROM papers WHERE id = ?', (paper_id,))
+        db.execute('DELETE FROM papers WHERE id=? AND owner_id=?', (paper_id, current_user_id()))
         db.commit()
 
     @staticmethod
     def get_all_papers():
         db = get_db()
-        rows = db.execute('SELECT * FROM papers').fetchall()
+        rows = db.execute('SELECT * FROM papers WHERE owner_id=?', (current_user_id(),)).fetchall()
         return [PaperDAO._row_to_dict(row) for row in rows]
 
     @staticmethod
     def get_daily_papers(date, category=None):
         db = get_db()
-        sql = 'SELECT * FROM papers WHERE is_daily = 1 AND daily_date = ?'
-        params = [date]
+        sql = 'SELECT * FROM papers WHERE owner_id=? AND is_daily = 1 AND daily_date = ?'
+        params = [current_user_id(), date]
         if category:
             sql += ' AND category = ?'
             params.append(category)
@@ -148,7 +159,7 @@ class PaperDAO:
     @staticmethod
     def get_available_daily_dates():
         db = get_db()
-        rows = db.execute('SELECT DISTINCT daily_date FROM papers WHERE is_daily = 1 ORDER BY daily_date DESC').fetchall()
+        rows = db.execute('SELECT DISTINCT daily_date FROM papers WHERE owner_id=? AND is_daily=1 ORDER BY daily_date DESC', (current_user_id(),)).fetchall()
         return [row['daily_date'] for row in rows if row['daily_date']]
 
     @staticmethod
@@ -156,5 +167,5 @@ class PaperDAO:
         db = get_db()
         # Delete papers where is_daily=1 and daily_date < cutoff_date
         # Note: string comparison works for YYYY-MM-DD
-        db.execute('DELETE FROM papers WHERE is_daily = 1 AND daily_date < ?', (cutoff_date,))
+        db.execute('DELETE FROM papers WHERE owner_id=? AND is_daily=1 AND daily_date<?', (current_user_id(), cutoff_date))
         db.commit()

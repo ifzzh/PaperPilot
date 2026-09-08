@@ -7,6 +7,7 @@ from paperpilot.security.credentials import (
     ALLOWED_SECRET_NAMES,
     SettingsCredentialCipher,
 )
+from paperpilot.security.identity import current_user_id
 
 
 class AgenticCredentialStore:
@@ -26,20 +27,23 @@ class AgenticCredentialStore:
         envelope = AgenticSecretDAO.get_envelope(name)
         if envelope is None:
             return ""
-        return self._cipher.decrypt(name, envelope)
+        return self._cipher.decrypt(name, envelope, owner_id=current_user_id())
 
     def set(self, name: str, plaintext: str) -> None:
         self._validate_name(name)
-        AgenticSecretDAO.save_envelope(name, self._cipher.encrypt(name, plaintext))
+        owner_id = current_user_id()
+        AgenticSecretDAO.save_envelope(
+            name, self._cipher.encrypt(name, plaintext, owner_id=owner_id), owner_id
+        )
 
     def clear(self, name: str) -> None:
         self._validate_name(name)
         AgenticSecretDAO.delete(name)
 
     def validate_all(self) -> None:
-        for name, envelope in AgenticSecretDAO.list_envelopes().items():
+        for owner_id, name, envelope in AgenticSecretDAO.list_envelopes():
             self._validate_name(name)
-            self._cipher.decrypt(name, envelope)
+            self._cipher.decrypt(name, envelope, owner_id=owner_id)
 
     @staticmethod
     def _validate_name(name: str) -> None:

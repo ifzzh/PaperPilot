@@ -3,41 +3,48 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from paperpilot.database.connection import get_db
+from paperpilot.security.identity import current_user_id
 
 
 class AgenticSecretDAO:
     @staticmethod
-    def get_envelope(name: str) -> str | None:
+    def get_envelope(name: str, owner_id: str | None = None) -> str | None:
+        owner_id = owner_id or current_user_id()
         row = get_db().execute(
-            "SELECT ciphertext FROM agentic_secrets WHERE name = ?", (name,)
+            "SELECT ciphertext FROM agentic_secrets_v2 WHERE owner_id=? AND name=?",
+            (owner_id, name),
         ).fetchone()
         return str(row["ciphertext"]) if row else None
 
     @staticmethod
-    def list_envelopes() -> dict[str, str]:
+    def list_envelopes() -> list[tuple[str, str, str]]:
         rows = get_db().execute(
-            "SELECT name, ciphertext FROM agentic_secrets ORDER BY name"
+            "SELECT owner_id,name,ciphertext FROM agentic_secrets_v2 ORDER BY owner_id,name"
         ).fetchall()
-        return {str(row["name"]): str(row["ciphertext"]) for row in rows}
+        return [(str(row["owner_id"]), str(row["name"]), str(row["ciphertext"])) for row in rows]
 
     @staticmethod
-    def save_envelope(name: str, ciphertext: str) -> None:
+    def save_envelope(name: str, ciphertext: str, owner_id: str | None = None) -> None:
+        owner_id = owner_id or current_user_id()
         now = datetime.now(timezone.utc).isoformat()
         database = get_db()
         database.execute(
             """
-            INSERT INTO agentic_secrets(name, ciphertext, created_at, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(name) DO UPDATE SET
+            INSERT INTO agentic_secrets_v2(owner_id,name,ciphertext,created_at,updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(owner_id,name) DO UPDATE SET
                 ciphertext = excluded.ciphertext,
                 updated_at = excluded.updated_at
             """,
-            (name, ciphertext, now, now),
+            (owner_id, name, ciphertext, now, now),
         )
         database.commit()
 
     @staticmethod
-    def delete(name: str) -> None:
+    def delete(name: str, owner_id: str | None = None) -> None:
+        owner_id = owner_id or current_user_id()
         database = get_db()
-        database.execute("DELETE FROM agentic_secrets WHERE name = ?", (name,))
+        database.execute(
+            "DELETE FROM agentic_secrets_v2 WHERE owner_id=? AND name=?", (owner_id, name)
+        )
         database.commit()

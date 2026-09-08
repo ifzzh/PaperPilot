@@ -95,6 +95,15 @@ class LocalAuthService:
         ).fetchone()
         return row is not None
 
+    def first_active_admin(self) -> Identity | None:
+        row = get_db().execute(
+            """SELECT * FROM users WHERE role='admin' AND status='active'
+               ORDER BY created_at,id LIMIT 1"""
+        ).fetchone()
+        if row is None:
+            return None
+        return Identity(row["id"], row["username"], row["role"], bool(row["must_change_password"]))
+
     def login(self, username: object, password: object) -> tuple[dict, str, str]:
         normalized = normalize_username(username)
         if not isinstance(password, str):

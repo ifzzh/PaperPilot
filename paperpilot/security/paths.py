@@ -7,6 +7,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
+from paperpilot.security.identity import DEVELOPMENT_USER_ID, current_user_id
 
 
 _CATEGORY_NAMESPACE = uuid.uuid5(
@@ -40,6 +41,21 @@ class PaperAssetPaths:
     translation_log: Path
     analysis_directory: Path
     analysis_result: Path
+
+
+class UserScopedPath(os.PathLike[str]):
+    """Resolve a stable logical path inside the current user's storage root."""
+
+    def __init__(self, papers_root: os.PathLike[str] | str, relative: str):
+        self._papers_root = os.fspath(papers_root)
+        self._relative = validate_filename(relative)
+
+    def __fspath__(self) -> str:
+        root = user_storage_root(self._papers_root, create=True)
+        return str(root / self._relative)
+
+    def __str__(self) -> str:
+        return self.__fspath__()
 
 
 def _as_text(value: os.PathLike[str] | str) -> str:
@@ -198,7 +214,26 @@ def category_directory(
     *,
     create: bool = False,
 ) -> Path:
-    directory = safe_join(root, ".categories", category_storage_id(category_id))
+    user_root = user_storage_root(root, create=create)
+    directory = ensure_confined(root, user_root / ".categories" / category_storage_id(category_id))
+    if create:
+        directory.mkdir(parents=True, exist_ok=True)
+        directory = ensure_confined(root, directory, must_exist=True)
+    return directory
+
+
+def user_storage_root(
+    root: os.PathLike[str] | str,
+    owner_id: str | None = None,
+    *,
+    create: bool = False,
+) -> Path:
+    owner_id = owner_id or current_user_id(required=False) or DEVELOPMENT_USER_ID
+    try:
+        normalized = str(uuid.UUID(owner_id))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise PathSecurityError("invalid_owner_id") from exc
+    directory = safe_join(root, ".users", normalized)
     if create:
         directory.mkdir(parents=True, exist_ok=True)
         directory = ensure_confined(root, directory, must_exist=True)
@@ -235,7 +270,9 @@ def paper_directory(
     create: bool = False,
 ) -> Path:
     if category_id == "reading_list_temp":
-        directory = safe_join(root, "_ReadingListTemp")
+        directory = ensure_confined(
+            root, user_storage_root(root, create=create) / "_ReadingListTemp"
+        )
         if create:
             directory.mkdir(parents=True, exist_ok=True)
             directory = ensure_confined(root, directory, must_exist=True)

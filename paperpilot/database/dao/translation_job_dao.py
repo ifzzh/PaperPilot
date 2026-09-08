@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from ..connection import get_db
+from paperpilot.security.identity import current_user_id
 
 
 def _now() -> str:
@@ -17,10 +18,10 @@ class TranslationJobDAO:
         db.execute(
             """
             INSERT INTO translation_jobs
-                (job_id, paper_id, status, progress, created_at, updated_at)
-            VALUES (?, ?, 'queued', 0, ?, ?)
+                (job_id,owner_id,paper_id,status,progress,created_at,updated_at)
+            VALUES (?, ?, ?, 'queued', 0, ?, ?)
             """,
-            (job_id, paper_id, now, now),
+            (job_id, current_user_id(), paper_id, now, now),
         )
         db.commit()
 
@@ -42,16 +43,16 @@ class TranslationJobDAO:
                    error = ?,
                    updated_at = ?,
                    completed_at = COALESCE(?, completed_at)
-             WHERE job_id = ?
+             WHERE job_id = ? AND owner_id=?
             """,
-            (status, progress, error, _now(), completed_at, job_id),
+            (status, progress, error, _now(), completed_at, job_id, current_user_id()),
         )
         db.commit()
 
     @staticmethod
     def get(job_id: str) -> dict | None:
         row = get_db().execute(
-            "SELECT * FROM translation_jobs WHERE job_id = ?", (job_id,)
+            "SELECT * FROM translation_jobs WHERE job_id=? AND owner_id=?", (job_id, current_user_id())
         ).fetchone()
         return dict(row) if row else None
 
@@ -60,10 +61,10 @@ class TranslationJobDAO:
         rows = get_db().execute(
             """
             SELECT * FROM translation_jobs
-             WHERE status IN ('queued', 'running')
+             WHERE owner_id=? AND status IN ('queued', 'running')
              ORDER BY created_at
             """
-        ).fetchall()
+        , (current_user_id(),)).fetchall()
         return [dict(row) for row in rows]
 
     @staticmethod
@@ -71,9 +72,9 @@ class TranslationJobDAO:
         row = get_db().execute(
             """
             SELECT 1 FROM translation_jobs
-             WHERE paper_id = ? AND status IN ('queued', 'running')
+             WHERE paper_id=? AND owner_id=? AND status IN ('queued', 'running')
              LIMIT 1
             """,
-            (paper_id,),
+            (paper_id, current_user_id()),
         ).fetchone()
         return row is not None

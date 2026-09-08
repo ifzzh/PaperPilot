@@ -28,10 +28,11 @@ class CredentialDecryptionError(CredentialError):
     """A credential cannot be authenticated and decrypted."""
 
 
-def _secret_aad(name: str) -> bytes:
+def _secret_aad(name: str, owner_id: str | None = None) -> bytes:
     if name not in ALLOWED_SECRET_NAMES:
         raise ValueError("unsupported_agentic_secret")
-    return f"paperpilot:agentic-secret:{ENVELOPE_VERSION}:{name}".encode("ascii")
+    suffix = f":{owner_id}" if owner_id else ""
+    return f"paperpilot:agentic-secret:{ENVELOPE_VERSION}:{name}{suffix}".encode("ascii")
 
 
 def generate_settings_key(path: str | os.PathLike[str]) -> Path:
@@ -64,15 +65,17 @@ class SettingsCredentialCipher:
             raise CredentialKeyError("settings_key_unreadable") from exc
         return cls(key)
 
-    def encrypt(self, name: str, plaintext: str) -> str:
+    def encrypt(self, name: str, plaintext: str, *, owner_id: str | None = None) -> str:
         if not isinstance(plaintext, str) or not plaintext:
             raise ValueError("credential_must_not_be_empty")
         nonce = os.urandom(NONCE_SIZE)
-        encrypted = self._cipher.encrypt(nonce, plaintext.encode("utf-8"), _secret_aad(name))
+        encrypted = self._cipher.encrypt(
+            nonce, plaintext.encode("utf-8"), _secret_aad(name, owner_id)
+        )
         payload = base64.urlsafe_b64encode(nonce + encrypted).decode("ascii").rstrip("=")
         return f"{ENVELOPE_VERSION}:{payload}"
 
-    def decrypt(self, name: str, envelope: str) -> str:
+    def decrypt(self, name: str, envelope: str, *, owner_id: str | None = None) -> str:
         try:
             version, encoded = envelope.split(":", 1)
             if version != ENVELOPE_VERSION:
@@ -82,7 +85,7 @@ class SettingsCredentialCipher:
             if len(payload) <= NONCE_SIZE:
                 raise ValueError
             value = self._cipher.decrypt(
-                payload[:NONCE_SIZE], payload[NONCE_SIZE:], _secret_aad(name)
+                payload[:NONCE_SIZE], payload[NONCE_SIZE:], _secret_aad(name, owner_id)
             )
             return value.decode("utf-8")
         except (InvalidTag, UnicodeError, ValueError, TypeError) as exc:

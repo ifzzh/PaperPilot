@@ -15,6 +15,8 @@ import threading
 from typing import Dict, List, Optional, Tuple
 
 from paperpilot.core.base_paper import Paper
+from paperpilot.security.identity import current_user_id
+from paperpilot.security.paths import user_storage_root
 
 
 class SearchIndex:
@@ -436,6 +438,7 @@ class SearchIndex:
                 else:
                     raise
 
+
     def remove_paper(self, paper_id: str) -> None:
         """
         Remove paper from index
@@ -468,6 +471,7 @@ class SearchIndex:
                     self._repair_database()
                 else:
                     raise
+
 
     def update_paper_category(self, paper_id: str, category_id: Optional[str]) -> None:
         """
@@ -938,3 +942,34 @@ class SearchIndex:
                     self._repair_database()
                 else:
                     raise
+
+
+class TenantSearchIndex:
+    """Lazily dispatch search operations to one FTS database per user."""
+
+    def __init__(self, papers_root: str):
+        self._papers_root = papers_root
+        self._tenant_lock = threading.RLock()
+        self._indexes: dict[str, SearchIndex] = {}
+        self._tenant_rebuild_callback = None
+
+    def _current(self) -> SearchIndex:
+        owner_id = current_user_id()
+        with self._tenant_lock:
+            index = self._indexes.get(owner_id)
+            if index is None:
+                root = user_storage_root(self._papers_root, owner_id, create=True)
+                index = SearchIndex(str(root / ".search_index.db"))
+                if self._tenant_rebuild_callback:
+                    index.set_rebuild_callback(self._tenant_rebuild_callback)
+                self._indexes[owner_id] = index
+            return index
+
+    def set_rebuild_callback(self, callback):
+        self._tenant_rebuild_callback = callback
+        with self._tenant_lock:
+            for index in self._indexes.values():
+                index.set_rebuild_callback(callback)
+
+    def __getattr__(self, name):
+        return getattr(self._current(), name)
