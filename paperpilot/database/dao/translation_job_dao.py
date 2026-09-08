@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 
 from ..connection import get_db
 from paperpilot.security.identity import current_user_id
+
+
+ACTIVE_STATES = ("queued", "dispatching", "running", "recovering", "paused")
+TERMINAL_STATES = ("completed", "failed", "cancelled")
 
 
 def _now() -> str:
@@ -12,18 +17,22 @@ def _now() -> str:
 
 class TranslationJobDAO:
     @staticmethod
-    def create(job_id: str, paper_id: str) -> None:
+    def create(job_id: str, paper_id: str, *, config_fingerprint: str | None = None) -> None:
         now = _now()
         db = get_db()
         db.execute(
-            """
-            INSERT INTO translation_jobs
-                (job_id,owner_id,paper_id,status,progress,created_at,updated_at)
-            VALUES (?, ?, ?, 'queued', 0, ?, ?)
-            """,
-            (job_id, current_user_id(), paper_id, now, now),
+            """INSERT INTO translation_jobs
+               (job_id,owner_id,paper_id,status,progress,created_at,updated_at,
+                heartbeat_at,queue_order,config_fingerprint,recoverable_until)
+               VALUES (?,? ,?,'queued',0,?,?,?,?,?,?)""",
+            (
+                job_id, current_user_id(), paper_id, now, now, now, time.time_ns(),
+                config_fingerprint,
+                (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+            ),
         )
         db.commit()
+        TranslationJobDAO.append_event(job_id, kind="status", message="queued")
 
     @staticmethod
     def update(
@@ -32,49 +41,148 @@ class TranslationJobDAO:
         *,
         progress: int | None = None,
         error: str | None = None,
+        error_code: str | None = None,
+        stage: str | None = None,
+        stage_progress: int | None = None,
+        stage_current: int | None = None,
+        stage_total: int | None = None,
+        heartbeat: bool = False,
+        increment_attempt: bool = False,
     ) -> None:
         db = get_db()
-        completed_at = _now() if status in {"completed", "failed", "cancelled"} else None
+        completed_at = _now() if status in TERMINAL_STATES else None
+        now = _now()
         db.execute(
-            """
-            UPDATE translation_jobs
-               SET status = ?,
-                   progress = COALESCE(?, progress),
-                   error = ?,
-                   updated_at = ?,
-                   completed_at = COALESCE(?, completed_at)
-             WHERE job_id = ? AND owner_id=?
-            """,
-            (status, progress, error, _now(), completed_at, job_id, current_user_id()),
+            """UPDATE translation_jobs
+               SET status=?,progress=COALESCE(?,progress),error=?,error_code=?,
+                   stage=COALESCE(?,stage),
+                   stage_progress=COALESCE(?,stage_progress),
+                   stage_current=COALESCE(?,stage_current),
+                   stage_total=COALESCE(?,stage_total),
+                   heartbeat_at=CASE WHEN ? THEN ? ELSE heartbeat_at END,
+                   attempt_count=attempt_count+?,updated_at=?,
+                   completed_at=CASE WHEN ? IS NULL THEN completed_at ELSE ? END
+               WHERE job_id=? AND owner_id=?""",
+            (
+                status, progress, error, error_code, stage, stage_progress,
+                stage_current, stage_total, int(heartbeat), now,
+                int(increment_attempt), now, completed_at, completed_at,
+                job_id, current_user_id(),
+            ),
         )
         db.commit()
 
     @staticmethod
+    def append_event(
+        job_id: str,
+        *,
+        kind: str,
+        level: str = "info",
+        stage: str | None = None,
+        message: str | None = None,
+        progress: int | None = None,
+        stage_progress: int | None = None,
+        stage_current: int | None = None,
+        stage_total: int | None = None,
+    ) -> int:
+        owner_id = current_user_id()
+        db = get_db()
+        cursor = db.execute(
+            """INSERT INTO translation_job_events
+               (job_id,owner_id,created_at,kind,level,stage,message,progress,
+                stage_progress,stage_current,stage_total)
+               SELECT job_id,owner_id,?,?,?,?,?,?,?,?,?
+               FROM translation_jobs WHERE job_id=? AND owner_id=?""",
+            (
+                _now(), kind, level, stage, message, progress, stage_progress,
+                stage_current, stage_total, job_id, owner_id,
+            ),
+        )
+        db.commit()
+        return int(cursor.lastrowid or 0)
+
+    @staticmethod
     def get(job_id: str) -> dict | None:
         row = get_db().execute(
-            "SELECT * FROM translation_jobs WHERE job_id=? AND owner_id=?", (job_id, current_user_id())
+            "SELECT * FROM translation_jobs WHERE job_id=? AND owner_id=?",
+            (job_id, current_user_id()),
         ).fetchone()
         return dict(row) if row else None
 
     @staticmethod
-    def list_active() -> list[dict]:
+    def list_jobs(*, status: str | None = None, limit: int = 100) -> list[dict]:
+        params: list[object] = [current_user_id()]
+        condition = "owner_id=?"
+        if status:
+            condition += " AND status=?"
+            params.append(status)
+        params.append(max(1, min(int(limit), 200)))
         rows = get_db().execute(
-            """
-            SELECT * FROM translation_jobs
-             WHERE owner_id=? AND status IN ('queued', 'running')
-             ORDER BY created_at
-            """
-        , (current_user_id(),)).fetchall()
+            f"""SELECT * FROM translation_jobs WHERE {condition}
+                ORDER BY CASE WHEN status IN ('queued','dispatching','running','recovering')
+                              THEN 0 ELSE 1 END,
+                         queue_order, created_at DESC LIMIT ?""",
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    @staticmethod
+    def list_events(
+        *, after_id: int = 0, job_id: str | None = None, limit: int = 500
+    ) -> list[dict]:
+        params: list[object] = [current_user_id(), max(0, int(after_id))]
+        condition = "owner_id=? AND id>?"
+        if job_id:
+            condition += " AND job_id=?"
+            params.append(job_id)
+        params.append(max(1, min(int(limit), 1000)))
+        rows = get_db().execute(
+            f"SELECT * FROM translation_job_events WHERE {condition} ORDER BY id LIMIT ?",
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    @staticmethod
+    def list_active() -> list[dict]:
+        placeholders = ",".join("?" for _ in ACTIVE_STATES)
+        rows = get_db().execute(
+            f"""SELECT * FROM translation_jobs
+                WHERE owner_id=? AND status IN ({placeholders})
+                ORDER BY queue_order,created_at""",
+            (current_user_id(), *ACTIVE_STATES),
+        ).fetchall()
         return [dict(row) for row in rows]
 
     @staticmethod
     def has_active_for_paper(paper_id: str) -> bool:
+        placeholders = ",".join("?" for _ in ACTIVE_STATES)
         row = get_db().execute(
-            """
-            SELECT 1 FROM translation_jobs
-             WHERE paper_id=? AND owner_id=? AND status IN ('queued', 'running')
-             LIMIT 1
-            """,
-            (paper_id, current_user_id()),
+            f"""SELECT 1 FROM translation_jobs
+                WHERE paper_id=? AND owner_id=? AND status IN ({placeholders}) LIMIT 1""",
+            (paper_id, current_user_id(), *ACTIVE_STATES),
         ).fetchone()
         return row is not None
+
+    @staticmethod
+    def set_queue_order(job_id: str, queue_order: int) -> bool:
+        db = get_db()
+        cursor = db.execute(
+            """UPDATE translation_jobs SET queue_order=?,updated_at=?
+               WHERE job_id=? AND owner_id=? AND status='queued'""",
+            (int(queue_order), _now(), job_id, current_user_id()),
+        )
+        db.commit()
+        return cursor.rowcount == 1
+
+    @staticmethod
+    def queue_position(job_id: str) -> int | None:
+        row = TranslationJobDAO.get(job_id)
+        if not row or row["status"] != "queued":
+            return None
+        result = get_db().execute(
+            """SELECT COUNT(*) FROM translation_jobs
+               WHERE status='queued' AND
+                     (queue_order<? OR (queue_order=? AND created_at<?))""",
+            (row["queue_order"], row["queue_order"], row["created_at"]),
+        ).fetchone()
+        return int(result[0]) + 1

@@ -32,6 +32,10 @@ class TranslationJobPersistenceTests(unittest.TestCase):
     def test_job_state_survives_new_database_connection_without_credentials(self):
         TranslationJobDAO.create("job-1", "paper-1")
         TranslationJobDAO.update("job-1", "running", progress=27)
+        TranslationJobDAO.append_event(
+            "job-1", kind="progress", stage="translate", progress=27,
+            stage_progress=40, stage_current=2, stage_total=5,
+        )
         connection.close_db()
 
         restored = TranslationJobDAO.get("job-1")
@@ -41,6 +45,9 @@ class TranslationJobPersistenceTests(unittest.TestCase):
         self.assertEqual(restored["progress"], 27)
         self.assertNotIn("api_key", restored)
         self.assertNotIn("base_url", restored)
+        events = TranslationJobDAO.list_events(job_id="job-1")
+        self.assertEqual([item["kind"] for item in events], ["status", "progress"])
+        self.assertEqual(events[-1]["stage_current"], 2)
 
     def test_only_unfinished_jobs_are_recovered(self):
         TranslationJobDAO.create("active", "paper-1")
@@ -51,6 +58,13 @@ class TranslationJobPersistenceTests(unittest.TestCase):
             [item["job_id"] for item in TranslationJobDAO.list_active()],
             ["active"],
         )
+
+    def test_jobs_and_events_are_tenant_scoped(self):
+        TranslationJobDAO.create("owned", "paper-1", config_fingerprint="abc")
+        self.assertEqual(TranslationJobDAO.get("owned")["config_fingerprint"], "abc")
+        with patch("paperpilot.database.dao.translation_job_dao.current_user_id", return_value="other"):
+            self.assertIsNone(TranslationJobDAO.get("owned"))
+            self.assertEqual(TranslationJobDAO.list_events(), [])
 
 
 if __name__ == "__main__":

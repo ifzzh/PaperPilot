@@ -168,11 +168,41 @@ CREATE TABLE IF NOT EXISTS translation_jobs (
     updated_at TEXT NOT NULL,
     completed_at TEXT,
     error TEXT,
+    error_code TEXT,
+    stage TEXT,
+    stage_progress INTEGER NOT NULL DEFAULT 0,
+    stage_current INTEGER NOT NULL DEFAULT 0,
+    stage_total INTEGER NOT NULL DEFAULT 0,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    heartbeat_at TEXT,
+    queue_order INTEGER NOT NULL DEFAULT 0,
+    config_fingerprint TEXT,
+    recoverable_until TEXT,
     FOREIGN KEY(paper_id) REFERENCES papers(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_translation_jobs_paper_status
     ON translation_jobs(paper_id, status);
+CREATE INDEX IF NOT EXISTS idx_translation_jobs_queue
+    ON translation_jobs(status, queue_order, created_at);
+
+CREATE TABLE IF NOT EXISTS translation_job_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    level TEXT NOT NULL DEFAULT 'info',
+    stage TEXT,
+    message TEXT,
+    progress INTEGER,
+    stage_progress INTEGER,
+    stage_current INTEGER,
+    stage_total INTEGER,
+    FOREIGN KEY(job_id) REFERENCES translation_jobs(job_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_translation_events_owner_id
+    ON translation_job_events(owner_id, id);
 
 -- Isolated document validation/import jobs. No file paths or secrets are stored.
 CREATE TABLE IF NOT EXISTS document_jobs (
