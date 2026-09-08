@@ -150,9 +150,11 @@ class ApplicationFactoryContractTests(unittest.TestCase):
             "from_key_file",
             return_value=store,
         ), patch.object(
-            preflight.OutboundPolicy, "from_environ"
+            preflight.DynamicOutboundPolicy, "from_environ"
         ), patch.object(
-            preflight, "assert_storage_migrated"
+            preflight.LocalAuthService, "has_active_admin", return_value=True
+        ), patch.object(
+            preflight, "assert_tenant_migrated"
         ) as storage_check, patch.object(
             preflight, "close_db"
         ) as close_db:
