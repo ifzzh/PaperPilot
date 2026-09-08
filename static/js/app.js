@@ -1128,8 +1128,8 @@ function generatePaperItemHTML(paper, showCheckbox = false) {
     `;
 
     // date column
-    const uploadDate = new Date(paper.upload_date).toLocaleDateString('en-US');
-    const arxivDate = paper.arxiv_published_date ? new Date(paper.arxiv_published_date).toLocaleDateString('en-US') : null;
+    const uploadDate = formatDateYMD(paper.upload_date);
+    const arxivDate = paper.arxiv_published_date ? formatDateYMD(paper.arxiv_published_date) : null;
     const dateCol = `
         <div class="paper-col-date">
             ${uploadDate}${arxivDate ? '<br>arXiv: ' + arxivDate : ''}
@@ -2934,6 +2934,7 @@ function showLoading(show) {
 
 // show message（Support custom duration）
 function showMessage(message, type = 'info', duration = 3000) {
+    message = window.PaperPilotI18n?.t(message) || message;
     // Create message element
     const messageDiv = document.createElement('div');
     messageDiv.className = `message message-${type}`;
@@ -6355,11 +6356,7 @@ function renderHeatmap(year) {
                 }
 
                 // Format date display
-                const displayDate = currentDate.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    weekday: 'short'
-                });
+                const displayDate = formatDateYMD(currentDate);
 
                 const tooltip = minutes > 0
                     ? `${displayDate}: ${formatMinutes(minutes)}`
@@ -6674,7 +6671,7 @@ function getTimeAgo(date) {
     if (diffHours < 24) return `${diffHours} hours ago`;
     if (diffDays < 7) return `${diffDays} days ago`;
     if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-    return date.toLocaleDateString('en-US');
+    return formatDateYMD(date);
 }
 
 // Open paper from recent reading
@@ -10922,9 +10919,7 @@ async function loadAvailableDates() {
 function updateDateDisplay() {
     const dateEl = document.getElementById('daily-arxiv-current-date');
     if (dateEl && dailyArxivCurrentDate) {
-        const date = new Date(dailyArxivCurrentDate + 'T00:00:00');
-        const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
-        dateEl.textContent = date.toLocaleDateString('en-US', options);
+        dateEl.textContent = dailyArxivCurrentDate;
     }
 }
 
@@ -12824,8 +12819,8 @@ function renderDailyArxivGrid() {
         const isRead = isDailyArxivPaperRead(paper.arxiv_id);
         // use announced date（Announcement date）instead of published（Submission date）
         const date = paper.announced
-            ? new Date(paper.announced).toLocaleDateString('en-US')
-            : (paper.updated ? new Date(paper.updated).toLocaleDateString('en-US') : '');
+            ? formatDateYMD(paper.announced)
+            : (paper.updated ? formatDateYMD(paper.updated) : '');
         const authors = paper.authors ? (paper.authors.length > 50 ? paper.authors.substring(0, 50) + '...' : paper.authors) : '';
         const homepageUrl = paperPilotSecurity.safeHttpUrl(paper.homepage);
         const githubUrl = paperPilotSecurity.safeHttpUrl(paper.github);
@@ -13492,10 +13487,8 @@ function showDailyArxivDetail(index) {
     }
 
     // use announced date（Announcement date）
-    const announcedDate = paper.announced
-        ? new Date(paper.announced).toLocaleDateString('en-US')
-        : '';
-    const submitDate = paper.published ? new Date(paper.published).toLocaleDateString('en-US') : '';
+    const announcedDate = paper.announced ? formatDateYMD(paper.announced) : '';
+    const submitDate = paper.published ? formatDateYMD(paper.published) : '';
     const homepageUrl = paperPilotSecurity.safeHttpUrl(paper.homepage);
     const githubUrl = paperPilotSecurity.safeHttpUrl(paper.github);
     const arxivUrl = paperPilotSecurity.safeHttpUrl(
@@ -15488,7 +15481,7 @@ function createSessionElement(session) {
 
     // Format date
     const date = new Date(session.updated_at * 1000);
-    const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateStr = formatDateTimeYMD(date);
 
     const title = document.createElement('span');
     title.className = 'session-title';

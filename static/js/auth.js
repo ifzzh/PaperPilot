@@ -317,7 +317,7 @@ function renderInvites(invites) {
     body.replaceChildren();
     invites.forEach(invite => {
         const row = document.createElement('tr');
-        appendCell(row, new Date(invite.expires_at * 1000).toLocaleString()); appendCell(row, invite.status);
+        appendCell(row, window.PaperPilotI18n?.formatDateTime(invite.expires_at * 1000) || ''); appendCell(row, invite.status);
         const actions = document.createElement('td');
         if (invite.status === 'active') actions.appendChild(actionButton('撤销', async () => {
             await jsonRequest(`/api/admin/invites/${encodeURIComponent(invite.id)}`, { method: 'DELETE' });
