@@ -11,10 +11,7 @@ class TestBrowserSecurityHeaders(unittest.TestCase):
         app_module.AUTH_CONFIG = AuthConfig.from_environ(
             {
                 "PAPERPILOT_ENV": "production",
-                "PAPERPILOT_AUTH_MODE": "supabase",
-                "SUPABASE_URL": "https://example.supabase.co/project/path",
-                "SUPABASE_ANON_KEY": "public-key",
-                "PAPERPILOT_ALLOWED_EMAILS": "admin@example.com",
+                "PAPERPILOT_AUTH_MODE": "local",
             }
         )
         self.client = app_module.app.test_client()
@@ -58,11 +55,10 @@ class TestBrowserSecurityHeaders(unittest.TestCase):
             "https://cdn.jsdelivr.net",
             "https://unpkg.com",
             "https://cdn.bootcdn.net",
-            "connect-src 'self' https://example.supabase.co",
+            "connect-src 'self'",
         ):
             self.assertIn(directive, policy)
-        self.assertNotIn("public-key", policy)
-        self.assertNotIn("/project/path", policy)
+        self.assertNotIn("supabase", policy.lower())
 
 
 if __name__ == "__main__":

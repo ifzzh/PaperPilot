@@ -288,6 +288,28 @@ class LocalAuthService:
         database.commit()
         return {"id": reset_id, "expires_at": now + ONE_TIME_CODE_SECONDS}, code
 
+    def offline_reset_password(self, username: str, temporary_password: str) -> None:
+        """Reset a local account from the offline CLI and revoke every session."""
+        normalized = normalize_username(username)
+        validate_password(temporary_password, temporary=True)
+        database = get_db()
+        row = database.execute(
+            "SELECT id FROM users WHERE username_normalized=?", (normalized,)
+        ).fetchone()
+        if row is None:
+            raise LocalAuthError("user_not_found")
+        now = int(self._now())
+        database.execute(
+            """UPDATE users SET password_hash=?,must_change_password=1,
+               updated_at=? WHERE id=?""",
+            (self._passwords.hash(temporary_password), now, row["id"]),
+        )
+        database.execute(
+            "UPDATE auth_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+            (now, row["id"]),
+        )
+        database.commit()
+
     def reset_password(self, code: object, replacement: object) -> None:
         validate_password(replacement)
         if not isinstance(code, str) or not code:

@@ -29,13 +29,13 @@ def preflight_environment() -> None:
     if not papers_root.is_dir() or papers_root.is_symlink():
         raise RuntimeError("invalid papers root")
 
-    init_db_schema(DB_PATH)
-    if auth_config.enabled and not LocalAuthService().has_active_admin():
-        raise RuntimeError("local authentication has no active administrator")
-    key_file = os.getenv(
-        "PAPERPILOT_SETTINGS_KEY_FILE", "/run/secrets/paperpilot_settings_key"
-    ).strip()
     try:
+        init_db_schema(DB_PATH)
+        if auth_config.enabled and not LocalAuthService().has_active_admin():
+            raise RuntimeError("local authentication has no active administrator")
+        key_file = os.getenv(
+            "PAPERPILOT_SETTINGS_KEY_FILE", "/run/secrets/paperpilot_settings_key"
+        ).strip()
         assert_no_plaintext_credentials(DB_PATH)
         credential_store = AgenticCredentialStore.from_key_file(key_file)
         credential_store.validate_all()

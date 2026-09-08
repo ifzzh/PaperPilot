@@ -24,21 +24,25 @@ from paperpilot.auth import (
     FixedWindowRateLimiter,
 )
 from paperpilot.local_auth import LocalAuthError, LocalAuthService
-from paperpilot.security.identity import DEVELOPMENT_USER_ID, Identity
-from paperpilot.security.paths import paper_directory
+from paperpilot.security.identity import (
+    DEVELOPMENT_USER_ID,
+    Identity,
+    set_background_identity,
+)
+from paperpilot.security.paths import UserScopedPath, paper_directory
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
 from paperpilot.security.credentials import CredentialError
-from paperpilot.security.outbound import OutboundPolicy, OutboundPolicyError
+from paperpilot.security.outbound import DynamicOutboundPolicy, OutboundPolicyError
 from paperpilot.migrations.agentic_secrets import (
     AgenticSecretMigrationError,
     assert_no_plaintext_credentials,
 )
-from paperpilot.migrations.category_storage import (
-    MigrationError as CategoryStorageMigrationError,
-    assert_storage_migrated,
+from paperpilot.migrations.tenant_storage import (
+    TenantMigrationError,
+    assert_tenant_migrated,
 )
 from paperpilot.core.paper_store import paper_store
-from paperpilot.core.search_index import SearchIndex
+from paperpilot.core.search_index import TenantSearchIndex
 from paperpilot.database.connection import DB_PATH
 from paperpilot.database.connection import init_db as register_db_teardown
 from paperpilot.database.dao.settings_dao import SettingsDAO
@@ -109,7 +113,7 @@ CSRF_COOKIE_NAME = "paperpilot_csrf"
 _rate_limiter = FixedWindowRateLimiter()
 AUTH_SERVICE: Optional[LocalAuthService] = None
 AGENTIC_CREDENTIAL_STORE: Optional[AgenticCredentialStore] = None
-OUTBOUND_POLICY: Optional[OutboundPolicy] = None
+OUTBOUND_POLICY: Optional[DynamicOutboundPolicy] = None
 
 
 def _browser_security_headers() -> dict[str, str]:
@@ -511,16 +515,16 @@ def init_app(papers_dir=None):
         UPLOAD_FOLDER = os.path.join(BASE_DIR, "papers")
 
     # Configuration files are all in the paper directory
-    CATEGORIES_FILE = os.path.join(UPLOAD_FOLDER, "categories.json")
-    READING_LIST_FILE = os.path.join(UPLOAD_FOLDER, "reading_list.json")
-    USER_SETTINGS_FILE = os.path.join(UPLOAD_FOLDER, "user_settings.json")
-    READING_HISTORY_FILE = os.path.join(UPLOAD_FOLDER, "reading_history.json")
-    AGENTIC_SETTINGS_FILE = os.path.join(UPLOAD_FOLDER, "agentic_settings.json")
-    DAILY_ARXIV_SETTINGS_FILE = os.path.join(UPLOAD_FOLDER, "daily_arxiv_settings.json")
-    AVATARS_DIR = os.path.join(UPLOAD_FOLDER, ".avatars")
-    TEMP_PAPERS_DIR = os.path.join(UPLOAD_FOLDER, ".daily_arxiv_temp")
-    READING_LIST_TEMP_DIR = os.path.join(UPLOAD_FOLDER, "_ReadingListTemp")
-    SEARCH_INDEX_DB = os.path.join(UPLOAD_FOLDER, ".search_index.db")
+    CATEGORIES_FILE = UserScopedPath(UPLOAD_FOLDER, "categories.json")
+    READING_LIST_FILE = UserScopedPath(UPLOAD_FOLDER, "reading_list.json")
+    USER_SETTINGS_FILE = UserScopedPath(UPLOAD_FOLDER, "user_settings.json")
+    READING_HISTORY_FILE = UserScopedPath(UPLOAD_FOLDER, "reading_history.json")
+    AGENTIC_SETTINGS_FILE = UserScopedPath(UPLOAD_FOLDER, "agentic_settings.json")
+    DAILY_ARXIV_SETTINGS_FILE = UserScopedPath(UPLOAD_FOLDER, "daily_arxiv_settings.json")
+    AVATARS_DIR = UserScopedPath(UPLOAD_FOLDER, ".avatars")
+    TEMP_PAPERS_DIR = UserScopedPath(UPLOAD_FOLDER, ".daily_arxiv_temp")
+    READING_LIST_TEMP_DIR = UserScopedPath(UPLOAD_FOLDER, "_ReadingListTemp")
+    SEARCH_INDEX_DB = os.path.join(UPLOAD_FOLDER, ".users")
 
     # Ensure necessary directories exist
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -529,7 +533,7 @@ def init_app(papers_dir=None):
     os.makedirs(READING_LIST_TEMP_DIR, exist_ok=True)
 
     # Initialize search index
-    search_index = SearchIndex(SEARCH_INDEX_DB)
+    search_index = TenantSearchIndex(UPLOAD_FOLDER)
 
     # Initialize Daily arXiv settings file (still file-based)
     if not os.path.exists(DAILY_ARXIV_SETTINGS_FILE):
@@ -794,6 +798,42 @@ def admin_password_reset(user_id: str):
         return jsonify({**metadata, "reset_code": code}), 201
     except LocalAuthError as exc:
         return jsonify({"error": exc.reason}), 404
+
+
+@app.route("/api/admin/ai-providers", methods=["GET", "POST"])
+def admin_ai_providers():
+    if OUTBOUND_POLICY is None:
+        return jsonify({"error": "outbound_policy_unavailable"}), 503
+    if request.method == "GET":
+        return jsonify({"providers": OUTBOUND_POLICY.list_providers()})
+    data = request.get_json(silent=True) or {}
+    try:
+        provider = OUTBOUND_POLICY.approve_public_url(
+            data.get("url"), name=data.get("name")
+        )
+        return jsonify({"success": True, "provider": provider}), 201
+    except OutboundPolicyError as exc:
+        return jsonify({"error": exc.reason}), 400
+
+
+@app.patch("/api/admin/ai-providers/<provider_id>")
+def admin_update_ai_provider(provider_id: str):
+    data = request.get_json(silent=True) or {}
+    if set(data) - {"name", "enabled"}:
+        return jsonify({"error": "unknown_provider_fields"}), 400
+    try:
+        provider = OUTBOUND_POLICY.update_provider(
+            provider_id, name=data.get("name"), enabled=data.get("enabled")
+        )
+        return jsonify({"success": True, "provider": provider})
+    except OutboundPolicyError as exc:
+        return jsonify({"error": exc.reason}), 404 if exc.reason == "provider_not_found" else 400
+
+
+@app.delete("/api/admin/ai-providers/<provider_id>")
+def admin_delete_ai_provider(provider_id: str):
+    OUTBOUND_POLICY.delete_provider(provider_id)
+    return jsonify({"success": True})
 
 
 def register_routes():
@@ -1079,11 +1119,29 @@ def _initialize_application(papers_dir: str) -> None:
             "do not expose this service to an untrusted network."
         )
 
-    # Initialize application (configure paper directory etc.)
-    init_app(papers_dir=papers_dir)
+    os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
+    init_db_schema(DB_PATH)
     AUTH_SERVICE = LocalAuthService()
     if AUTH_CONFIG.enabled and not AUTH_SERVICE.has_active_admin():
         raise RuntimeError("local authentication has no active administrator")
+    system_identity = (
+        AUTH_SERVICE.first_active_admin()
+        if AUTH_CONFIG.enabled
+        else Identity(DEVELOPMENT_USER_ID, "development", "admin")
+    )
+    set_background_identity(system_identity)
+
+    # Refuse mixed or legacy physical layouts before creating any per-user
+    # directories or default files.
+    os.makedirs(papers_dir, exist_ok=True)
+    try:
+        assert_tenant_migrated(papers_dir, DB_PATH)
+    except TenantMigrationError as exc:
+        raise RuntimeError(str(exc)) from exc
+
+    # Initialize application only after a fail-closed system identity and
+    # tenant storage layout exist.
+    init_app(papers_dir=papers_dir)
 
     settings_key_file = os.getenv(
         "PAPERPILOT_SETTINGS_KEY_FILE", "/run/secrets/paperpilot_settings_key"
@@ -1092,7 +1150,8 @@ def _initialize_application(papers_dir: str) -> None:
         assert_no_plaintext_credentials(DB_PATH)
         AGENTIC_CREDENTIAL_STORE = AgenticCredentialStore.from_key_file(settings_key_file)
         AGENTIC_CREDENTIAL_STORE.validate_all()
-        OUTBOUND_POLICY = OutboundPolicy.from_environ(os.environ)
+        OUTBOUND_POLICY = DynamicOutboundPolicy.from_environ(os.environ)
+        OUTBOUND_POLICY.seed_deployment_origins(system_identity.user_id)
     except (
         AgenticSecretMigrationError,
         CredentialError,
@@ -1104,12 +1163,6 @@ def _initialize_application(papers_dir: str) -> None:
 
     # Initialize category system
     init_categories()
-
-    # Refuse mixed or legacy physical layouts before routes and schedulers start.
-    try:
-        assert_storage_migrated(UPLOAD_FOLDER, DB_PATH)
-    except CategoryStorageMigrationError as exc:
-        raise RuntimeError(str(exc)) from exc
 
     # Register routes only after storage has passed migration checks.
     register_routes()

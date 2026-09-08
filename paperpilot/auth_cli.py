@@ -37,24 +37,7 @@ def main(argv=None) -> int:
                 service.create_bootstrap_admin(args.username, password)
                 print("administrator created; password change is required at first login")
             else:
-                normalized = args.username.strip().lower()
-                row = connection.get_db().execute(
-                    "SELECT id FROM users WHERE username_normalized=?", (normalized,)
-                ).fetchone()
-                if row is None:
-                    raise LocalAuthError("user_not_found")
-                database = connection.get_db()
-                now = int(service._now())
-                database.execute(
-                    """UPDATE users SET password_hash=?,must_change_password=1,
-                       updated_at=? WHERE id=?""",
-                    (service._passwords.hash(password), now, row["id"]),
-                )
-                database.execute(
-                    "UPDATE auth_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
-                    (now, row["id"]),
-                )
-                database.commit()
+                service.offline_reset_password(args.username, password)
                 print("password reset; password change is required at next login")
     except LocalAuthError as exc:
         parser.error(exc.reason)
