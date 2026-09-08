@@ -31,6 +31,7 @@ class TranslationDependencies:
     save_paper_metadata: Callable[[str, Paper], None]
     upload_folder: str
     worker_client: TranslationWorkerClient
+    on_terminal: Callable[[], None] | None = None
 
 
 def _task_payload(job: dict) -> dict:
@@ -120,12 +121,33 @@ def monitor_worker_task(
     *,
     poll_seconds: float = 1.0,
 ) -> None:
+    worker_sequence = int((TranslationJobDAO.get(task_id) or {}).get("worker_event_sequence") or 0)
     try:
         while True:
             state = deps.worker_client.get(task_id)
             status = str(state.get("status") or "failed")
             progress = int(state.get("progress") or 0)
             logs = [str(item) for item in state.get("logs") or []]
+            for event in state.get("events") or []:
+                sequence = int(event.get("sequence") or 0)
+                if sequence <= worker_sequence:
+                    continue
+                TranslationJobDAO.append_event(
+                    task_id,
+                    kind=str(event.get("kind") or "log"),
+                    level=str(event.get("level") or "info"),
+                    stage=event.get("stage"),
+                    message=event.get("message"),
+                    progress=event.get("progress"),
+                    stage_progress=event.get("stage_progress"),
+                    stage_current=event.get("stage_current"),
+                    stage_total=event.get("stage_total"),
+                )
+                worker_sequence = sequence
+            stage = state.get("stage")
+            stage_progress = int(state.get("stage_progress") or 0)
+            stage_current = int(state.get("stage_current") or 0)
+            stage_total = int(state.get("stage_total") or 0)
             if status == "completed":
                 paper = _find_paper(paper_id, deps)
                 if paper is None:
@@ -152,21 +174,41 @@ def monitor_worker_task(
                     "success": True,
                     "chinese_version_path": f"/api/paper/{paper_id}/chinese/file",
                 }
-                TranslationJobDAO.update(task_id, "completed", progress=100)
+                TranslationJobDAO.update(
+                    task_id, "completed", progress=100, stage="completed",
+                    stage_progress=100, heartbeat=True,
+                    worker_event_sequence=worker_sequence,
+                )
+                TranslationJobDAO.append_event(
+                    task_id, kind="status", stage="completed", message="completed", progress=100,
+                )
                 _update_memory_task(
                     task_id, deps, status="completed", progress=100, logs=logs, result=result
                 )
                 deps.worker_client.cleanup(task_id)
                 return
-            if status in {"failed", "cancelled"}:
+            if status in {"failed", "cancelled", "paused"}:
                 error = str(state.get("error") or status)
                 result = {"success": False, "error": error}
-                TranslationJobDAO.update(task_id, status, progress=progress, error=error)
+                TranslationJobDAO.update(
+                    task_id, status, progress=progress, error=error,
+                    error_code=error, stage=stage, stage_progress=stage_progress,
+                    stage_current=stage_current, stage_total=stage_total,
+                    heartbeat=True, worker_event_sequence=worker_sequence,
+                )
+                TranslationJobDAO.append_event(
+                    task_id, kind="status", stage=stage, message=status, progress=progress,
+                )
                 _update_memory_task(
                     task_id, deps, status=status, progress=progress, logs=logs, result=result
                 )
                 return
-            TranslationJobDAO.update(task_id, status, progress=progress)
+            TranslationJobDAO.update(
+                task_id, status, progress=progress, stage=stage,
+                stage_progress=stage_progress, stage_current=stage_current,
+                stage_total=stage_total, heartbeat=True,
+                worker_event_sequence=worker_sequence,
+            )
             _update_memory_task(
                 task_id, deps, status=status, progress=progress, logs=logs, result=None
             )
@@ -177,14 +219,14 @@ def monitor_worker_task(
             if isinstance(exc, TranslationWorkerRejected)
             else "translation_worker_unavailable"
         )
-        TranslationJobDAO.update(task_id, "failed", error=error)
+        TranslationJobDAO.update(task_id, "queued", error=error, error_code=error)
         _update_memory_task(
             task_id,
             deps,
-            status="failed",
+            status="queued",
             progress=0,
             logs=[],
-            result={"success": False, "error": error},
+            result=None,
         )
     except Exception as exc:  # noqa: BLE001
         error = str(exc)[:512]
@@ -197,6 +239,9 @@ def monitor_worker_task(
             logs=[],
             result={"success": False, "error": error},
         )
+    finally:
+        if deps.on_terminal:
+            deps.on_terminal()
 
 
 def start_monitor(task_id: str, paper_id: str, deps: TranslationDependencies) -> threading.Thread:

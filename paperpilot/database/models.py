@@ -178,6 +178,7 @@ CREATE TABLE IF NOT EXISTS translation_jobs (
     queue_order INTEGER NOT NULL DEFAULT 0,
     config_fingerprint TEXT,
     recoverable_until TEXT,
+    worker_event_sequence INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY(paper_id) REFERENCES papers(id)
 );
 

@@ -48,6 +48,7 @@ class TranslationJobDAO:
         stage_total: int | None = None,
         heartbeat: bool = False,
         increment_attempt: bool = False,
+        worker_event_sequence: int | None = None,
     ) -> None:
         db = get_db()
         completed_at = _now() if status in TERMINAL_STATES else None
@@ -61,12 +62,14 @@ class TranslationJobDAO:
                    stage_total=COALESCE(?,stage_total),
                    heartbeat_at=CASE WHEN ? THEN ? ELSE heartbeat_at END,
                    attempt_count=attempt_count+?,updated_at=?,
+                   worker_event_sequence=COALESCE(?,worker_event_sequence),
                    completed_at=CASE WHEN ? IS NULL THEN completed_at ELSE ? END
                WHERE job_id=? AND owner_id=?""",
             (
                 status, progress, error, error_code, stage, stage_progress,
                 stage_current, stage_total, int(heartbeat), now,
-                int(increment_attempt), now, completed_at, completed_at,
+                int(increment_attempt), now, worker_event_sequence,
+                completed_at, completed_at,
                 job_id, current_user_id(),
             ),
         )
@@ -175,6 +178,23 @@ class TranslationJobDAO:
         return cursor.rowcount == 1
 
     @staticmethod
+    def enqueue(job_id: str) -> bool:
+        db = get_db()
+        now = _now()
+        cursor = db.execute(
+            """UPDATE translation_jobs
+               SET status='queued',error=NULL,error_code=NULL,completed_at=NULL,
+                   updated_at=?,queue_order=?
+               WHERE job_id=? AND owner_id=?
+                 AND status IN ('paused','failed','recovering','queued')""",
+            (now, time.time_ns(), job_id, current_user_id()),
+        )
+        db.commit()
+        if cursor.rowcount:
+            TranslationJobDAO.append_event(job_id, kind="status", message="queued")
+        return cursor.rowcount == 1
+
+    @staticmethod
     def queue_position(job_id: str) -> int | None:
         row = TranslationJobDAO.get(job_id)
         if not row or row["status"] != "queued":
@@ -186,3 +206,45 @@ class TranslationJobDAO:
             (row["queue_order"], row["queue_order"], row["created_at"]),
         ).fetchone()
         return int(result[0]) + 1
+
+    @staticmethod
+    def next_queued(last_owner_id: str | None = None) -> dict | None:
+        """Return one globally queued job for the trusted in-process dispatcher."""
+        db = get_db()
+        row = None
+        if last_owner_id:
+            row = db.execute(
+                """SELECT j.*,u.username,u.role FROM translation_jobs j
+                   JOIN users u ON u.id=j.owner_id
+                   WHERE j.status='queued' AND j.owner_id<>? AND u.status='active'
+                   ORDER BY j.queue_order,j.created_at LIMIT 1""",
+                (last_owner_id,),
+            ).fetchone()
+        if row is None:
+            row = db.execute(
+                """SELECT j.*,u.username,u.role FROM translation_jobs j
+                   JOIN users u ON u.id=j.owner_id
+                   WHERE j.status='queued' AND u.status='active'
+                   ORDER BY j.queue_order,j.created_at LIMIT 1"""
+            ).fetchone()
+        return dict(row) if row else None
+
+    @staticmethod
+    def has_global_running() -> bool:
+        row = get_db().execute(
+            """SELECT 1 FROM translation_jobs
+               WHERE status IN ('dispatching','running','recovering') LIMIT 1"""
+        ).fetchone()
+        return row is not None
+
+    @staticmethod
+    def recover_incomplete() -> None:
+        db = get_db()
+        now = _now()
+        db.execute(
+            """UPDATE translation_jobs SET status='queued',error_code='interrupted',
+               error='interrupted',updated_at=?,queue_order=?
+               WHERE status IN ('dispatching','running','recovering')""",
+            (now, time.time_ns()),
+        )
+        db.commit()

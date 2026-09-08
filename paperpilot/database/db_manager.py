@@ -14,6 +14,7 @@ _TRANSLATION_COLUMNS = {
     "queue_order": "INTEGER NOT NULL DEFAULT 0",
     "config_fingerprint": "TEXT",
     "recoverable_until": "TEXT",
+    "worker_event_sequence": "INTEGER NOT NULL DEFAULT 0",
 }
 
 
