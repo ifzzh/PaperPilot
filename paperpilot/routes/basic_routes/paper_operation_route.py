@@ -22,8 +22,10 @@ from paperpilot.security.paths import (
     ensure_confined_tree,
     paper_asset_paths,
     paper_path,
+    paper_directory,
     verified_paper_path,
 )
+from paperpilot.security.identity import current_user_id
 from paperpilot.tools.basic_tools.paper_repository import scan_papers_in_directory
 from paperpilot.tools.basic_tools.upload_paper import (
     search_arxiv_by_title_only,
@@ -91,6 +93,7 @@ def register_paper_operation_routes(
     document_client: DocumentWorkerClient | None = None,
 ) -> None:
     document_client = document_client or DocumentWorkerClient()
+    reading_list_scan_mtime_by_owner: dict[str, float] = {}
 
     def load_reading_list() -> List[str]:
         items = ReadingListDAO.get_list()
@@ -522,7 +525,7 @@ def register_paper_operation_routes(
 
         # Auto-sync: scan _ReadingListTemp directory
         # Optimization: Only scan if the directory has been modified
-        reading_list_temp_path = os.path.join(upload_folder, "_ReadingListTemp")
+        reading_list_temp_path = str(paper_directory(upload_folder, "reading_list_temp"))
         should_scan = False
         
         if os.path.exists(reading_list_temp_path):
@@ -530,14 +533,10 @@ def register_paper_operation_routes(
                 # Check directory mtime
                 mtime = os.path.getmtime(reading_list_temp_path)
                 
-                # Use a module-level variable to store the last scan time
-                # We attach it to the function to avoid global namespace pollution
-                if not hasattr(api_get_reading_list, "_last_scan_time"):
-                    api_get_reading_list._last_scan_time = 0
-                
-                if mtime > api_get_reading_list._last_scan_time:
+                owner_id = current_user_id()
+                if mtime > reading_list_scan_mtime_by_owner.get(owner_id, 0):
                     should_scan = True
-                    api_get_reading_list._last_scan_time = mtime
+                    reading_list_scan_mtime_by_owner[owner_id] = mtime
             except Exception:
                 # If checking mtime fails, default to scanning (safer)
                 should_scan = True
