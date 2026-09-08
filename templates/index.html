@@ -895,7 +895,7 @@
                         <div class="setting-row">
                             <div class="setting-info">
                                 <label for="daily-arxiv-retention-days">Retention days</label>
-                                <small>Papers older than this days will be automatically cleaned up</small>
+                                <small>保留最近若干个 arXiv 发布日，而不是自然日</small>
                             </div>
                             <input type="number" id="daily-arxiv-retention-days" min="1" max="30" value="7"
                                 class="setting-input" />
@@ -911,11 +911,24 @@
                         <div class="setting-row">
                             <div class="setting-info">
                                 <label for="daily-arxiv-max-daily-papers">Max papers per day</label>
-                                <small>Recommended default: 50 papers, dynamically split by category weights</small>
+                                <small>默认每日最多 24 篇，主题不足时不会用无关论文凑数</small>
                             </div>
-                            <input type="number" id="daily-arxiv-max-daily-papers" min="1" max="500" value="50"
+                            <input type="number" id="daily-arxiv-max-daily-papers" min="1" max="500" value="24"
                                 class="setting-input" />
                         </div>
+                    </div>
+                </div>
+                <div class="setting-card">
+                    <div class="setting-card-header">
+                        <i class="fas fa-bullseye"></i>
+                        <span>研究主题</span>
+                    </div>
+                    <div class="setting-card-body">
+                        <div class="setting-info">
+                            <label>个性化筛选主题</label>
+                            <small>主题名称、每日配额和召回词组可直接编辑；宽泛的 LLM、Agent 不会单独触发入选。</small>
+                        </div>
+                        <div id="daily-arxiv-topic-list" class="daily-arxiv-topic-list"></div>
                     </div>
                 </div>
                 <div class="setting-card">

@@ -11217,7 +11217,7 @@ async function loadDailyArxivSettings() {
                 }
             }
             if (maxDailyPapersEl) {
-                maxDailyPapersEl.value = dailyArxivSettings.maxDailyPapers || 50;
+                maxDailyPapersEl.value = dailyArxivSettings.maxDailyPapers || 24;
                 if (!maxDailyPapersEl.dataset.bound) {
                     maxDailyPapersEl.dataset.bound = 'true';
                     maxDailyPapersEl.addEventListener('change', autoSaveDailyArxivSettings);
@@ -11244,6 +11244,7 @@ async function loadDailyArxivSettings() {
             renderDailyArxivCategoryTags();
             renderDailyArxivSettingsCategoryList();
             renderDailyArxivKeywordList();
+            renderDailyArxivResearchTopics();
             await renderDailyArxivStrategyHelp();
             renderDailyArxivInstitutionTiers();
             syncDailyArxivKnownInstitutions();
@@ -11296,7 +11297,7 @@ async function saveDailyArxivSettings(silent = false) {
         const enabled = document.getElementById('daily-arxiv-enabled')?.checked;
         const retentionDays = parseInt(document.getElementById('daily-arxiv-retention-days')?.value) || 7;
         const checkInterval = parseInt(document.getElementById('daily-arxiv-check-interval')?.value) || 10;
-        const maxDailyPapers = parseInt(document.getElementById('daily-arxiv-max-daily-papers')?.value) || 50;
+        const maxDailyPapers = parseInt(document.getElementById('daily-arxiv-max-daily-papers')?.value) || 24;
         const maxKeywords = parseInt(document.getElementById('daily-arxiv-max-keywords')?.value) || 1;
         const qualityStrategy = document.getElementById('daily-arxiv-quality-strategy')?.value || 'balanced';
 
@@ -11330,6 +11331,8 @@ async function saveDailyArxivSettings(silent = false) {
         dailyArxivSettings.maxDailyPapers = clampedMaxDailyPapers;
         dailyArxivSettings.maxKeywords = clampedMaxKeywords;
         dailyArxivSettings.keywordList = keywordList;
+        dailyArxivSettings.researchTopics = collectDailyArxivResearchTopics();
+        dailyArxivSettings.topicFilteringEnabled = true;
         dailyArxivSettings.qualityConfig = cloneDailyArxivQualityConfig({
             ...dailyArxivSettings.qualityConfig,
             strategy: qualityStrategy,
@@ -11497,6 +11500,51 @@ function renderDailyArxivKeywordList() {
         item.appendChild(text);
         item.appendChild(remove);
         container.appendChild(item);
+    });
+}
+
+function renderDailyArxivResearchTopics() {
+    const container = document.getElementById('daily-arxiv-topic-list');
+    if (!container) return;
+    container.replaceChildren();
+    (dailyArxivSettings.researchTopics || []).forEach(topic => {
+        const card = document.createElement('div');
+        card.className = 'daily-arxiv-topic-editor';
+        const header = document.createElement('div');
+        header.className = 'daily-arxiv-topic-editor-header';
+        const name = document.createElement('input');
+        name.className = 'setting-input topic-name';
+        name.value = paperPilotSecurity.asText(topic.name || topic.id);
+        name.setAttribute('aria-label', '主题名称');
+        const quota = document.createElement('input');
+        quota.className = 'setting-input topic-quota';
+        quota.type = 'number'; quota.min = '1'; quota.max = '24'; quota.value = String(topic.quota || 1);
+        quota.setAttribute('aria-label', '每日配额');
+        header.append(name, quota);
+        const phrases = document.createElement('textarea');
+        phrases.className = 'setting-input topic-phrases';
+        phrases.rows = 3;
+        phrases.value = (topic.phrases || []).join('，');
+        phrases.placeholder = '召回词组，以逗号分隔';
+        card.dataset.topicId = paperPilotSecurity.asText(topic.id);
+        card.append(header, phrases);
+        card.querySelectorAll('input,textarea').forEach(input => input.addEventListener('change', markDailyArxivSettingsDirty));
+        container.appendChild(card);
+    });
+}
+
+function collectDailyArxivResearchTopics() {
+    const originals = new Map((dailyArxivSettings.researchTopics || []).map(topic => [topic.id, topic]));
+    return [...document.querySelectorAll('.daily-arxiv-topic-editor')].map(card => {
+        const topic = originals.get(card.dataset.topicId) || {};
+        const phrases = card.querySelector('.topic-phrases').value.split(/[,，\n]/).map(value => value.trim()).filter(Boolean);
+        return {
+            ...topic,
+            id: card.dataset.topicId,
+            name: card.querySelector('.topic-name').value.trim(),
+            quota: Math.max(1, Math.min(24, Number(card.querySelector('.topic-quota').value) || 1)),
+            phrases,
+        };
     });
 }
 
@@ -12827,6 +12875,12 @@ function renderDailyArxivGrid() {
         const arxivUrl = paperPilotSecurity.safeHttpUrl(
             `https://arxiv.org/abs/${encodeURIComponent(paperPilotSecurity.asText(paper.arxiv_id))}`
         );
+        const themeId = paper.matched_topics?.[0]?.id || 'general';
+        const artifactLabels = {
+            candidate: '等待下载', downloading: '正在下载', validating: '安全验证中',
+            retry_wait: '等待重试', failed: '下载失败', ready: 'PDF 已就绪'
+        };
+        const artifactStatus = paper.artifact_status || (paper.pdf_downloaded ? 'ready' : 'retry_wait');
 
         // Organization information display（Complete display, gray rounded border, different colors for different units）
         let affiliationsHtml = '';
@@ -12897,13 +12951,15 @@ function renderDailyArxivGrid() {
                      alt="${escapeHtml(paper.title)}" 
                      onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
                      style="width: 100%; height: 100%; object-fit: cover;" />
-                <div class="thumbnail-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center; background: #f5f5f5;">
-                    <i class="fas fa-file-pdf placeholder-icon"></i>
+                <div class="thumbnail-fallback daily-arxiv-theme-cover theme-${escapeHtml(themeId)}" style="display: none;">
+                    <span>${escapeHtml(paper.matched_topics?.[0]?.name || 'Daily arXiv')}</span>
                 </div>
             `;
         } else {
             thumbnailHtml = `
-                <i class="fas fa-file-pdf placeholder-icon"></i>
+                <div class="thumbnail-fallback daily-arxiv-theme-cover theme-${escapeHtml(themeId)}">
+                    <span>${escapeHtml(paper.matched_topics?.[0]?.name || 'Daily arXiv')}</span>
+                </div>
             `;
         }
 
@@ -12918,6 +12974,7 @@ function renderDailyArxivGrid() {
                         <span class="daily-arxiv-card-category">${escapeHtml(displayCategoryLabel)}</span>
                         ${countriesFlagsHtml}
                     </div>
+                    <span class="daily-arxiv-asset-status status-${escapeHtml(artifactStatus)}">${escapeHtml(artifactLabels[artifactStatus] || artifactStatus)}</span>
                 </div>
                 <div class="daily-arxiv-card-body">
                     <div class="daily-arxiv-card-title" title="${escapeHtml(paper.title)}">${highlight(paper.title)}</div>
@@ -12942,6 +12999,9 @@ function renderDailyArxivGrid() {
                             <button class="daily-arxiv-card-action" data-external-url="${escapeHtml(arxivUrl)}" title="exist arXiv Check">
                                 <i class="fas fa-external-link-alt"></i>
                             </button>
+                            ${artifactStatus !== 'ready' ? `<button class="daily-arxiv-card-action" onclick="retryDailyArxivAsset(${index}, event)" title="重试 PDF 下载">
+                                <i class="fas fa-redo"></i>
+                            </button>` : ''}
                             ${(() => {
                 // Check if the paper is on the to-read list
                 const isInReadingList = paper.paper_id && readingListPaperIds.has(paper.paper_id);
@@ -12969,6 +13029,15 @@ function renderDailyArxivGrid() {
             if (url) window.open(url, '_blank', 'noopener,noreferrer');
         });
     });
+}
+
+async function retryDailyArxivAsset(index, event) {
+    event?.stopPropagation();
+    const paper = getCurrentDailyArxivPapers(false)[index];
+    if (!paper?.arxiv_id) return;
+    const response = await fetch(`/api/daily-arxiv/papers/${encodeURIComponent(paper.arxiv_id)}/retry`, { method: 'POST' });
+    const data = await response.json().catch(() => ({}));
+    showMessage(response.ok ? '已加入 PDF 重试队列' : (data.error || '重试失败'), response.ok ? 'success' : 'error');
 }
 
 // Render unit filter
