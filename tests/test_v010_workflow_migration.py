@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 
 from paperpilot.database.db_manager import init_db_schema
@@ -11,6 +12,8 @@ def test_v010_migration_updates_profile_preserves_jobs_and_rolls_back(tmp_path):
     backups = tmp_path / "backups"
     init_db_schema(str(database))
     settings.write_text(json.dumps({"categories": ["cs.CV"], "retentionDays": 2}), encoding="utf-8")
+    os.chmod(database, 0o660)
+    os.chmod(settings, 0o660)
     with sqlite3.connect(database) as connection:
         connection.execute(
             "INSERT INTO users (id,username,username_normalized,password_hash,role,status,must_change_password,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -37,3 +40,5 @@ def test_v010_migration_updates_profile_preserves_jobs_and_rolls_back(tmp_path):
     rollback(database, settings, manifest)
     restored = json.loads(settings.read_text(encoding="utf-8"))
     assert restored == {"categories": ["cs.CV"], "retentionDays": 2}
+    assert database.stat().st_mode & 0o777 == 0o660
+    assert settings.stat().st_mode & 0o777 == 0o660

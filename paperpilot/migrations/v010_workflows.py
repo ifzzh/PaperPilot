@@ -72,6 +72,17 @@ def _write_existing_settings(path: Path, data: dict) -> None:
         os.fsync(stream.fileno())
 
 
+def _restore_existing_file(source: Path, destination: Path) -> None:
+    """Restore content without replacing the deployment-owned inode or mode."""
+    if destination.exists():
+        with source.open("rb") as input_stream, destination.open("wb") as output_stream:
+            shutil.copyfileobj(input_stream, output_stream)
+            output_stream.flush()
+            os.fsync(output_stream.fileno())
+        return
+    shutil.copyfile(source, destination)
+
+
 def apply(db_path: Path, settings_path: Path, backup_dir: Path) -> Path:
     report = inspect(db_path, settings_path)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -137,9 +148,9 @@ def apply(db_path: Path, settings_path: Path, backup_dir: Path) -> Path:
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         _write_existing_settings(settings_path, data)
     except Exception:
-        shutil.copy2(db_backup, db_path)
+        _restore_existing_file(db_backup, db_path)
         if settings_backup.exists():
-            shutil.copyfile(settings_backup, settings_path)
+            _restore_existing_file(settings_backup, settings_path)
         raise
 
     _write_json(manifest, {
@@ -159,12 +170,12 @@ def rollback(db_path: Path, settings_path: Path, manifest_path: Path) -> None:
     backup = Path(manifest["database_backup"])
     if _sha256(backup) != manifest["database_sha256"]:
         raise WorkflowMigrationError("database_backup_hash_mismatch")
-    shutil.copy2(backup, db_path)
+    _restore_existing_file(backup, db_path)
     if manifest.get("settings_backup"):
         source = Path(manifest["settings_backup"])
         if _sha256(source) != manifest["settings_sha256"]:
             raise WorkflowMigrationError("settings_backup_hash_mismatch")
-        shutil.copyfile(source, settings_path)
+        _restore_existing_file(source, settings_path)
     manifest["state"] = "rolled_back"
     _write_json(manifest_path, manifest)
 
