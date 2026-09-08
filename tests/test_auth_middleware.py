@@ -37,8 +37,8 @@ class FakeAuthService:
     def logout(self, token):
         return None
 
-    def change_password(self, *_args):
-        return None
+    def change_password(self, *_args, **_kwargs):
+        return "rotated", "csrf-rotated"
 
 
 class TestAuthMiddleware(unittest.TestCase):

@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from paperpilot.database.models import SCHEMA_SCRIPT
+from paperpilot.database.db_manager import _ensure_translation_columns
 from paperpilot.security.credentials import SettingsCredentialCipher
 from paperpilot.security.paths import ensure_confined, user_storage_root
 
@@ -141,6 +142,7 @@ def apply(db_path: Path, papers_root: Path, username: str, key_file: Path, backu
         connection.execute("PRAGMA foreign_keys=ON")
         # executescript may commit implicitly, so create additive v0.9 tables
         # before beginning the transaction that assigns legacy rows.
+        _ensure_translation_columns(connection)
         connection.executescript(SCHEMA_SCRIPT)
         connection.execute("BEGIN EXCLUSIVE")
         for table in report["missing_owner_columns"]:
