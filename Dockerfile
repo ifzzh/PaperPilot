@@ -30,10 +30,9 @@ COPY docker/requirements-document.txt /tmp/requirements.txt
 RUN uv venv /opt/venv \
  && uv pip sync --python /opt/venv/bin/python /tmp/requirements.txt
 
-FROM build-base AS test
+FROM document-dependencies AS test
 COPY docker/requirements-test.txt /tmp/requirements.txt
-RUN uv venv /opt/venv \
- && uv pip sync --python /opt/venv/bin/python /tmp/requirements.txt
+RUN uv pip sync --python /opt/venv/bin/python /tmp/requirements.txt
 ENV PATH=/opt/venv/bin:$PATH
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
