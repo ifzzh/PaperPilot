@@ -38,8 +38,7 @@ def normalize_username(value: object) -> str:
 
 
 def validate_password(value: object, *, temporary: bool = False) -> str:
-    minimum = 10 if temporary else 12
-    if not isinstance(value, str) or not minimum <= len(value) <= 128:
+    if not isinstance(value, str) or not 8 <= len(value) <= 128:
         raise LocalAuthError("invalid_password")
     return value
 

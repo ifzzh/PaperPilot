@@ -1638,7 +1638,7 @@
                 <div class="form-group" id="auth-new-password-group" style="display:none;">
                     <label for="auth-new-password">新密码</label>
                     <input type="password" id="auth-new-password" autocomplete="new-password"
-                        placeholder="12–128 个字符" class="auth-input">
+                        placeholder="8–128 个字符" minlength="8" maxlength="128" class="auth-input">
                 </div>
                 <div id="auth-error" class="auth-error" style="display: none;"></div>
                 <button type="submit" id="auth-submit" class="btn btn-primary btn-block">登录</button>
