@@ -93,6 +93,19 @@ class TestAuthMiddleware(unittest.TestCase):
                 response = self.client.open(path, method=method)
                 self.assertEqual(response.status_code, 401)
 
+    def test_papers_directory_endpoint_does_not_disclose_a_path(self):
+        with patch.object(
+            app_module,
+            "_verify_supabase_access_token",
+            return_value="admin@example.com",
+        ):
+            response = self.client.get(
+                "/api/papers-dir",
+                headers={"Authorization": "Bearer valid"},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"success": True, "storage": "managed"})
+
     def test_missing_runtime_configuration_does_not_fail_open(self):
         app_module.AUTH_CONFIG = None
         response = self.client.get("/api/test-auth-protected")

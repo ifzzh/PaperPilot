@@ -14202,7 +14202,7 @@ onAppReady(() => {
 let exportTaskId = null;
 let exportProgressInterval = null;
 
-// Load papers directory path
+// Load the managed-storage label without exposing a server path
 async function loadPapersDir() {
     if (hasLoadedPapersDir) return;
 
@@ -14211,8 +14211,8 @@ async function loadPapersDir() {
         if (pathElement) {
             const response = await fetch('/api/papers-dir');
             const data = await response.json();
-            if (data.success) {
-                pathElement.textContent = data.path;
+            if (data.success && data.storage === 'managed') {
+                pathElement.textContent = '服务器托管存储';
                 hasLoadedPapersDir = true;
             }
         }

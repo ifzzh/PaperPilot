@@ -658,6 +658,12 @@ def readyz():
     )
 
 
+@app.route("/api/papers-dir", methods=["GET"])
+def get_papers_dir():
+    """Describe managed storage without disclosing its server path."""
+    return jsonify({"success": True, "storage": "managed"})
+
+
 @app.route("/api/auth/session", methods=["POST", "GET", "DELETE"])
 def auth_session():
     if AUTH_CONFIG is None:
@@ -1091,12 +1097,6 @@ def _initialize_application(papers_dir: str) -> None:
 
     # Rebuild search index
     rebuild_search_index()
-
-    # Add API to get papers directory path
-    @app.route("/api/papers-dir", methods=["GET"])
-    def get_papers_dir():
-        """Get absolute path of papers directory"""
-        return jsonify({"success": True, "path": os.path.abspath(UPLOAD_FOLDER)})
 
     # Paper data is now directly stored in the JSON file next to the PDF file
 def shutdown_application() -> None:
