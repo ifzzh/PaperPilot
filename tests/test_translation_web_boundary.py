@@ -68,22 +68,35 @@ class TranslationWebBoundaryTests(unittest.TestCase):
         self.assertEqual(response.get_json()["error"], "forbidden_agent_overrides")
         self.worker.health.assert_not_called()
 
-    def test_worker_unavailable_returns_503_without_local_fallback(self):
+    def test_worker_unavailable_does_not_block_persistent_queue_or_run_locally(self):
         self.worker.health.return_value = False
+        directory = category_directory(self.papers, "category-a", create=True)
+        pdf = directory / "paper.pdf"
+        pdf.write_bytes(b"%PDF-source")
+        paper_store.upsert(
+            Paper(id="paper-1", filename="paper.pdf", file_path=str(pdf)),
+            category_id="category-a", category_path=["Category A"],
+        )
         settings = {"llmConfigs": {"translate": {
             "llmModel": "fake", "llmBaseUrl": "https://api.example.test/v1"
         }}}
         with (
             patch.object(TranslationJobDAO, "has_active_for_paper", return_value=False),
+            patch.object(TranslationJobDAO, "create"),
             patch(
                 "paperpilot.routes.agent_routes.agent_translate_route.SettingsDAO.get_setting",
                 return_value=settings,
             ),
+            patch(
+                "paperpilot.routes.agent_routes.agent_translate_route.test_llm_api",
+                return_value=(True, None),
+            ),
         ):
             response = self.client.post("/api/paper/translate", json={"paper_id": "paper-1"})
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.get_json()["error"], "translation_worker_unavailable")
-        self.worker.stage_input.assert_not_called()
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.get_json()["status"], "queued")
+        self.worker.stage_input.assert_called_once()
+        self.worker.create.assert_not_called()
 
     def test_existing_translation_downloads_while_worker_is_offline(self):
         directory = category_directory(self.papers, "category-a", create=True)

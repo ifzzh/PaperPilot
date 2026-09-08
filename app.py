@@ -104,6 +104,7 @@ parser.add_argument(
 parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 
 app = Flask(__name__)
+app.config["PAPERPILOT_START_BACKGROUND_TASKS"] = True
 register_db_teardown(app)
 app.config["MAX_CONTENT_LENGTH"] = 210 * 1024 * 1024
 
