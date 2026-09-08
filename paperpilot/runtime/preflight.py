@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from paperpilot.auth import AuthConfig
+from paperpilot.local_auth import LocalAuthService
 from paperpilot.database.connection import DB_PATH, close_db
 from paperpilot.database.db_manager import init_db_schema
 from paperpilot.migrations.agentic_secrets import assert_no_plaintext_credentials
@@ -19,7 +20,7 @@ from paperpilot.security.outbound import OutboundPolicy
 def preflight_environment() -> None:
     """Validate process configuration and persistent state without starting services."""
     load_dotenv()
-    AuthConfig.from_environ()
+    auth_config = AuthConfig.from_environ()
 
     papers_root = Path(
         os.getenv("PAPERPILOT_PAPERS_DIR", "./papers")
@@ -29,6 +30,8 @@ def preflight_environment() -> None:
         raise RuntimeError("invalid papers root")
 
     init_db_schema(DB_PATH)
+    if auth_config.enabled and not LocalAuthService().has_active_admin():
+        raise RuntimeError("local authentication has no active administrator")
     key_file = os.getenv(
         "PAPERPILOT_SETTINGS_KEY_FILE", "/run/secrets/paperpilot_settings_key"
     ).strip()

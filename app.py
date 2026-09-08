@@ -9,7 +9,6 @@ import uuid
 from datetime import datetime, timezone
 from functools import partial
 from typing import Optional
-from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -24,6 +23,8 @@ from paperpilot.auth import (
     AuthConfigurationError,
     FixedWindowRateLimiter,
 )
+from paperpilot.local_auth import LocalAuthError, LocalAuthService
+from paperpilot.security.identity import DEVELOPMENT_USER_ID, Identity
 from paperpilot.security.paths import paper_directory
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
 from paperpilot.security.credentials import CredentialError
@@ -102,21 +103,17 @@ app = Flask(__name__)
 register_db_teardown(app)
 app.config["MAX_CONTENT_LENGTH"] = 210 * 1024 * 1024
 
-_auth_cache: dict[str, tuple[float, str]] = {}
-_auth_cache_lock = threading.Lock()
 AUTH_CONFIG: Optional[AuthConfig] = None
-AUTH_COOKIE_NAME = "paperpilot_access_token"
+AUTH_COOKIE_NAME = "paperpilot_session"
+CSRF_COOKIE_NAME = "paperpilot_csrf"
 _rate_limiter = FixedWindowRateLimiter()
+AUTH_SERVICE: Optional[LocalAuthService] = None
 AGENTIC_CREDENTIAL_STORE: Optional[AgenticCredentialStore] = None
 OUTBOUND_POLICY: Optional[OutboundPolicy] = None
 
 
 def _browser_security_headers() -> dict[str, str]:
     connect_sources = ["'self'"]
-    if AUTH_CONFIG is not None and AUTH_CONFIG.supabase_url:
-        parsed = urlsplit(AUTH_CONFIG.supabase_url)
-        if parsed.scheme in {"http", "https"} and parsed.netloc:
-            connect_sources.append(f"{parsed.scheme}://{parsed.netloc}")
 
     csp = "; ".join(
         [
@@ -143,60 +140,20 @@ def _browser_security_headers() -> dict[str, str]:
     }
 
 
-def _verify_supabase_access_token(access_token: str) -> str | None:
-    if AUTH_CONFIG is None or not AUTH_CONFIG.enabled:
-        return None
-
-    now = time.time()
-    with _auth_cache_lock:
-        cached = _auth_cache.get(access_token)
-        if cached and cached[0] > now:
-            return cached[1]
-
-    try:
-        resp = requests.get(
-            f"{AUTH_CONFIG.supabase_url}/auth/v1/user",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "apikey": AUTH_CONFIG.supabase_anon_key,
-            },
-            timeout=15,
-        )
-        if resp.status_code >= 400:
-            return None
-        data = resp.json()
-        email = (data.get("email") or "").strip().lower()
-        if not email:
-            return None
-
-        with _auth_cache_lock:
-            _auth_cache[access_token] = (now + 60.0, email)
-        return email
-    except Exception:
-        return None
-
-
-def _bearer_token() -> str | None:
-    auth = request.headers.get("Authorization", "")
-    if not auth.lower().startswith("bearer "):
-        return None
-    token = auth.split(" ", 1)[1].strip()
-    return token or None
-
-
-def _authenticate_token(access_token: str | None):
-    if not access_token:
+def _authenticate_session(session_token: str | None):
+    if not session_token:
         g.audit_reason = "missing_token"
         return None, (jsonify({"error": "未登录"}), 401)
-    email = _verify_supabase_access_token(access_token)
-    if not email:
-        g.audit_reason = "invalid_token"
+    identity = AUTH_SERVICE.authenticate(session_token) if AUTH_SERVICE else None
+    if identity is None:
+        g.audit_reason = "invalid_session"
         return None, (jsonify({"error": "登录已失效"}), 401)
-    if AUTH_CONFIG is None or email not in AUTH_CONFIG.allowed_emails:
-        g.audit_reason = "email_not_allowed"
-        return None, (jsonify({"error": "无权访问"}), 403)
-    g.user_email = email
-    return email, None
+    g.identity = identity
+    g.user_id = identity.user_id
+    g.username = identity.username
+    g.user_role = identity.role
+    g.session_token = session_token
+    return identity, None
 
 
 def _rate_limit_response(bucket: str, identity: str, limit: int, window: int):
@@ -246,29 +203,50 @@ def _require_auth_for_api():
     if request.path in {"/healthz", "/readyz"} and request.method in {"GET", "HEAD"}:
         return None
 
-    if request.path == "/api/auth/session":
+    if request.path in {
+        "/api/auth/login", "/api/auth/register", "/api/auth/reset-password"
+    }:
         return None
 
     if AUTH_CONFIG is None:
         g.audit_reason = "auth_not_configured"
         return jsonify({"error": "鉴权服务未配置"}), 503
     if not AUTH_CONFIG.enabled:
+        g.identity = Identity(DEVELOPMENT_USER_ID, "development", "admin")
+        g.user_id = DEVELOPMENT_USER_ID
+        g.username = "development"
+        g.user_role = "admin"
         return None
 
-    access_token = _bearer_token()
-    if request.method in {"GET", "HEAD"} and not access_token:
-        access_token = request.cookies.get(AUTH_COOKIE_NAME)
-
-    email, failure = _authenticate_token(access_token)
+    session_token = request.cookies.get(AUTH_COOKIE_NAME)
+    identity, failure = _authenticate_session(session_token)
     if failure is not None:
+        if request.path == "/api/auth/session" and request.method == "GET":
+            return jsonify({"authenticated": False})
         if protects_viewer:
             return redirect("/")
         return failure
 
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        csrf = request.headers.get("X-CSRF-Token")
+        if AUTH_SERVICE is None or not AUTH_SERVICE.verify_csrf(session_token, csrf):
+            g.audit_reason = "csrf_failed"
+            return jsonify({"error": "csrf_failed"}), 403
+
+    if identity.must_change_password and request.path not in {
+        "/api/auth/session", "/api/auth/change-password"
+    }:
+        g.audit_reason = "password_change_required"
+        return jsonify({"error": "password_change_required"}), 403
+
+    if request.path.startswith("/api/admin/") and identity.role != "admin":
+        g.audit_reason = "administrator_required"
+        return jsonify({"error": "administrator_required"}), 403
+
     policy = _sensitive_rate_policy()
     if policy is not None:
         bucket, limit, window = policy
-        limited = _rate_limit_response(bucket, email, limit, window)
+        limited = _rate_limit_response(bucket, identity.user_id, limit, window)
         if limited is not None:
             return limited
     return None
@@ -292,7 +270,7 @@ def _audit_sensitive_request(response):
             "method": request.method,
             "endpoint": request.endpoint or "unmatched",
             "status": response.status_code,
-            "user": getattr(g, "user_email", "anonymous"),
+            "user": getattr(g, "username", "anonymous"),
             "remote_addr": request.remote_addr or "unknown",
             "reason": getattr(g, "audit_reason", "completed"),
             "timestamp": datetime.now(timezone.utc)
@@ -613,11 +591,7 @@ _search_rebuild_pending = False
 
 @app.route("/")
 def index():
-    return render_template(
-        "index.html",
-        supabase_url=os.getenv("SUPABASE_URL", ""),
-        supabase_anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
-    )
+    return render_template("index.html")
 
 
 @app.route("/healthz", methods=["GET"])
@@ -658,54 +632,168 @@ def get_papers_dir():
     return jsonify({"success": True, "storage": "managed"})
 
 
-@app.route("/api/auth/session", methods=["POST", "GET", "DELETE"])
+def _auth_payload(identity: Identity, csrf_token: str | None = None) -> dict:
+    payload = {
+        "authenticated": True,
+        "user": {
+            "id": identity.user_id,
+            "username": identity.username,
+            "role": identity.role,
+            "must_change_password": identity.must_change_password,
+        },
+    }
+    if csrf_token:
+        payload["csrf_token"] = csrf_token
+    return payload
+
+
+@app.post("/api/auth/login")
+def auth_login():
+    if AUTH_CONFIG is None or AUTH_SERVICE is None or not AUTH_CONFIG.enabled:
+        return jsonify({"error": "鉴权服务未配置"}), 503
+    data = request.get_json(silent=True) or {}
+    username = data.get("username")
+    limited = _rate_limit_response(
+        "auth_login", f"{request.remote_addr or 'unknown'}:{str(username).lower()}", 5, 900
+    )
+    if limited is not None:
+        return limited
+    try:
+        user, token, csrf = AUTH_SERVICE.login(username, data.get("password"))
+    except LocalAuthError:
+        g.audit_reason = "invalid_credentials"
+        return jsonify({"error": "invalid_credentials"}), 401
+    identity = Identity(
+        user["id"], user["username"], user["role"], user["must_change_password"]
+    )
+    response = make_response(jsonify(_auth_payload(identity, csrf)))
+    response.set_cookie(
+        AUTH_COOKIE_NAME, token, path="/", secure=AUTH_CONFIG.cookie_secure,
+        httponly=True, samesite="Lax", max_age=7 * 24 * 3600,
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME, csrf, path="/", secure=AUTH_CONFIG.cookie_secure,
+        httponly=False, samesite="Lax", max_age=7 * 24 * 3600,
+    )
+    return response
+
+
+@app.post("/api/auth/register")
+def auth_register():
+    if AUTH_CONFIG is None or AUTH_SERVICE is None or not AUTH_CONFIG.enabled:
+        return jsonify({"error": "鉴权服务未配置"}), 503
+    limited = _rate_limit_response("auth_register", request.remote_addr or "unknown", 5, 900)
+    if limited is not None:
+        return limited
+    data = request.get_json(silent=True) or {}
+    try:
+        user = AUTH_SERVICE.register(
+            data.get("username"), data.get("password"), data.get("invite_code")
+        )
+        return jsonify({"success": True, "user": user}), 201
+    except LocalAuthError as exc:
+        g.audit_reason = exc.reason
+        status = 409 if exc.reason == "username_unavailable" else 400
+        return jsonify({"error": exc.reason}), status
+
+
+@app.route("/api/auth/session", methods=["GET", "DELETE"])
 def auth_session():
     if AUTH_CONFIG is None:
         return jsonify({"error": "鉴权服务未配置"}), 503
     if not AUTH_CONFIG.enabled:
         return jsonify({"authenticated": False, "auth_disabled": True})
-
     if request.method == "DELETE":
+        AUTH_SERVICE.logout(request.cookies.get(AUTH_COOKIE_NAME))
         response = make_response(jsonify({"success": True}))
         response.delete_cookie(
-            AUTH_COOKIE_NAME,
-            path="/",
-            secure=AUTH_CONFIG.cookie_secure,
-            httponly=True,
-            samesite="Lax",
+            AUTH_COOKIE_NAME, path="/", secure=AUTH_CONFIG.cookie_secure,
+            httponly=True, samesite="Lax",
+        )
+        response.delete_cookie(
+            CSRF_COOKIE_NAME, path="/", secure=AUTH_CONFIG.cookie_secure,
+            httponly=False, samesite="Lax",
         )
         return response
+    return jsonify(_auth_payload(g.identity))
 
-    if request.method == "POST":
-        limited = _rate_limit_response(
-            "auth_session",
-            request.remote_addr or "unknown",
-            10,
-            300,
+
+@app.post("/api/auth/change-password")
+def auth_change_password():
+    data = request.get_json(silent=True) or {}
+    try:
+        AUTH_SERVICE.change_password(
+            g.user_id, data.get("current_password"), data.get("new_password")
         )
-        if limited is not None:
-            return limited
-
-    access_token = _bearer_token()
-    if request.method in {"GET", "HEAD"} and not access_token:
-        access_token = request.cookies.get(AUTH_COOKIE_NAME)
-    email, failure = _authenticate_token(access_token)
-    if failure is not None:
-        return failure
-
-    response = make_response(
-        jsonify({"authenticated": True, "email": email})
+    except LocalAuthError as exc:
+        return jsonify({"error": exc.reason}), 400
+    response = make_response(jsonify({"success": True, "reauthenticate": True}))
+    response.delete_cookie(
+        AUTH_COOKIE_NAME, path="/", secure=AUTH_CONFIG.cookie_secure,
+        httponly=True, samesite="Lax",
     )
-    if request.method == "POST":
-        response.set_cookie(
-            AUTH_COOKIE_NAME,
-            access_token,
-            path="/",
-            secure=AUTH_CONFIG.cookie_secure,
-            httponly=True,
-            samesite="Lax",
-        )
+    response.delete_cookie(
+        CSRF_COOKIE_NAME, path="/", secure=AUTH_CONFIG.cookie_secure,
+        httponly=False, samesite="Lax",
+    )
     return response
+
+
+@app.post("/api/auth/reset-password")
+def auth_reset_password():
+    if AUTH_CONFIG is None or AUTH_SERVICE is None or not AUTH_CONFIG.enabled:
+        return jsonify({"error": "鉴权服务未配置"}), 503
+    limited = _rate_limit_response("password_reset", request.remote_addr or "unknown", 5, 900)
+    if limited is not None:
+        return limited
+    data = request.get_json(silent=True) or {}
+    try:
+        AUTH_SERVICE.reset_password(data.get("reset_code"), data.get("new_password"))
+        return jsonify({"success": True})
+    except LocalAuthError as exc:
+        return jsonify({"error": exc.reason}), 400
+
+
+@app.route("/api/admin/invites", methods=["GET", "POST"])
+def admin_invites():
+    if request.method == "GET":
+        return jsonify({"invites": AUTH_SERVICE.list_invites()})
+    metadata, code = AUTH_SERVICE.create_invite(g.user_id)
+    return jsonify({**metadata, "invite_code": code}), 201
+
+
+@app.delete("/api/admin/invites/<invite_id>")
+def admin_revoke_invite(invite_id: str):
+    AUTH_SERVICE.revoke_invite(invite_id)
+    return jsonify({"success": True})
+
+
+@app.get("/api/admin/users")
+def admin_users():
+    return jsonify({"users": AUTH_SERVICE.list_users()})
+
+
+@app.patch("/api/admin/users/<user_id>")
+def admin_update_user(user_id: str):
+    data = request.get_json(silent=True) or {}
+    if set(data) - {"role", "status"}:
+        return jsonify({"error": "unknown_user_fields"}), 400
+    try:
+        user = AUTH_SERVICE.update_user(
+            g.user_id, user_id, role=data.get("role"), status=data.get("status")
+        )
+        return jsonify({"success": True, "user": user})
+    except LocalAuthError as exc:
+        return jsonify({"error": exc.reason}), 409 if exc.reason == "last_administrator_required" else 404
+
+
+@app.post("/api/admin/users/<user_id>/password-reset")
+def admin_password_reset(user_id: str):
+    try:
+        metadata, code = AUTH_SERVICE.create_password_reset(g.user_id, user_id)
+        return jsonify({**metadata, "reset_code": code}), 201
+    except LocalAuthError as exc:
+        return jsonify({"error": exc.reason}), 404
 
 
 def register_routes():
@@ -966,8 +1054,6 @@ def pdf_viewer(paper_id):
         paper_id=paper_id,
         use_chinese=use_chinese,
         paper_title=paper_title,
-        supabase_url=os.getenv("SUPABASE_URL", ""),
-        supabase_anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
     )
 
 
@@ -977,13 +1063,11 @@ def analysis_viewer(paper_id):
     return render_template(
         "analysis_viewer.html",
         paper_id=paper_id,
-        supabase_url=os.getenv("SUPABASE_URL", ""),
-        supabase_anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
     )
 
 
 def _initialize_application(papers_dir: str) -> None:
-    global AUTH_CONFIG, AGENTIC_CREDENTIAL_STORE, OUTBOUND_POLICY
+    global AUTH_CONFIG, AUTH_SERVICE, AGENTIC_CREDENTIAL_STORE, OUTBOUND_POLICY
     try:
         AUTH_CONFIG = AuthConfig.from_environ()
     except AuthConfigurationError as exc:
@@ -997,6 +1081,9 @@ def _initialize_application(papers_dir: str) -> None:
 
     # Initialize application (configure paper directory etc.)
     init_app(papers_dir=papers_dir)
+    AUTH_SERVICE = LocalAuthService()
+    if AUTH_CONFIG.enabled and not AUTH_SERVICE.has_active_admin():
+        raise RuntimeError("local authentication has no active administrator")
 
     settings_key_file = os.getenv(
         "PAPERPILOT_SETTINGS_KEY_FILE", "/run/secrets/paperpilot_settings_key"
