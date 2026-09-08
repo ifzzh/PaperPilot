@@ -49,6 +49,8 @@ def _read_settings(connection: sqlite3.Connection) -> dict[str, Any]:
             "SELECT value FROM user_settings WHERE key = 'agentic_settings'"
         ).fetchone()
     except sqlite3.Error as exc:
+        if "no such table" in str(exc).lower():
+            return {}
         raise AgenticSecretMigrationError("agentic_settings_table_unreadable") from exc
     if not row or not row[0]:
         return {}
@@ -100,6 +102,19 @@ def inspect_database(db_path: str | os.PathLike[str]) -> dict[str, Any]:
     try:
         settings = _read_settings(connection)
         plaintext = _extract_plaintext(settings)
+        v2_table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='user_settings_v2'"
+        ).fetchone()
+        if v2_table:
+            for owner_id, raw_value in connection.execute(
+                "SELECT owner_id,value FROM user_settings_v2 WHERE key='agentic_settings'"
+            ):
+                try:
+                    user_settings = json.loads(raw_value or "{}")
+                except (TypeError, json.JSONDecodeError) as exc:
+                    raise AgenticSecretMigrationError("agentic_settings_invalid_json") from exc
+                for name in _extract_plaintext(user_settings):
+                    plaintext[f"{owner_id}:{name}"] = "present"
         encrypted_names: list[str] = []
         table = connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agentic_secrets'"
@@ -278,27 +293,49 @@ def rotate_key(
     backup_path = _backup_database(target, Path(backup_dir).resolve())
     connection = sqlite3.connect(target)
     try:
-        rows = connection.execute(
-            "SELECT name, ciphertext FROM agentic_secrets ORDER BY name"
-        ).fetchall()
-        plaintext = {
-            str(name): old_cipher.decrypt(str(name), str(envelope))
-            for name, envelope in rows
+        tables = {
+            row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
         }
+        plaintext = {}
+        if "agentic_secrets" in tables:
+            for name, envelope in connection.execute(
+                "SELECT name,ciphertext FROM agentic_secrets ORDER BY name"
+            ):
+                plaintext[(None, str(name))] = old_cipher.decrypt(str(name), str(envelope))
+        if "agentic_secrets_v2" in tables:
+            for owner_id, name, envelope in connection.execute(
+                "SELECT owner_id,name,ciphertext FROM agentic_secrets_v2 ORDER BY owner_id,name"
+            ):
+                plaintext[(str(owner_id), str(name))] = old_cipher.decrypt(
+                    str(name), str(envelope), owner_id=str(owner_id)
+                )
         connection.execute("BEGIN IMMEDIATE")
         now = datetime.now(timezone.utc).isoformat()
-        for name, value in plaintext.items():
-            connection.execute(
-                "UPDATE agentic_secrets SET ciphertext=?, updated_at=? WHERE name=?",
-                (new_cipher.encrypt(name, value), now, name),
-            )
+        for (owner_id, name), value in plaintext.items():
+            if owner_id is None:
+                connection.execute(
+                    "UPDATE agentic_secrets SET ciphertext=?, updated_at=? WHERE name=?",
+                    (new_cipher.encrypt(name, value), now, name),
+                )
+            else:
+                connection.execute(
+                    """UPDATE agentic_secrets_v2 SET ciphertext=?,updated_at=?
+                       WHERE owner_id=? AND name=?""",
+                    (new_cipher.encrypt(name, value, owner_id=owner_id), now, owner_id, name),
+                )
         connection.commit()
     except Exception:
         connection.rollback()
         raise
     finally:
         connection.close()
-    return _write_manifest(backup_path, target, sorted(plaintext))
+    return _write_manifest(
+        backup_path,
+        target,
+        sorted(f"{owner or 'legacy'}:{name}" for owner, name in plaintext),
+    )
 
 
 def main() -> int:

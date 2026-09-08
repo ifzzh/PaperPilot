@@ -92,6 +92,13 @@ CREATE TABLE IF NOT EXISTS user_settings_v2 (
     ,PRIMARY KEY(owner_id, key)
 );
 
+-- Kept empty on v0.9 installations so the v0.6 offline credential rollback
+-- tooling can still inspect older backups. Runtime reads only user_settings_v2.
+CREATE TABLE IF NOT EXISTS user_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
 -- Reading History
 CREATE TABLE IF NOT EXISTS reading_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -194,6 +201,16 @@ CREATE TABLE IF NOT EXISTS agentic_secrets_v2 (
     updated_at TEXT NOT NULL,
     CHECK (name IN ('translate', 'interpret', 'dailyArxiv', 'mineru')),
     PRIMARY KEY(owner_id, name)
+);
+
+-- Legacy encrypted rows are copied into agentic_secrets_v2 by the v0.9
+-- tenant migration. New runtime writes never target this table.
+CREATE TABLE IF NOT EXISTS agentic_secrets (
+    name TEXT PRIMARY KEY,
+    ciphertext TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (name IN ('translate', 'interpret', 'dailyArxiv', 'mineru'))
 );
 
 CREATE TABLE IF NOT EXISTS ai_providers (
