@@ -570,14 +570,8 @@ def init_app(papers_dir=None):
         paper_repository.get_papers_in_category, UPLOAD_FOLDER
     )
 
-    print(f"Paper directory: {UPLOAD_FOLDER}")
-    print(f"SQLite database: {DB_PATH}")
-    print("Settings storage: SQLite (user_settings / reading_history / agentic_settings)")
-    print(f"Category configuration (file): {CATEGORIES_FILE}")
-    print(f"Daily arXiv settings (file): {DAILY_ARXIV_SETTINGS_FILE}")
-    print(f"Avatar directory: {AVATARS_DIR}")
-    print(f"Daily arXiv temporary directory: {TEMP_PAPERS_DIR}")
-    print(f"Search index database: {SEARCH_INDEX_DB}")
+    print("PaperPilot managed storage initialized")
+    print("Settings storage initialized")
 
 
 # Translation task management
