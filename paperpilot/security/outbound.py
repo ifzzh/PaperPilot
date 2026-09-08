@@ -19,6 +19,9 @@ class OutboundPolicyError(ValueError):
         self.reason = reason
 
 
+_PROXY_FAKE_IP_BENCHMARK = ipaddress.ip_network("198.18.0.0/15")
+
+
 @dataclass(frozen=True)
 class ValidatedTarget:
     url: str
@@ -70,6 +73,26 @@ def parse_origin_list(value: str | None, *, private: bool = False) -> frozenset[
     return frozenset(origins)
 
 
+def parse_proxy_fake_ip_networks(
+    value: str | None,
+) -> frozenset[ipaddress.IPv4Network]:
+    """Parse explicitly enabled RFC 2544 fake-IP ranges used by DNS proxies."""
+    networks: set[ipaddress.IPv4Network] = set()
+    for item in (value or "").split(","):
+        if not item.strip():
+            continue
+        try:
+            network = ipaddress.ip_network(item.strip(), strict=True)
+        except ValueError as exc:
+            raise OutboundPolicyError("invalid_proxy_fake_ip_range") from exc
+        if not isinstance(network, ipaddress.IPv4Network) or not network.subnet_of(
+            _PROXY_FAKE_IP_BENCHMARK
+        ):
+            raise OutboundPolicyError("invalid_proxy_fake_ip_range")
+        networks.add(network)
+    return frozenset(networks)
+
+
 class OutboundPolicy:
     def __init__(
         self,
@@ -77,6 +100,7 @@ class OutboundPolicy:
         public_origins: Iterable[str],
         private_origins: Iterable[str],
         transfer_origins: Iterable[str],
+        proxy_fake_ip_networks: Iterable[str | ipaddress.IPv4Network] = (),
     ):
         self.public_origins = frozenset(
             normalize_origin(origin) for origin in public_origins
@@ -86,6 +110,9 @@ class OutboundPolicy:
         )
         self.transfer_origins = frozenset(
             normalize_origin(origin) for origin in transfer_origins
+        )
+        self.proxy_fake_ip_networks = parse_proxy_fake_ip_networks(
+            ",".join(str(network) for network in proxy_fake_ip_networks)
         )
 
     @classmethod
@@ -97,6 +124,9 @@ class OutboundPolicy:
             ),
             transfer_origins=parse_origin_list(
                 environ.get("PAPERPILOT_MINERU_TRANSFER_ALLOWED_ORIGINS")
+            ),
+            proxy_fake_ip_networks=parse_proxy_fake_ip_networks(
+                environ.get("PAPERPILOT_AI_PROXY_FAKE_IP_RANGES")
             ),
         )
 
@@ -128,6 +158,11 @@ class OutboundPolicy:
         if not addresses:
             raise OutboundPolicyError("outbound_dns_failed")
 
+        try:
+            hostname_is_ip_literal = ipaddress.ip_address(parts.hostname) is not None
+        except ValueError:
+            hostname_is_ip_literal = False
+
         for address_text in addresses:
             try:
                 address = ipaddress.ip_address(address_text)
@@ -144,7 +179,12 @@ class OutboundPolicy:
             if private_allowed:
                 if not address.is_private:
                     raise OutboundPolicyError("private_origin_resolved_public")
-            elif not address.is_global:
+            elif not address.is_global and not (
+                purpose == "ai"
+                and parts.scheme == "https"
+                and not hostname_is_ip_literal
+                and any(address in network for network in self.proxy_fake_ip_networks)
+            ):
                 raise OutboundPolicyError("private_address_forbidden")
 
         clean_url = urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
@@ -192,6 +232,7 @@ class DynamicOutboundPolicy(OutboundPolicy):
             public_origins=self.public_origins | self._enabled_provider_origins(),
             private_origins=self.private_origins,
             transfer_origins=self.transfer_origins,
+            proxy_fake_ip_networks=self.proxy_fake_ip_networks,
         )
         return effective.validate(url, purpose=purpose)
 
@@ -203,7 +244,10 @@ class DynamicOutboundPolicy(OutboundPolicy):
         origin = _format_origin(parts)
         # Validate DNS/address safety before persisting the origin.
         OutboundPolicy(
-            public_origins={origin}, private_origins=(), transfer_origins=()
+            public_origins={origin},
+            private_origins=(),
+            transfer_origins=(),
+            proxy_fake_ip_networks=self.proxy_fake_ip_networks,
         ).validate(url, purpose="ai")
         now = int(time.time())
         database = get_db()
