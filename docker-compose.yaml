@@ -1,6 +1,6 @@
 services:
   paperpilot:
-    image: ifzzh520/paperpilot:0.8.2
+    image: ifzzh520/paperpilot:0.9.0
     container_name: paperpilot
     ports:
       - "127.0.0.1:7191:7191"
@@ -8,7 +8,7 @@ services:
       - /mnt/raid1/projects/paperpilot/deploy/.env
     environment:
       PAPERPILOT_ENV: ${PAPERPILOT_ENV:-production}
-      PAPERPILOT_AUTH_MODE: ${PAPERPILOT_AUTH_MODE:-supabase}
+      PAPERPILOT_AUTH_MODE: ${PAPERPILOT_AUTH_MODE:-local}
       PAPERPILOT_COOKIE_SECURE: ${PAPERPILOT_COOKIE_SECURE:-true}
       PAPERPILOT_PAPERS_DIR: /data/papers
       PAPERPILOT_TRANSLATION_WORKER_URL: http://paperpilot-translation-worker:7192
@@ -66,7 +66,7 @@ services:
     restart: unless-stopped
 
   paperpilot-translation-worker:
-    image: ifzzh520/paperpilot:0.8.2-worker
+    image: ifzzh520/paperpilot:0.9.0-worker
     container_name: paperpilot-translation-worker
     environment:
       PAPERPILOT_WORKER_JOBS_ROOT: /work/jobs
@@ -91,7 +91,7 @@ services:
     restart: unless-stopped
 
   paperpilot-document-worker:
-    image: ifzzh520/paperpilot:0.8.2-document-worker
+    image: ifzzh520/paperpilot:0.9.0-document-worker
     container_name: paperpilot-document-worker
     environment:
       PAPERPILOT_DOCUMENT_JOBS_ROOT: /work/document-jobs
