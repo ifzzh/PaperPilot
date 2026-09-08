@@ -50,11 +50,23 @@ class TestLocalAuth(unittest.TestCase):
         with self.assertRaisesRegex(LocalAuthError, "invalid_invite"):
             self.service.register("reader_2", "correct horse battery", code)
 
-    def test_password_change_revokes_session(self):
+    def test_password_change_rotates_current_session_and_revokes_others(self):
         admin = self.service.create_bootstrap_admin("ifzzh", "temporary12")
         _user, token, _csrf = self.service.login("ifzzh", "temporary12")
-        self.service.change_password(admin["id"], "temporary12", "a much safer password")
+        _other_user, other_token, _other_csrf = self.service.login(
+            "ifzzh", "temporary12"
+        )
+        new_token, new_csrf = self.service.change_password(
+            admin["id"],
+            "temporary12",
+            "a much safer password",
+            current_session_token=token,
+        )
         self.assertIsNone(self.service.authenticate(token))
+        self.assertIsNone(self.service.authenticate(other_token))
+        identity = self.service.authenticate(new_token)
+        self.assertEqual(identity.user_id, admin["id"])
+        self.assertTrue(self.service.verify_csrf(new_token, new_csrf))
         user, _new_token, _csrf = self.service.login("ifzzh", "a much safer password")
         self.assertFalse(user["must_change_password"])
 

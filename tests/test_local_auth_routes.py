@@ -115,7 +115,12 @@ class TestLocalAuthRoutes(unittest.TestCase):
             json={"current_password": "temporary-pass", "new_password": "replacement-password"},
         )
         self.assertEqual(changed.status_code, 200)
-        self.assertFalse(self.client.get("/api/auth/session").get_json()["authenticated"])
+        payload = changed.get_json()
+        self.assertFalse(payload["reauthenticate"])
+        self.assertFalse(payload["user"]["must_change_password"])
+        session = self.client.get("/api/auth/session").get_json()
+        self.assertTrue(session["authenticated"])
+        self.assertFalse(session["user"]["must_change_password"])
 
 
 if __name__ == "__main__":

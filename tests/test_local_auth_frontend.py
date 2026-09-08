@@ -22,6 +22,8 @@ def test_login_registration_password_change_and_admin_views_are_present():
 
     for element_id in (
         "auth-username", "auth-invite", "auth-new-password",
+        "account-password-form", "account-current-password",
+        "account-new-password", "account-confirm-password",
         "admin-users-body", "admin-invites-body", "admin-providers-body",
     ):
         assert f'id="{element_id}"' in index

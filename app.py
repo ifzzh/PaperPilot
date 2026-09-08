@@ -727,19 +727,29 @@ def auth_session():
 def auth_change_password():
     data = request.get_json(silent=True) or {}
     try:
-        AUTH_SERVICE.change_password(
-            g.user_id, data.get("current_password"), data.get("new_password")
+        token, csrf = AUTH_SERVICE.change_password(
+            g.user_id,
+            data.get("current_password"),
+            data.get("new_password"),
+            current_session_token=g.session_token,
         )
     except LocalAuthError as exc:
         return jsonify({"error": exc.reason}), 400
-    response = make_response(jsonify({"success": True, "reauthenticate": True}))
-    response.delete_cookie(
-        AUTH_COOKIE_NAME, path="/", secure=AUTH_CONFIG.cookie_secure,
-        httponly=True, samesite="Lax",
+    identity = Identity(g.user_id, g.username, g.user_role, False)
+    response = make_response(
+        jsonify({
+            "success": True,
+            "reauthenticate": False,
+            "user": _auth_payload(identity)["user"],
+        })
     )
-    response.delete_cookie(
-        CSRF_COOKIE_NAME, path="/", secure=AUTH_CONFIG.cookie_secure,
-        httponly=False, samesite="Lax",
+    response.set_cookie(
+        AUTH_COOKIE_NAME, token, path="/", secure=AUTH_CONFIG.cookie_secure,
+        httponly=True, samesite="Lax", max_age=7 * 24 * 3600,
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME, csrf, path="/", secure=AUTH_CONFIG.cookie_secure,
+        httponly=False, samesite="Lax", max_age=7 * 24 * 3600,
     )
     return response
 

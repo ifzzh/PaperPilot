@@ -175,7 +175,14 @@ class LocalAuthService:
             )
             database.commit()
 
-    def change_password(self, user_id: str, current: object, replacement: object) -> None:
+    def change_password(
+        self,
+        user_id: str,
+        current: object,
+        replacement: object,
+        *,
+        current_session_token: str,
+    ) -> tuple[str, str]:
         validate_password(replacement)
         if not isinstance(current, str):
             raise LocalAuthError("invalid_credentials")
@@ -188,13 +195,35 @@ class LocalAuthService:
         if not valid:
             raise LocalAuthError("invalid_credentials")
         now = int(self._now())
+        session = database.execute(
+            """SELECT 1 FROM auth_sessions
+               WHERE token_hash=? AND user_id=? AND revoked_at IS NULL""",
+            (_digest(current_session_token), user_id),
+        ).fetchone()
+        if session is None:
+            raise LocalAuthError("invalid_credentials")
+        new_token = secrets.token_urlsafe(32)
+        new_csrf = secrets.token_urlsafe(32)
         database.execute(
             """UPDATE users SET password_hash=?,must_change_password=0,
                password_changed_at=?,updated_at=? WHERE id=?""",
             (self._passwords.hash(replacement), now, now, user_id),
         )
-        database.execute("UPDATE auth_sessions SET revoked_at=? WHERE user_id=?", (now, user_id))
+        database.execute(
+            "UPDATE auth_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+            (now, user_id),
+        )
+        database.execute(
+            """INSERT INTO auth_sessions
+               (token_hash,user_id,csrf_hash,created_at,last_seen_at,expires_at)
+               VALUES (?,?,?,?,?,?)""",
+            (
+                _digest(new_token), user_id, _digest(new_csrf), now, now,
+                now + SESSION_ABSOLUTE_SECONDS,
+            ),
+        )
         database.commit()
+        return new_token, new_csrf
 
     def create_invite(self, admin_id: str) -> tuple[dict, str]:
         code = secrets.token_urlsafe(24)

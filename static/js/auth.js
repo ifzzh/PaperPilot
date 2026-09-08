@@ -65,6 +65,7 @@ function bindAuthUIHandlers() {
     document.getElementById('admin-create-invite')?.addEventListener('click', createInvite);
     document.getElementById('admin-add-provider')?.addEventListener('click', addProvider);
     document.querySelector('[data-setting="admin"]')?.addEventListener('click', loadAdminPanel);
+    document.getElementById('account-password-form')?.addEventListener('submit', handleAccountPasswordChange);
 }
 
 function showLoginOverlay() {
@@ -172,13 +173,11 @@ async function handleAuth(event) {
             showAuthMode('login');
             setAuthError('注册成功，请登录', '#2e7d32');
         } else if (authMode === 'change') {
-            await jsonRequest('/api/auth/change-password', {
+            const payload = await jsonRequest('/api/auth/change-password', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ current_password: password, new_password: newPassword }),
             });
-            currentUser = null;
-            showAuthMode('login');
-            setAuthError('密码已修改，其他会话已撤销，请重新登录', '#2e7d32');
+            applyAuthenticatedUser(payload.user);
         } else if (authMode === 'reset') {
             await jsonRequest('/api/auth/reset-password', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -196,6 +195,49 @@ async function handleAuth(event) {
             invalid_reset_code: '重置码无效、过期或已使用', csrf_failed: '安全令牌失效，请重新登录',
         };
         setAuthError(messages[error.message] || error.message || '操作失败');
+    } finally {
+        submit.disabled = false;
+    }
+}
+
+async function handleAccountPasswordChange(event) {
+    event.preventDefault();
+    const current = document.getElementById('account-current-password');
+    const replacement = document.getElementById('account-new-password');
+    const confirmation = document.getElementById('account-confirm-password');
+    const status = document.getElementById('account-password-status');
+    const submit = document.getElementById('account-password-submit');
+    status.style.display = 'block';
+    status.style.color = '#ef5350';
+    if (replacement.value.length < 8 || replacement.value.length > 128) {
+        status.textContent = '新密码必须为 8–128 个字符';
+        return;
+    }
+    if (replacement.value !== confirmation.value) {
+        status.textContent = '两次输入的新密码不一致';
+        return;
+    }
+    submit.disabled = true;
+    try {
+        const payload = await jsonRequest('/api/auth/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                current_password: current.value,
+                new_password: replacement.value,
+            }),
+        });
+        currentUser = payload.user;
+        window.__PAPERPILOT_USER = payload.user;
+        event.currentTarget.reset();
+        status.style.color = '#2e7d32';
+        status.textContent = '密码已修改，其他设备已退出登录';
+    } catch (error) {
+        status.textContent = error.message === 'invalid_credentials'
+            ? '当前密码错误'
+            : error.message === 'invalid_password'
+                ? '新密码必须为 8–128 个字符'
+                : (error.message || '密码修改失败');
     } finally {
         submit.disabled = false;
     }
