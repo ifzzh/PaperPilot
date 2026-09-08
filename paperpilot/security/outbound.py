@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Iterable, Mapping
 from urllib.parse import SplitResult, urlsplit, urlunsplit
+from paperpilot.database.connection import get_db
+from paperpilot.security.identity import current_identity
 
 
 class OutboundPolicyError(ValueError):
@@ -150,6 +154,102 @@ class OutboundPolicy:
     def reject_redirect(status_code: int) -> None:
         if 300 <= status_code < 400:
             raise OutboundPolicyError("outbound_redirect_blocked")
+
+
+class DynamicOutboundPolicy(OutboundPolicy):
+    """Combine immutable deployment origins with administrator-managed public origins."""
+
+    @staticmethod
+    def _require_administrator():
+        identity = current_identity()
+        if identity.role != "admin":
+            raise OutboundPolicyError("administrator_required")
+        return identity
+
+    def _enabled_provider_origins(self) -> frozenset[str]:
+        rows = get_db().execute(
+            "SELECT origin FROM ai_providers WHERE enabled=1 ORDER BY origin"
+        ).fetchall()
+        return frozenset(str(row["origin"]) for row in rows)
+
+    def seed_deployment_origins(self, administrator_id: str) -> None:
+        now = int(time.time())
+        database = get_db()
+        for origin in self.public_origins:
+            host = urlsplit(origin).hostname or "AI Provider"
+            database.execute(
+                """INSERT OR IGNORE INTO ai_providers
+                   (id,name,origin,enabled,created_by,created_at,updated_at)
+                   VALUES (?,?,?,1,?,?,?)""",
+                (str(uuid.uuid4()), host, origin, administrator_id, now, now),
+            )
+        database.commit()
+
+    def validate(self, url: str, *, purpose: str = "ai") -> ValidatedTarget:
+        if purpose != "ai":
+            return super().validate(url, purpose=purpose)
+        effective = OutboundPolicy(
+            public_origins=self.public_origins | self._enabled_provider_origins(),
+            private_origins=self.private_origins,
+            transfer_origins=self.transfer_origins,
+        )
+        return effective.validate(url, purpose=purpose)
+
+    def approve_public_url(self, url: str, *, name: str | None = None) -> dict:
+        identity = self._require_administrator()
+        parts = urlsplit(url.strip()) if isinstance(url, str) else None
+        if parts is None:
+            raise OutboundPolicyError("invalid_outbound_url")
+        origin = _format_origin(parts)
+        # Validate DNS/address safety before persisting the origin.
+        OutboundPolicy(
+            public_origins={origin}, private_origins=(), transfer_origins=()
+        ).validate(url, purpose="ai")
+        now = int(time.time())
+        database = get_db()
+        existing = database.execute(
+            "SELECT id FROM ai_providers WHERE origin=?", (origin,)
+        ).fetchone()
+        provider_id = existing["id"] if existing else str(uuid.uuid4())
+        provider_name = (name or parts.hostname or "AI Provider").strip()[:80]
+        database.execute(
+            """INSERT INTO ai_providers(id,name,origin,enabled,created_by,created_at,updated_at)
+               VALUES (?,?,?,1,?,?,?)
+               ON CONFLICT(origin) DO UPDATE SET enabled=1,name=excluded.name,updated_at=excluded.updated_at""",
+            (provider_id, provider_name, origin, identity.user_id, now, now),
+        )
+        database.commit()
+        return {"id": provider_id, "name": provider_name, "origin": origin, "enabled": True}
+
+    def list_providers(self) -> list[dict]:
+        self._require_administrator()
+        rows = get_db().execute(
+            "SELECT id,name,origin,enabled,created_at,updated_at FROM ai_providers ORDER BY name,origin"
+        ).fetchall()
+        return [{**dict(row), "enabled": bool(row["enabled"])} for row in rows]
+
+    def update_provider(self, provider_id: str, *, name=None, enabled=None) -> dict:
+        self._require_administrator()
+        database = get_db()
+        row = database.execute("SELECT * FROM ai_providers WHERE id=?", (provider_id,)).fetchone()
+        if row is None:
+            raise OutboundPolicyError("provider_not_found")
+        if name is not None and (not isinstance(name, str) or not name.strip()):
+            raise OutboundPolicyError("invalid_provider_name")
+        if enabled is not None and not isinstance(enabled, bool):
+            raise OutboundPolicyError("invalid_provider_status")
+        database.execute(
+            "UPDATE ai_providers SET name=?,enabled=?,updated_at=? WHERE id=?",
+            (name.strip()[:80] if name is not None else row["name"], int(enabled) if enabled is not None else row["enabled"], int(time.time()), provider_id),
+        )
+        database.commit()
+        return next(item for item in self.list_providers() if item["id"] == provider_id)
+
+    def delete_provider(self, provider_id: str) -> None:
+        self._require_administrator()
+        database = get_db()
+        database.execute("DELETE FROM ai_providers WHERE id=?", (provider_id,))
+        database.commit()
 
 
 def guarded_request(

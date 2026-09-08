@@ -6,7 +6,7 @@ import os
 import uuid
 from typing import Any, Dict
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, g, jsonify, request, send_from_directory
 from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.security.agentic_credentials import AgenticCredentialStore
 from paperpilot.security.credentials import CredentialError
@@ -342,7 +342,14 @@ def register_settings_routes(
                         return jsonify({"success": False, "error": "invalid_llm_config"}), 400
                     model, base_url = model.strip(), base_url.strip()
                     if base_url:
-                        outbound_policy.validate(base_url, purpose="ai")
+                        try:
+                            outbound_policy.validate(base_url, purpose="ai")
+                        except OutboundPolicyError as exc:
+                            if exc.reason != "origin_not_allowed" or getattr(g, "user_role", "user") != "admin" or not hasattr(outbound_policy, "approve_public_url"):
+                                if exc.reason == "origin_not_allowed":
+                                    return jsonify({"success": False, "error": "provider_not_allowed"}), 403
+                                raise
+                            outbound_policy.approve_public_url(base_url)
                     merged_settings["llmConfigs"][scenario] = {
                         "llmModel": model,
                         "llmBaseUrl": base_url,
@@ -358,7 +365,14 @@ def register_settings_routes(
                     return jsonify({"success": False, "error": "invalid_mineru_url"}), 400
                 mineru_url = data["mineruServerUrl"].strip()
                 if mineru_url:
-                    outbound_policy.validate(mineru_url, purpose="ai")
+                    try:
+                        outbound_policy.validate(mineru_url, purpose="ai")
+                    except OutboundPolicyError as exc:
+                        if exc.reason != "origin_not_allowed" or getattr(g, "user_role", "user") != "admin" or not hasattr(outbound_policy, "approve_public_url"):
+                            if exc.reason == "origin_not_allowed":
+                                return jsonify({"success": False, "error": "provider_not_allowed"}), 403
+                            raise
+                        outbound_policy.approve_public_url(mineru_url)
                 merged_settings["mineruServerUrl"] = mineru_url
             if "mineruUseApi" in data:
                 if not isinstance(data["mineruUseApi"], bool):
