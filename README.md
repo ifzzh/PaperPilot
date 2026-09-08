@@ -180,7 +180,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.8.0 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users. Copy `.env.example` to the deployment directory, create separate Worker tokens and the settings-encryption key, and create the translation staging directory before running `docker compose up -d`.
+   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.8.2 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users. Copy `.env.example` to the deployment directory, create separate Worker tokens and the settings-encryption key, and create the translation staging directory before running `docker compose up -d`.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation

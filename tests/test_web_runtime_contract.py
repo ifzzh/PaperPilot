@@ -1,6 +1,7 @@
 import threading
 import tempfile
 import time
+import tomllib
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -114,6 +115,20 @@ class ApplicationFactoryContractTests(unittest.TestCase):
     def test_compose_allows_the_full_gunicorn_graceful_window(self):
         compose = Path("docker-compose.yaml").read_text(encoding="utf-8")
         self.assertIn("stop_grace_period: 35s", compose)
+
+    def test_release_version_surfaces_are_synchronized(self):
+        version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))[
+            "project"
+        ]["version"]
+        self.assertEqual(version, "0.8.2")
+        lock = Path("uv.lock").read_text(encoding="utf-8")
+        self.assertIn('name = "paperpilot"\nversion = "0.8.2"', lock)
+        dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+        self.assertEqual(dockerfile.count("ARG APP_VERSION=0.8.2"), 3)
+        compose = Path("docker-compose.yaml").read_text(encoding="utf-8")
+        for tag in ("0.8.2", "0.8.2-worker", "0.8.2-document-worker"):
+            with self.subTest(tag=tag):
+                self.assertIn(f"image: ifzzh520/paperpilot:{tag}", compose)
 
     def test_master_preflight_validates_state_and_closes_sqlite_connection(self):
         from paperpilot.runtime import preflight

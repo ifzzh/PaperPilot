@@ -180,7 +180,7 @@
    | `--port` | `7191` | 服务器监听端口 |
    | `--debug` | `False` | 启用调试模式（开发用） |
 
-   正式容器使用单个 Gunicorn `gthread` worker 和 8 个线程。维护中的 Compose 文件使用 v0.8.0 Web、翻译 Worker 与 Document Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192`、`7193` 只在 Compose 内部网络开放；三个容器都以非 root 用户运行。启动前请复制 `.env.example`、创建相互独立的 Worker token 与设置加密主密钥，并创建 staging 目录：
+   正式容器使用单个 Gunicorn `gthread` worker 和 8 个线程。维护中的 Compose 文件使用 v0.8.2 Web、翻译 Worker 与 Document Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192`、`7193` 只在 Compose 内部网络开放；三个容器都以非 root 用户运行。启动前请复制 `.env.example`、创建相互独立的 Worker token 与设置加密主密钥，并创建 staging 目录：
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
