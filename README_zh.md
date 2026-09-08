@@ -155,7 +155,7 @@
    | `--port` | `7191` | 服务器监听端口 |
    | `--debug` | `False` | 启用调试模式（开发用） |
 
-   正式容器使用单个 Gunicorn `gthread` worker 和 8 个线程。维护中的 Compose 文件使用 v0.10.1 Web、翻译 Worker 与 Document Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192`、`7193` 只在 Compose 内部网络开放；三个容器都以非 root 用户运行。
+   正式容器使用单个 Gunicorn `gthread` worker 和 8 个线程。维护中的 Compose 文件使用 v0.10.2 Web、翻译 Worker 与 Document Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192`、`7193` 只在 Compose 内部网络开放；三个容器都以非 root 用户运行。
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -189,7 +189,7 @@ python -m paperpilot.migrations.tenant_storage --db /app/db/paperpilot.db \
 
 v0.10.0 新增按用户隔离的持久翻译任务中心，展示结构化实时进度，并支持暂停、继续、重试和保留 7 天的任务级缓存恢复。界面默认使用简体中文，日期统一为 `YYYY-MM-DD`；所有用户可在设置中自行改密，最低 8 位。Daily arXiv 默认每日最多 24 篇、保留最近 7 个发布日，并按三个可编辑研究主题筛选。
 
-升级前停止三个服务，同时备份 SQLite 和论文目录。按 [v0.10.1 发布说明](docs/releases/v0.10.1.md) 先执行 `python -m paperpilot.migrations.v010_workflows --dry-run`，再执行 `--apply`。迁移只增加和回填任务/主题结构，不移动 PDF。v0.10.0 存在旧表迁移顺序缺陷，必须一起部署三个 v0.10.1 镜像摘要；回滚时恢复 manifest 备份并固定回三个 v0.9.1 摘要。
+升级前停止三个服务，同时备份 SQLite 和论文目录。按 [v0.10.2 发布说明](docs/releases/v0.10.2.md) 先执行 `python -m paperpilot.migrations.v010_workflows --dry-run`，再执行 `--apply`。迁移只增加和回填任务/主题结构，不移动 PDF。v0.10.0 存在旧表迁移顺序缺陷；v0.10.2 还会在回滚时保留数据库与设置文件权限。必须一起部署三个 v0.10.2 镜像摘要；回滚时恢复 manifest 备份并固定回三个 v0.9.1 摘要。
 
 ### 从 v0.9.0 升级
 
