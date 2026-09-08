@@ -1,0 +1,12 @@
+bind = "0.0.0.0:7191"
+worker_class = "gthread"
+workers = 1
+threads = 8
+timeout = 300
+graceful_timeout = 30
+keepalive = 5
+preload_app = False
+accesslog = None
+errorlog = "-"
+capture_output = True
+worker_tmp_dir = "/tmp"

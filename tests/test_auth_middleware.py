@@ -45,6 +45,14 @@ class TestAuthMiddleware(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), {"status": "ok"})
 
+    def test_readiness_endpoint_is_public(self):
+        with patch.object(app_module.TranslationWorkerClient, "health", return_value=False), patch.object(
+            app_module.DocumentWorkerClient, "health", return_value=False
+        ):
+            response = self.client.get("/readyz")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["status"], "not_ready")
+
     def test_former_paper_prefix_whitelist_requires_auth(self):
         response = self.client.get("/api/paper/example/file")
         self.assertEqual(response.status_code, 401)

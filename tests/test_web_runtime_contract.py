@@ -52,6 +52,15 @@ class WebTaskQueueContractTests(unittest.TestCase):
 
 
 class ApplicationFactoryContractTests(unittest.TestCase):
+    def test_gunicorn_is_single_process_with_eight_threads(self):
+        config = Path("gunicorn.conf.py").read_text(encoding="utf-8")
+        self.assertIn('worker_class = "gthread"', config)
+        self.assertIn("workers = 1", config)
+        self.assertIn("threads = 8", config)
+        self.assertIn("timeout = 300", config)
+        dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+        self.assertIn('"gunicorn", "--config", "gunicorn.conf.py"', dockerfile)
+
     def test_factory_initializes_once_for_one_paper_root(self):
         import app as app_module
 

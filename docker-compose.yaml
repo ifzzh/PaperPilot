@@ -10,6 +10,7 @@ services:
       PAPERPILOT_ENV: ${PAPERPILOT_ENV:-production}
       PAPERPILOT_AUTH_MODE: ${PAPERPILOT_AUTH_MODE:-supabase}
       PAPERPILOT_COOKIE_SECURE: ${PAPERPILOT_COOKIE_SECURE:-true}
+      PAPERPILOT_PAPERS_DIR: /data/papers
       PAPERPILOT_TRANSLATION_WORKER_URL: http://paperpilot-translation-worker:7192
       PAPERPILOT_TRANSLATION_JOBS_ROOT: /work/jobs
       PAPERPILOT_WORKER_TOKEN_FILE: /run/secrets/paperpilot_worker_token

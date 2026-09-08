@@ -37,6 +37,7 @@ RUN uv venv /opt/venv \
 ENV PATH=/opt/venv/bin:$PATH
 WORKDIR /app
 COPY pyproject.toml ./
+COPY Dockerfile gunicorn.conf.py ./
 COPY app.py ./
 COPY paperpilot ./paperpilot
 COPY static ./static
@@ -135,6 +136,8 @@ ENV ARXIV_PROXY=${ARXIV_PROXY} \
 WORKDIR /app
 COPY --from=web-dependencies /opt/venv /opt/venv
 COPY app.py /app/app.py
+COPY wsgi.py /app/wsgi.py
+COPY gunicorn.conf.py /app/gunicorn.conf.py
 COPY paperpilot /app/paperpilot
 COPY static /app/static
 COPY templates /app/templates
@@ -153,4 +156,4 @@ USER 10001:1001
 EXPOSE 7191
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=30s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7191/healthz', timeout=4).read()"
-CMD ["python", "app.py", "--host", "0.0.0.0", "--port", "7191", "--papers-dir", "/data/papers"]
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "wsgi:application"]

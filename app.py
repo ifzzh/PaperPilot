@@ -2,6 +2,7 @@ import argparse
 import atexit
 import json
 import os
+import sqlite3
 import threading
 import time
 import uuid
@@ -41,6 +42,7 @@ from paperpilot.database.connection import DB_PATH
 from paperpilot.database.connection import init_db as register_db_teardown
 from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.document_worker.client import DocumentWorkerClient
+from paperpilot.tools.agent_tools.translation_worker_client import TranslationWorkerClient
 from paperpilot.database.db_manager import init_db_schema
 from paperpilot.routes.agent_routes.agent_summary_route import (
     register_agent_summary_routes,
@@ -240,7 +242,7 @@ def _require_auth_for_api():
     if not protects_api and not protects_viewer:
         return None
 
-    if request.path == "/healthz" and request.method in {"GET", "HEAD"}:
+    if request.path in {"/healthz", "/readyz"} and request.method in {"GET", "HEAD"}:
         return None
 
     if request.path == "/api/auth/session":
@@ -608,6 +610,33 @@ def index():
 @app.route("/healthz", methods=["GET"])
 def healthz():
     return jsonify({"status": "ok"})
+
+
+@app.route("/readyz", methods=["GET"])
+def readyz():
+    components = {
+        "database": "unavailable",
+        "translation_worker": "unavailable",
+        "document_worker": "unavailable",
+    }
+    try:
+        with sqlite3.connect(DB_PATH, timeout=3) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "CREATE TABLE __paperpilot_readiness_probe (probe INTEGER)"
+            )
+            connection.rollback()
+        components["database"] = "ok"
+    except (OSError, sqlite3.Error):
+        pass
+    if TranslationWorkerClient().health():
+        components["translation_worker"] = "ok"
+    if DocumentWorkerClient().health():
+        components["document_worker"] = "ok"
+    ready = all(value == "ok" for value in components.values())
+    return jsonify({"status": "ready" if ready else "not_ready", **components}), (
+        200 if ready else 503
+    )
 
 
 @app.route("/api/auth/session", methods=["POST", "GET", "DELETE"])
