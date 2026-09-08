@@ -165,7 +165,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
 
 5. **Run the Application**
 
-   Then start the application:
+   For local development only, start the Flask development server:
    ```bash
    python app.py
    ```
@@ -180,7 +180,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   The maintained Compose file uses the v0.7.0 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users. Copy `.env.example` to the deployment directory, create separate Worker tokens and the settings-encryption key, and create the translation staging directory before running `docker compose up -d`.
+   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.8.0 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users. Copy `.env.example` to the deployment directory, create separate Worker tokens and the settings-encryption key, and create the translation staging directory before running `docker compose up -d`.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -193,6 +193,14 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    ```
 
    The translation Worker receives only `/work/jobs` and its token. The Document Worker receives only a 3 GiB tmpfs mounted at `/work/document-jobs` and its separate token, and has no public network or host port. Neither Worker mounts the paper library, SQLite database, `.env`, settings key, or Docker socket. Successful output is validated and atomically copied into the paper library by the Web service.
+
+   `/healthz` is the container liveness endpoint. `/readyz` additionally checks SQLite and both Workers and may return `503` during a Worker outage without causing a Web restart loop.
+
+### Upgrading from v0.7.0
+
+v0.8.0 replaces the Flask development server in production with Gunicorn, bounds analysis/export/Daily arXiv queues, and upgrades the supported runtime dependencies. Upload and document-processing APIs remain unchanged. `GET /api/papers-dir` now returns `{"success": true, "storage": "managed"}` instead of an absolute server path, and the export page displays “服务器托管存储”.
+
+There is no database or storage migration. Back up SQLite, update all three image digests together, and verify `/healthz`, `/readyz`, an eight-request concurrency probe, and graceful SIGTERM. Rollback only requires restoring the three v0.7.0 image digests. The release gate is available locally as `./scripts/security_scan.sh`; it pins pip-audit 2.10.1 and Trivy 0.74.0, creates CycloneDX SBOMs, and rejects fixable HIGH/CRITICAL findings unless a specific, expiring exception is documented.
 
 ### Upgrading from v0.6.0
 

@@ -164,6 +164,7 @@
 
 5. **启动应用**
 
+   以下命令仅用于本地开发：
    ```bash
    python app.py
    ```
@@ -179,17 +180,29 @@
    | `--port` | `7191` | 服务器监听端口 |
    | `--debug` | `False` | 启用调试模式（开发用） |
 
-   维护中的 Compose 文件使用 v0.6.0 Web 与翻译 Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192` 只在 Compose 网络内开放；两个容器都以非 root 用户运行。启动前请复制 `.env.example`、创建相互独立的 Worker token 与设置加密主密钥，并创建 staging 目录：
+   正式容器使用单个 Gunicorn `gthread` worker 和 8 个线程。维护中的 Compose 文件使用 v0.8.0 Web、翻译 Worker 与 Document Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192`、`7193` 只在 Compose 内部网络开放；三个容器都以非 root 用户运行。启动前请复制 `.env.example`、创建相互独立的 Worker token 与设置加密主密钥，并创建 staging 目录：
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
    openssl rand -hex 32 > /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+   openssl rand -hex 32 > /mnt/raid1/projects/paperpilot/deploy/paperpilot-document-worker.token
    openssl rand -out /mnt/raid1/projects/paperpilot/deploy/paperpilot-settings.key 32
    chmod 0640 /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
+   chmod 0640 /mnt/raid1/projects/paperpilot/deploy/paperpilot-document-worker.token
    chmod 0640 /mnt/raid1/projects/paperpilot/deploy/paperpilot-settings.key
    ```
 
-   Worker 只挂载 `/work/jobs` 和 token secret，不挂载论文库、SQLite、`.env` 或 Docker Socket。翻译成功后由 Web 校验输出并原子写入论文库。
+   翻译 Worker 只挂载 `/work/jobs` 和自身 token；Document Worker 只挂载 3 GiB `/work/document-jobs` tmpfs 和自身 token。两者都不挂载论文库、SQLite、`.env`、设置主密钥或 Docker Socket。`/healthz` 只检查 Web 存活，`/readyz` 还检查 SQLite 和两个 Worker；Worker 短暂故障会让 readiness 返回 `503`，不会触发 Web 重启循环。
+
+### 从 v0.7.0 升级
+
+v0.8.0 将正式运行时从 Flask 开发服务器切换为 Gunicorn，并为分析、导出和 Daily arXiv 设置有界队列，同时升级受支持的运行依赖。上传与文档处理接口不变。`GET /api/papers-dir` 不再暴露绝对路径，而是返回 `{"success": true, "storage": "managed"}`；导出页显示“服务器托管存储”。
+
+本版没有数据库或存储迁移。升级前备份 SQLite，同时更新三个镜像摘要，并验证 `/healthz`、`/readyz`、8 并发请求和 SIGTERM 优雅退出；回滚只需恢复三个 v0.7.0 摘要。本地发布门禁为 `./scripts/security_scan.sh`，固定使用 pip-audit 2.10.1 与 Trivy 0.74.0，生成 CycloneDX SBOM，并阻止未被具体、限时例外覆盖的可修复 HIGH/CRITICAL 漏洞。
+
+### 从 v0.6.0 升级
+
+v0.7.0 将 PDF、元数据 ZIP、Zotero RDF 和 MinerU 结果 ZIP 的验证移入隔离 Document Worker。PDF 上限为 100 MiB；归档上限为 200 MiB 压缩、2 GiB 展开、2000 个成员和 500 篇论文。新增 `document_jobs` 表为向后兼容附加表，无需存储迁移。
 
 ### 从 v0.5.0 升级
 
