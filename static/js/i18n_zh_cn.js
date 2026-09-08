@@ -3,6 +3,7 @@
 
     const messages = new Map(Object.entries({
         'PaperPilot - Agentic Paper Reading': 'PaperPilot - 智能论文阅读',
+        'Welcome to PaperPilot Paper Reading': '欢迎使用 PaperPilot 智能论文阅读',
         'AI Interpretation - PaperPilot': 'AI 解读 - PaperPilot', 'PDF Viewer': 'PDF 阅读器',
         'Paper': '论文', 'My Library': '我的论文库', 'Paper Info': '论文信息',
         'Select a category to view PDFs': '选择分类以查看 PDF',

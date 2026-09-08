@@ -25,3 +25,12 @@ def test_chinese_catalog_preserves_product_terms_and_uses_ymd():
     assert "'Reading list': 'Reading List'" in source
     assert "'Daily arXiv Settings': 'Daily arXiv 设置'" in source
     assert "${date.getFullYear()}-${String(date.getMonth() + 1)" in source
+
+
+def test_login_and_onboarding_ship_with_chinese_copy():
+    source = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+    assert "Welcome to PaperPilot Paper Reading" not in source
+    assert "Select AI Output Language" not in source
+    assert "Configure AI features" not in source
+    assert "欢迎使用 PaperPilot 智能论文阅读" in source
+    assert "选择 AI 输出语言" in source

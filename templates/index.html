@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PaperPilot - Agentic Paper Reading</title>
+    <title>PaperPilot - 智能论文阅读</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/website_logo.svg') }}">
     <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='images/website_logo.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.1">
@@ -18,7 +18,7 @@
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/marked@15.0.12/marked.min.js';"></script>
     <script src="{{ url_for('static', filename='vendor/dompurify/purify.min.js') }}?v=3.4.14"></script>
     <script src="{{ url_for('static', filename='js/content_security.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/i18n_zh_cn.js') }}?v=0.10.1"></script>
+    <script src="{{ url_for('static', filename='js/i18n_zh_cn.js') }}?v=0.10.2"></script>
     <!-- Highlight.js (CDN) for code highlighting -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -1599,7 +1599,7 @@
         <div class="onboarding-overlay" onclick="closeOnboardingModal()"></div>
         <div class="onboarding-card">
             <div class="onboarding-header">
-                <h2><i class="fas fa-graduation-cap"></i> Welcome to PaperPilot</h2>
+                <h2><i class="fas fa-graduation-cap"></i> 欢迎使用 PaperPilot</h2>
                 <button class="onboarding-close" onclick="closeOnboardingModal()">
                     <i class="fas fa-times"></i>
                 </button>
@@ -1612,13 +1612,12 @@
                         <i class="fas fa-language"></i>
                     </div>
                     <div class="onboarding-step-content">
-                        <h3>Select AI Output Language</h3>
-                        <p style="margin-bottom: 12px;">Choose the language for AI-generated content (translation,
-                            interpretation, and Daily arXiv summaries):</p>
+                        <h3>选择 AI 输出语言</h3>
+                        <p style="margin-bottom: 12px;">选择 AI 生成内容（翻译、解读和 Daily arXiv 摘要）使用的语言：</p>
                         <select id="onboarding-ai-language" class="setting-input"
                             style="width: 200px; font-size: 14px; padding: 8px;">
-                            <option value="zh">Chinese</option>
-                            <option value="en">English</option>
+                            <option value="zh">中文</option>
+                            <option value="en">英文</option>
                         </select>
                     </div>
                 </div>
@@ -1627,9 +1626,8 @@
                         <i class="fas fa-cog"></i>
                     </div>
                     <div class="onboarding-step-content">
-                        <h3>1. Configure AI features</h3>
-                        <p>Click <strong>top-right avatar → Agentic</strong> to set LLM API and MinerU services. This is
-                            required for AI translation, AI analysis, and Daily arXiv.</p>
+                        <h3>1. 配置 AI 功能</h3>
+                        <p>点击<strong>右上角头像 → Agentic</strong>设置 LLM API 和 MinerU 服务。AI 翻译、AI 解读和 Daily arXiv 均需要这些配置。</p>
                     </div>
                 </div>
                 <div class="onboarding-step">
@@ -1637,9 +1635,8 @@
                         <i class="fas fa-file-pdf"></i>
                     </div>
                     <div class="onboarding-step-content">
-                        <h3>2. Basic operations</h3>
-                        <p>Upload PDF papers, create folders to organize them, and use search to find papers. Click a
-                            paper to view details, double-click to open the reader.</p>
+                        <h3>2. 基本操作</h3>
+                        <p>上传 PDF 论文、创建分类整理内容，并使用搜索查找论文。单击论文查看详情，双击打开阅读器。</p>
                     </div>
                 </div>
                 <div class="onboarding-step">
@@ -1647,11 +1644,8 @@
                         <i class="fas fa-robot"></i>
                     </div>
                     <div class="onboarding-step-content">
-                        <h3>3. Agentic Tools</h3>
-                        <p>Supports <strong>AI analysis</strong> and <strong>AI translation</strong>. AI analysis
-                            converts a paper into a detailed Markdown interpretation; AI translation generates bilingual
-                            (EN-ZH) PDFs. In the paper list, select papers and use the context menu or batch actions.
-                        </p>
+                        <h3>3. Agentic 工具</h3>
+                        <p>支持 <strong>AI 解读</strong>和 <strong>AI 翻译</strong>。AI 解读会生成详细的 Markdown 报告，AI 翻译会生成中英双语 PDF。请在论文列表中选择论文并使用右键菜单或批量操作。</p>
                     </div>
                 </div>
                 <div class="onboarding-step">
@@ -1661,8 +1655,7 @@
                     </div>
                     <div class="onboarding-step-content">
                         <h3>4. Daily arXiv</h3>
-                        <p>Automatically fetches the latest arXiv papers, with filters by institution, country, and
-                            keywords. You can import interesting papers into your main library with one click.</p>
+                        <p>自动收集最新 arXiv 论文，并按机构、国家/地区和关键词筛选。感兴趣的论文可一键加入主论文库。</p>
                     </div>
                 </div>
                 <div class="onboarding-step">
@@ -1670,20 +1663,18 @@
                         <i class="fas fa-file-import"></i>
                     </div>
                     <div class="onboarding-step-content">
-                        <h3>5. Import from Zotero</h3>
-                        <p>You can import your Zotero library. Go to <strong>top-right avatar → Import</strong>, upload
-                            the RDF file exported from Zotero, and the system will automatically download PDFs and
-                            restore folder structure.</p>
+                        <h3>5. 从 Zotero 导入</h3>
+                        <p>你可以导入 Zotero 论文库。进入<strong>右上角头像 → 导入</strong>，上传 Zotero 导出的 RDF 文件，系统会自动下载 PDF 并恢复分类结构。</p>
                     </div>
                 </div>
             </div>
             <div class="onboarding-footer">
                 <label class="onboarding-checkbox">
                     <input type="checkbox" id="onboarding-dont-show">
-                    <span>Don't show again</span>
+                    <span>不再显示</span>
                 </label>
                 <button class="btn btn-primary" onclick="closeOnboardingModal()">
-                    Get started
+                    开始使用
                 </button>
             </div>
         </div>
@@ -1696,7 +1687,7 @@
                 <img src="{{ url_for('static', filename='images/website_logo.svg') }}" alt="PaperPilot Logo"
                     class="login-logo" onerror="this.style.display='none'">
                 <h2 id="auth-title">Log In</h2>
-                <p>Welcome to PaperPilot Paper Reading</p>
+                <p>欢迎使用 PaperPilot 智能论文阅读</p>
             </div>
             <form id="auth-form" class="auth-form">
                 <div class="form-group" id="auth-username-group">
@@ -1814,7 +1805,7 @@
     <!-- app.js will be dynamically loaded by auth.js after authentication -->
     <!-- <script src="{{ url_for('static', filename='js/app.js') }}?v=1.1"></script> -->
 
-    <script src="{{ url_for('static', filename='js/auth.js') }}?v=0.10.1"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}?v=0.10.2"></script>
 </body>
 
 </html>
