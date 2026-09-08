@@ -102,6 +102,23 @@ CREATE TABLE IF NOT EXISTS translation_jobs (
 CREATE INDEX IF NOT EXISTS idx_translation_jobs_paper_status
     ON translation_jobs(paper_id, status);
 
+-- Isolated document validation/import jobs. No file paths or secrets are stored.
+CREATE TABLE IF NOT EXISTS document_jobs (
+    job_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    paper_id TEXT,
+    status TEXT NOT NULL,
+    progress INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    error TEXT,
+    FOREIGN KEY(paper_id) REFERENCES papers(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_jobs_status
+    ON document_jobs(status, created_at);
+
 -- API credentials encrypted with the deployment-only settings key.
 CREATE TABLE IF NOT EXISTS agentic_secrets (
     name TEXT PRIMARY KEY,
