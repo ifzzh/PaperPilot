@@ -1,54 +1,23 @@
 (() => {
-  const supabaseUrl = (window.__SUPABASE_URL || "").trim();
-  const supabaseAnonKey = (window.__SUPABASE_ANON_KEY || "").trim();
-  if (!supabaseUrl || !supabaseAnonKey) return;
-  if (!window.supabase || typeof window.supabase.createClient !== "function") return;
-
-  const client = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
-  let accessToken = null;
+  if (window.__paperpilotFetchAuthPatched) return;
+  window.__paperpilotFetchAuthPatched = true;
   const originalFetch = window.fetch.bind(window);
-
-  if (!window.__paperpilotFetchAuthPatched) {
-    window.__paperpilotFetchAuthPatched = true;
-    window.fetch = (input, init = {}) => {
-      try {
-        const url = typeof input === "string" ? input : input?.url;
-        const isApiCall =
-          typeof url === "string" && (url.startsWith("/api/") || url.includes("/api/"));
-        if (isApiCall && accessToken) {
-          const headers = new Headers(
-            init.headers || (typeof input !== "string" ? input.headers : undefined)
-          );
-          if (!headers.has("Authorization")) {
-            headers.set("Authorization", `Bearer ${accessToken}`);
-          }
-          init = { ...init, headers };
-        }
-      } catch (_e) {}
-      return originalFetch(input, init);
-    };
-  }
-
-  client.auth
-    .getSession()
-    .then(async ({ data }) => {
-      accessToken = data?.session?.access_token || null;
-      if (accessToken) {
-        await originalFetch('/api/auth/session', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-      }
-    })
-    .catch(() => {});
-
-  client.auth.onAuthStateChange((_event, session) => {
-    accessToken = session?.access_token || null;
-    if (accessToken) {
-      originalFetch('/api/auth/session', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }).catch(() => {});
+  const csrf = () => {
+    const entry = document.cookie.split(';').map(value => value.trim())
+      .find(value => value.startsWith('paperpilot_csrf='));
+    return entry ? decodeURIComponent(entry.slice('paperpilot_csrf='.length)) : '';
+  };
+  window.fetch = (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input?.url;
+    const method = String(init.method || (typeof input !== 'string' && input.method) || 'GET').toUpperCase();
+    if (typeof url === 'string' && url.includes('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      const headers = new Headers(init.headers || (typeof input !== 'string' ? input.headers : undefined));
+      if (csrf() && !headers.has('X-CSRF-Token')) headers.set('X-CSRF-Token', csrf());
+      init = { ...init, headers };
     }
-  });
+    return originalFetch(input, init).then(response => {
+      if (response.status === 401) window.location.href = '/';
+      return response;
+    });
+  };
 })();

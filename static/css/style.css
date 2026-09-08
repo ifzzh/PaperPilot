@@ -6692,6 +6692,71 @@ mark {
     gap: 6px;
 }
 
+.auth-mode-links {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.auth-mode-links button {
+    border: 0;
+    background: transparent;
+    color: #6f3f8c;
+    cursor: pointer;
+}
+
+.admin-one-time-code {
+    margin: 0 0 16px;
+    padding: 14px;
+    border: 1px solid #b89acb;
+    border-radius: 8px;
+    background: #f7f0fb;
+    overflow-wrap: anywhere;
+}
+
+.admin-provider-form {
+    display: grid;
+    grid-template-columns: minmax(140px, 0.6fr) minmax(280px, 1.6fr) auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.admin-table-wrap {
+    overflow-x: auto;
+    margin-top: 14px;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.admin-table th,
+.admin-table td {
+    padding: 10px;
+    border-bottom: 1px solid #e8e0ec;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.admin-table td:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.admin-help {
+    color: #666;
+    margin-bottom: 12px;
+}
+
+@media (max-width: 800px) {
+    .admin-provider-form {
+        grid-template-columns: 1fr;
+    }
+}
+
 .btn-link {
     background: none;
     border: none;

@@ -37,10 +37,6 @@
 </head>
 
 <body>
-    <script>
-        window.__SUPABASE_URL = {{ supabase_url | tojson }};
-        window.__SUPABASE_ANON_KEY = {{ supabase_anon_key | tojson }};
-    </script>
     <!-- Navbar -->
     <nav class="navbar">
         <div class="navbar-content">
@@ -360,6 +356,10 @@
                     <i class="fas fa-file-export"></i>
                     <span>Export</span>
                 </button>
+                <button class="setting-nav-item" data-setting="admin" style="display:none;">
+                    <i class="fas fa-user-shield"></i>
+                    <span>Administration</span>
+                </button>
             </nav>
         </div>
 
@@ -465,6 +465,54 @@
                     <h3><i class="fas fa-history"></i> Recent Reading</h3>
                     <div class="recent-list" id="recent-activity-list">
                         <!-- Filled dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Administrator Panel -->
+            <div class="setting-panel" id="setting-panel-admin" style="display:none;">
+                <div class="panel-header">
+                    <h2><i class="fas fa-user-shield"></i> 用户与服务管理</h2>
+                    <p>邀请码、用户角色和公网 AI Provider 的修改会立即生效，无需重启容器。</p>
+                </div>
+                <div id="admin-one-time-code" class="admin-one-time-code" style="display:none;"></div>
+                <div id="admin-status" class="auth-error"></div>
+                <div class="setting-card">
+                    <div class="setting-card-header">
+                        <i class="fas fa-ticket-alt"></i><span>一次性邀请码</span>
+                    </div>
+                    <div class="setting-card-body">
+                        <button id="admin-create-invite" type="button" class="btn btn-primary">生成邀请码</button>
+                        <div class="admin-table-wrap">
+                            <table class="admin-table"><thead><tr><th>有效期至</th><th>状态</th><th>操作</th></tr></thead>
+                                <tbody id="admin-invites-body"></tbody></table>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-card">
+                    <div class="setting-card-header">
+                        <i class="fas fa-users"></i><span>用户</span>
+                    </div>
+                    <div class="setting-card-body admin-table-wrap">
+                        <table class="admin-table"><thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
+                            <tbody id="admin-users-body"></tbody></table>
+                    </div>
+                </div>
+                <div class="setting-card">
+                    <div class="setting-card-header">
+                        <i class="fas fa-cloud"></i><span>公网 AI Provider</span>
+                    </div>
+                    <div class="setting-card-body">
+                        <p class="admin-help">这里只能批准解析到公网地址的 HTTPS 服务。localhost、私网和云元数据地址始终禁止。</p>
+                        <div class="admin-provider-form">
+                            <input id="admin-provider-name" class="setting-input" type="text" maxlength="80" placeholder="Provider 名称">
+                            <input id="admin-provider-url" class="setting-input" type="url" placeholder="https://provider.example.com/compatible-mode/v1">
+                            <button id="admin-add-provider" type="button" class="btn btn-primary">批准并启用</button>
+                        </div>
+                        <div class="admin-table-wrap">
+                            <table class="admin-table"><thead><tr><th>名称</th><th>Origin</th><th>状态</th><th>操作</th></tr></thead>
+                                <tbody id="admin-providers-body"></tbody></table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1574,19 +1622,33 @@
                 <p>Welcome to PaperPilot Paper Reading</p>
             </div>
             <form id="auth-form" class="auth-form">
-                <div class="form-group">
-                    <label for="auth-email">Email</label>
-                    <input type="email" id="auth-email" required placeholder="name@example.com" class="auth-input">
+                <div class="form-group" id="auth-username-group">
+                    <label for="auth-username">用户名</label>
+                    <input type="text" id="auth-username" autocomplete="username" placeholder="username" class="auth-input">
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="auth-current-password-group">
                     <label for="auth-password">Password</label>
-                    <input type="password" id="auth-password" required placeholder="Enter your password"
+                    <input type="password" id="auth-password" autocomplete="current-password" placeholder="Enter your password"
                         class="auth-input">
                 </div>
+                <div class="form-group" id="auth-invite-group" style="display:none;">
+                    <label id="auth-invite-label" for="auth-invite">邀请码</label>
+                    <input type="text" id="auth-invite" autocomplete="off" placeholder="一次性代码" class="auth-input">
+                </div>
+                <div class="form-group" id="auth-new-password-group" style="display:none;">
+                    <label for="auth-new-password">新密码</label>
+                    <input type="password" id="auth-new-password" autocomplete="new-password"
+                        placeholder="12–128 个字符" class="auth-input">
+                </div>
                 <div id="auth-error" class="auth-error" style="display: none;"></div>
-                <button type="submit" id="auth-submit" class="btn btn-primary btn-block">Log In</button>
+                <button type="submit" id="auth-submit" class="btn btn-primary btn-block">登录</button>
             </form>
-            <div class="auth-footer">Accounts are provisioned by the administrator.</div>
+            <div id="auth-mode-links" class="auth-mode-links">
+                <button id="auth-show-login" type="button">登录</button>
+                <button id="auth-show-register" type="button">邀请码注册</button>
+                <button id="auth-show-reset" type="button">使用重置码</button>
+            </div>
+            <div class="auth-footer">无需邮箱；新用户须使用管理员签发的一次性邀请码。</div>
         </div>
     </div>
 
@@ -1675,9 +1737,7 @@
     <!-- app.js will be dynamically loaded by auth.js after authentication -->
     <!-- <script src="{{ url_for('static', filename='js/app.js') }}?v=1.1"></script> -->
 
-    <!-- Supabase JS Client -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="{{ url_for('static', filename='js/auth.js') }}?v=2.4"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}?v=0.9.0"></script>
 </body>
 
 </html>
