@@ -38,6 +38,7 @@ ENV PATH=/opt/venv/bin:$PATH
 WORKDIR /app
 COPY pyproject.toml ./
 COPY Dockerfile gunicorn.conf.py ./
+COPY docker-compose.yaml ./
 COPY app.py ./
 COPY paperpilot ./paperpilot
 COPY static ./static
