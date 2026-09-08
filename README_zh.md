@@ -155,7 +155,7 @@
    | `--port` | `7191` | 服务器监听端口 |
    | `--debug` | `False` | 启用调试模式（开发用） |
 
-   正式容器使用单个 Gunicorn `gthread` worker 和 8 个线程。维护中的 Compose 文件使用 v0.9.0 Web、翻译 Worker 与 Document Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192`、`7193` 只在 Compose 内部网络开放；三个容器都以非 root 用户运行。
+   正式容器使用单个 Gunicorn `gthread` worker 和 8 个线程。维护中的 Compose 文件使用 v0.9.1 Web、翻译 Worker 与 Document Worker 镜像。Web 仅绑定 `127.0.0.1:7191`，Worker 的 `7192`、`7193` 只在 Compose 内部网络开放；三个容器都以非 root 用户运行。
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -184,6 +184,10 @@ python -m paperpilot.migrations.tenant_storage --db /app/db/paperpilot.db \
 ```
 
 现有数据会归属 `ifzzh` 并迁入 `.users/<用户 UUID>/`；manifest 支持 `--rollback`。上线后管理员可在网页即时批准公网 HTTPS AI Provider，无需改 `.env` 或重启；私网目标仍只能由部署端批准。
+
+### 从 v0.9.0 升级
+
+v0.9.1 恢复按用户目录加载 Reading List，将密码最低长度调整为 8 位，并兼容透明 DNS 代理的 fake-IP 网段。如果本机把公网域名映射到 RFC 2544 地址，只需在部署环境一次性设置 `PAPERPILOT_AI_PROXY_FAKE_IP_RANGES=198.18.0.0/15`。该例外仅适用于已批准的 HTTPS 域名，IP 字面量和局域网地址仍会被拒绝。本次无需数据库或文件迁移。
 
 ### 从 v0.7.0 升级
 

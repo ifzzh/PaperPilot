@@ -157,7 +157,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.9.0 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
+   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.9.1 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -188,6 +188,10 @@ python -m paperpilot.migrations.tenant_storage --db /app/db/paperpilot.db \
 ```
 
 The password prompts are hidden; never put a password in shell history. Existing records and files are assigned to `ifzzh` and moved under `.users/<user-uuid>/`. The generated manifest supports `--rollback <manifest>`. After deployment, public HTTPS AI Providers can be approved immediately from the administrator page; private targets remain deployment-only.
+
+### Upgrading from v0.9.0
+
+v0.9.1 restores tenant Reading List discovery, lowers the password minimum to 8 characters, and supports transparent DNS proxy fake-IP ranges without allowing private Providers. If your resolver maps public names into RFC 2544 addresses, set `PAPERPILOT_AI_PROXY_FAKE_IP_RANGES=198.18.0.0/15` once in the deployment environment. The exception applies only to approved HTTPS hostnames; IP literals and LAN targets remain forbidden. No database or file migration is required.
 
 ### Upgrading from v0.7.0
 
