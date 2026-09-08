@@ -58,6 +58,11 @@
                         class="arxiv-logo-icon">
                     <span class="ti-label">Daily arXiv</span>
                 </button>
+                <button class="nav-tab ti-item" data-tab="translations" title="翻译任务">
+                    <i class="fas fa-language"></i>
+                    <span class="ti-label">翻译任务</span>
+                    <span class="ti-count" id="translation-task-count">0</span>
+                </button>
                 <button class="nav-tab ti-item ti-paper active" data-tab="paper" title="Paper">
                     <i class="fas fa-file-pdf"></i> <span class="ti-label">Paper</span>
                 </button>
@@ -180,6 +185,29 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Translation task center -->
+    <div class="translation-center-view" id="translation-center-view" style="display:none;">
+        <div class="translation-center-header">
+            <div>
+                <h2><i class="fas fa-language"></i> 翻译任务</h2>
+                <p>查看实时进度，管理排队、暂停和可恢复任务。</p>
+            </div>
+            <button id="translation-center-refresh" class="btn btn-secondary" type="button">
+                <i class="fas fa-sync-alt"></i> 刷新
+            </button>
+        </div>
+        <div class="translation-filter-tabs" id="translation-filter-tabs">
+            <button class="active" data-translation-filter="all">全部</button>
+            <button data-translation-filter="active">进行中</button>
+            <button data-translation-filter="queued">排队</button>
+            <button data-translation-filter="paused">已暂停</button>
+            <button data-translation-filter="completed">已完成</button>
+            <button data-translation-filter="failed">失败</button>
+        </div>
+        <div id="translation-center-status" class="translation-center-status"></div>
+        <div id="translation-task-list" class="translation-task-list"></div>
     </div>
 
     <!-- Daily arXiv View -->

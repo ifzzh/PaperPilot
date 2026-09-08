@@ -295,9 +295,11 @@ def register_agent_translate_routes(
         )
 
     def _job_payload(item: dict) -> dict:
+        paper = find_paper(item["paper_id"])
         payload = {
             "job_id": item["job_id"],
             "paper_id": item["paper_id"],
+            "paper_title": (paper.title or paper.filename) if paper else item["paper_id"],
             "status": item["status"],
             "progress": int(item.get("progress") or 0),
             "stage": item.get("stage"),

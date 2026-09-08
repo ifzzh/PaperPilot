@@ -34,6 +34,9 @@ let translationQueue = []; // translation queue
 let isTranslating = false; // whether translating now
 let translationStatus = {}; // {paperId: 'translating' | 'queued' | 'completed' | 'error', queuePosition, taskId}
 let translationLogInterval = {}; // polling intervals per task
+let translationTasks = [];
+let translationEventSource = null;
+let translationTaskFilter = 'all';
 
 // AI analysis-related
 let analysisQueue = []; // analysis queue
@@ -370,10 +373,8 @@ async function bootstrapApp() {
     const readingListPapers = await updateReadingListCount();
     restoreQueuesFromStorage();
     cleanupCompletedQueues();
-    await restoreActiveTasks();
-    if (translationQueue.length > 0 && !isTranslating) {
-        processTranslationQueue();
-    }
+        await restoreActiveTasks();
+    await initializeTranslationTaskCenter();
     if (analysisQueue.length > 0 && !isAnalyzing) {
         processAnalysisQueue();
     }
@@ -4837,6 +4838,7 @@ function switchTab(tabName) {
     const paperView = document.getElementById('paper-view');
     const settingView = document.getElementById('setting-view');
     const dailyArxivView = document.getElementById('daily-arxiv-view');
+    const translationCenterView = document.getElementById('translation-center-view');
     const navTabs = document.querySelectorAll('.nav-tab');
     const navAvatar = document.getElementById('nav-avatar');
 
@@ -4866,20 +4868,29 @@ function switchTab(tabName) {
         paperView.style.display = 'flex';
         settingView.style.display = 'none';
         if (dailyArxivView) dailyArxivView.style.display = 'none';
+        if (translationCenterView) translationCenterView.style.display = 'none';
         // Not called renderRecentIfNoCategory, letting the caller decide what to display
     } else if (tabName === 'setting') {
         paperView.style.display = 'none';
         settingView.style.display = 'flex';
         if (dailyArxivView) dailyArxivView.style.display = 'none';
+        if (translationCenterView) translationCenterView.style.display = 'none';
         // initialization Settings page
         initSettingsPage();
     } else if (tabName === 'daily-arxiv') {
         paperView.style.display = 'none';
         settingView.style.display = 'none';
         if (dailyArxivView) dailyArxivView.style.display = 'block';
+        if (translationCenterView) translationCenterView.style.display = 'none';
         // initialization Daily arXiv page
         showDailyArxivView();
         return; // showDailyArxivView Will save the state by itself
+    } else if (tabName === 'translations') {
+        paperView.style.display = 'none';
+        settingView.style.display = 'none';
+        if (dailyArxivView) dailyArxivView.style.display = 'none';
+        if (translationCenterView) translationCenterView.style.display = 'block';
+        loadTranslationTasks();
     }
     saveCurrentViewState();
 }
@@ -6838,26 +6849,36 @@ async function requestTranslation(paperId, event) {
         return;
     }
 
-    // add to queue
+    // The server is the durable queue source of truth.
     if (translationStatus[paperId]) {
         // This paper is already in the translation queue and will not be added again.
         return;
     }
 
-    translationQueue.push(paperId);
-    // Update queue position（Including the current one）
-    const queuePosition = translationQueue.length;
-    updateTranslationStatus(paperId, 'queued', queuePosition);
-    saveQueuesToStorage(); // Save queue status
-    renderPapersList(); // Update display now
-    updateTaskIndicator();
-
-    // Start processing the queue
-    processTranslationQueue();
+    try {
+        const response = await fetch('/api/paper/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paper_id: paperId }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'translation_request_failed');
+        }
+        updateTranslationStatus(paperId, 'queued', 0, result.task_id, 0);
+        showMessage('翻译任务已加入队列', 'success');
+        await loadTranslationTasks();
+    } catch (error) {
+        showMessage(translateErrorMessage(error.message), 'error');
+    }
 }
 
 // Process translation queue（Globally unique queue to ensure that only one task is executed at the same time）
 async function processTranslationQueue() {
+    // v0.10+: the durable server queue owns dispatch. Keep this compatibility
+    // hook for older call sites without submitting duplicate jobs.
+    await loadTranslationTasks();
+    return;
     // Strict check: if it is being translated or the queue is empty, return directly
     if (isTranslating) {
         return; // There is already a task being executed and no new task will be started.
@@ -7026,6 +7047,10 @@ async function showTranslationLogs(paperId, event) {
     }
 
     const taskId = status.taskId;
+    if (taskId) {
+        await openTranslationTask(taskId);
+        return;
+    }
 
     // Get log
     try {
@@ -7042,6 +7067,290 @@ async function showTranslationLogs(paperId, event) {
         console.error('Failed to get log:', error);
         showMessage('Failed to get log', 'error');
     }
+}
+
+const TRANSLATION_STAGE_LABELS = {
+    queued: '等待执行', preparing: '准备文档', parse_pdf: '解析 PDF',
+    pdf_parse: '解析 PDF', layout: '版面分析', doc_layout: '版面分析',
+    automatic_term_extraction: '术语提取', translate: '正文翻译',
+    typesetting: '排版处理', render: '生成 PDF', save: '保存结果',
+    completed: '已完成',
+};
+
+const TRANSLATION_STATUS_LABELS = {
+    queued: '排队中', dispatching: '正在派发', running: '翻译中',
+    recovering: '恢复中', paused: '已暂停', completed: '已完成',
+    failed: '失败', cancelled: '已取消',
+};
+
+function translateErrorMessage(code) {
+    const messages = {
+        translation_settings_not_configured: '请先在 Agentic 设置中配置翻译模型和 API Key',
+        translation_worker_unavailable: '翻译 Worker 暂时不可用，任务会留在队列中',
+        forbidden_agent_overrides: '翻译参数必须使用服务器保存的设置',
+        worker_busy: '翻译 Worker 正忙，任务会继续排队',
+        timeout: '翻译任务超时，可从缓存继续',
+        interrupted: '任务因服务重启中断，可继续执行',
+        task_not_found: '翻译任务不存在',
+        csrf_failed: '安全令牌已失效，请刷新页面',
+    };
+    return messages[code] || code || '翻译操作失败';
+}
+
+function formatDateYMD(value) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function formatDateTimeYMD(value) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return `${formatDateYMD(date)} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function translationStageLabel(stage) {
+    if (!stage) return '准备中';
+    return TRANSLATION_STAGE_LABELS[stage] || String(stage).replaceAll('_', ' ');
+}
+
+function translationMatchesFilter(task) {
+    if (translationTaskFilter === 'all') return true;
+    if (translationTaskFilter === 'active') {
+        return ['dispatching', 'running', 'recovering'].includes(task.status);
+    }
+    return task.status === translationTaskFilter;
+}
+
+function syncTranslationPaperStatuses(tasks) {
+    translationStatus = {};
+    translationQueue = [];
+    tasks.forEach(task => {
+        if (!['queued', 'dispatching', 'running', 'recovering', 'paused'].includes(task.status)) return;
+        if (task.status === 'queued') translationQueue.push(task.paper_id);
+        translationStatus[task.paper_id] = {
+            status: task.status === 'running' || task.status === 'dispatching' || task.status === 'recovering'
+                ? 'translating' : task.status,
+            taskId: task.job_id,
+            queuePosition: task.queue_position,
+            progress: Number(task.progress || 0),
+            stage: task.stage,
+        };
+    });
+    isTranslating = tasks.some(task => ['dispatching', 'running', 'recovering'].includes(task.status));
+    saveQueuesToStorage();
+    updateTaskIndicator();
+}
+
+async function loadTranslationTasks() {
+    const status = document.getElementById('translation-center-status');
+    try {
+        const response = await fetch('/api/translations?limit=200');
+        const payload = await response.json();
+        if (!response.ok || !payload.success) throw new Error(payload.error || 'request_failed');
+        translationTasks = payload.tasks || [];
+        syncTranslationPaperStatuses(translationTasks);
+        renderTranslationTaskCenter();
+        const activeCount = translationTasks.filter(task =>
+            ['queued', 'dispatching', 'running', 'recovering', 'paused'].includes(task.status)
+        ).length;
+        const count = document.getElementById('translation-task-count');
+        if (count) count.textContent = String(activeCount);
+        if (status) status.textContent = '';
+        if (typeof updatePaperStatusDisplay === 'function') {
+            Object.keys(translationStatus).forEach(updatePaperStatusDisplay);
+        }
+    } catch (error) {
+        if (status) status.textContent = `任务加载失败：${translateErrorMessage(error.message)}`;
+    }
+}
+
+function makeTranslationAction(label, icon, handler, className = 'btn btn-secondary') {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    const iconElement = document.createElement('i');
+    iconElement.className = `fas ${icon}`;
+    button.append(iconElement, document.createTextNode(` ${label}`));
+    button.addEventListener('click', async event => {
+        event.stopPropagation();
+        button.disabled = true;
+        try { await handler(); } finally { button.disabled = false; }
+    });
+    return button;
+}
+
+function renderTranslationTaskCenter() {
+    const list = document.getElementById('translation-task-list');
+    if (!list) return;
+    list.replaceChildren();
+    const visible = translationTasks.filter(translationMatchesFilter);
+    if (!visible.length) {
+        const empty = document.createElement('div');
+        empty.className = 'translation-task-empty';
+        empty.textContent = '当前筛选条件下没有翻译任务';
+        list.appendChild(empty);
+        return;
+    }
+    visible.forEach((task, index) => {
+        const card = document.createElement('article');
+        card.className = `translation-task-card status-${task.status}`;
+        const main = document.createElement('div');
+        main.className = 'translation-task-main';
+        const heading = document.createElement('div');
+        heading.className = 'translation-task-heading';
+        const title = document.createElement('h3');
+        title.textContent = task.paper_title || task.paper_id;
+        const badge = document.createElement('span');
+        badge.className = 'translation-task-badge';
+        badge.textContent = TRANSLATION_STATUS_LABELS[task.status] || task.status;
+        heading.append(title, badge);
+
+        const stage = document.createElement('div');
+        stage.className = 'translation-task-stage';
+        stage.textContent = task.status === 'queued'
+            ? `队列位置：${task.queue_position || '—'}`
+            : `${translationStageLabel(task.stage)}${task.stage_total ? ` · ${task.stage_current}/${task.stage_total}` : ''}`;
+        const progress = document.createElement('div');
+        progress.className = 'translation-task-progress';
+        const fill = document.createElement('span');
+        fill.style.width = `${Math.max(0, Math.min(100, Number(task.progress || 0)))}%`;
+        progress.appendChild(fill);
+        const meta = document.createElement('div');
+        meta.className = 'translation-task-meta';
+        const parts = [`总进度 ${Math.round(Number(task.progress || 0))}%`, `尝试 ${task.attempt_count || 0} 次`];
+        if (task.updated_at) parts.push(`更新于 ${formatDateTimeYMD(task.updated_at)}`);
+        if (task.error_code) parts.push(translateErrorMessage(task.error_code));
+        meta.textContent = parts.join(' · ');
+        main.append(heading, stage, progress, meta);
+
+        const actions = document.createElement('div');
+        actions.className = 'translation-task-actions';
+        actions.appendChild(makeTranslationAction('详情与日志', 'fa-list', () => openTranslationTask(task.job_id)));
+        if (['running', 'dispatching', 'recovering'].includes(task.status)) {
+            actions.appendChild(makeTranslationAction('暂停', 'fa-pause', () => translationTaskAction(task.job_id, 'pause')));
+        }
+        if (task.status === 'paused') {
+            actions.appendChild(makeTranslationAction('继续', 'fa-play', () => translationTaskAction(task.job_id, 'resume')));
+        }
+        if (task.status === 'failed') {
+            actions.appendChild(makeTranslationAction('重试', 'fa-redo', () => translationTaskAction(task.job_id, 'retry')));
+        }
+        if (task.status === 'queued') {
+            const currentPosition = task.queue_position || index + 1;
+            if (currentPosition > 1) {
+                actions.appendChild(makeTranslationAction('上移', 'fa-arrow-up', () => reorderTranslationTask(task.job_id, currentPosition - 1)));
+            }
+        }
+        if (!['completed', 'cancelled'].includes(task.status)) {
+            actions.appendChild(makeTranslationAction('取消', 'fa-times', () => cancelTranslationTask(task.job_id), 'btn btn-danger'));
+        }
+        card.append(main, actions);
+        card.addEventListener('click', () => openTranslationTask(task.job_id));
+        list.appendChild(card);
+    });
+}
+
+async function translationTaskAction(jobId, action) {
+    const response = await fetch(`/api/translations/${jobId}/${action}`, { method: 'POST' });
+    const payload = await response.json();
+    if (!response.ok) {
+        showMessage(translateErrorMessage(payload.error), 'error');
+        return;
+    }
+    await loadTranslationTasks();
+}
+
+async function reorderTranslationTask(jobId, position) {
+    const response = await fetch(`/api/translations/${jobId}/queue-position`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ position }),
+    });
+    const payload = await response.json();
+    if (!response.ok) showMessage(translateErrorMessage(payload.error), 'error');
+    await loadTranslationTasks();
+}
+
+async function cancelTranslationTask(jobId) {
+    if (!confirm('确定取消并清理这个翻译任务吗？')) return;
+    const response = await fetch(`/api/translations/${jobId}`, { method: 'DELETE' });
+    const payload = await response.json();
+    if (!response.ok) showMessage(translateErrorMessage(payload.error), 'error');
+    await loadTranslationTasks();
+}
+
+async function openTranslationTask(jobId) {
+    const response = await fetch(`/api/translations/${jobId}`);
+    const payload = await response.json();
+    if (!response.ok || !payload.success) {
+        showMessage(translateErrorMessage(payload.error), 'error');
+        return;
+    }
+    const task = payload.task;
+    const modalTitle = document.getElementById('modal-title');
+    const modalBody = document.getElementById('modal-body');
+    const confirmButton = document.getElementById('modal-confirm');
+    const cancelButton = document.getElementById('modal-cancel');
+    modalTitle.textContent = '翻译进度与日志';
+    modalBody.replaceChildren();
+
+    const summary = document.createElement('div');
+    summary.className = 'translation-log-summary';
+    const summaryTitle = document.createElement('strong');
+    summaryTitle.textContent = task.paper_title || task.paper_id;
+    const summaryStatus = document.createElement('span');
+    summaryStatus.textContent = `${TRANSLATION_STATUS_LABELS[task.status] || task.status} · ${translationStageLabel(task.stage)} · ${task.progress}%`;
+    summary.append(summaryTitle, summaryStatus);
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'translation-log-toolbar';
+    const copy = makeTranslationAction('复制日志', 'fa-copy', async () => {
+        const text = (task.events || []).filter(event => event.message)
+            .map(event => `${formatDateTimeYMD(event.created_at)} [${event.level}] ${event.message}`).join('\n');
+        await navigator.clipboard.writeText(text);
+    });
+    const download = makeTranslationAction('下载日志', 'fa-download', async () => {
+        const text = (task.events || []).filter(event => event.message)
+            .map(event => `${event.created_at} [${event.level}] ${event.message}`).join('\n');
+        const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+        const link = document.createElement('a');
+        link.href = url; link.download = `translation-${jobId}.log`; link.click();
+        URL.revokeObjectURL(url);
+    });
+    toolbar.append(copy, download);
+
+    const log = document.createElement('div');
+    log.className = 'translation-raw-log';
+    const lines = (task.events || []).filter(event => event.message);
+    log.textContent = lines.length
+        ? lines.map(event => `${formatDateTimeYMD(event.created_at)} [${event.level || 'info'}] ${event.message}`).join('\n')
+        : '暂无日志，任务进度会自动更新。';
+    modalBody.append(summary, toolbar, log);
+    confirmButton.style.display = 'none';
+    cancelButton.textContent = '关闭';
+    cancelButton.onclick = hideModal;
+    showModal();
+}
+
+async function initializeTranslationTaskCenter() {
+    document.getElementById('translation-center-refresh')?.addEventListener('click', loadTranslationTasks);
+    document.getElementById('translation-filter-tabs')?.addEventListener('click', event => {
+        const button = event.target.closest('[data-translation-filter]');
+        if (!button) return;
+        translationTaskFilter = button.dataset.translationFilter;
+        document.querySelectorAll('[data-translation-filter]').forEach(item => item.classList.toggle('active', item === button));
+        renderTranslationTaskCenter();
+    });
+    await loadTranslationTasks();
+    if (translationEventSource) translationEventSource.close();
+    translationEventSource = new EventSource('/api/translations/events');
+    translationEventSource.addEventListener('translation', () => loadTranslationTasks());
+    translationEventSource.onerror = () => {
+        setTimeout(loadTranslationTasks, 2000);
+    };
 }
 
 // Show log modal box
@@ -7071,7 +7380,7 @@ function showLogModal(taskId, logs, status, paperId) {
             </button>
             ` : ''}
         </div>
-        <div style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px; white-space: pre-wrap; word-wrap: break-word;">
+        <div style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; max-height: 500px; overflow: auto; font-family: 'Courier New', monospace; font-size: 12px; white-space: pre;">
             ${escapeHtml(logContent)}
         </div>
     `;
@@ -7207,6 +7516,11 @@ async function cancelTranslationFromStatus(paperId, event) {
 // Cancel translation from queue
 async function cancelTranslationFromQueue(paperId, event) {
     if (event) event.stopPropagation();
+    const serverTaskId = translationStatus[paperId]?.taskId;
+    if (serverTaskId) {
+        await cancelTranslationTask(serverTaskId);
+        return;
+    }
     const index = translationQueue.indexOf(paperId);
     if (index === -1) {
         showMessage('The paper is not in the queue', 'warning');

@@ -6962,3 +6962,56 @@ input:checked+.slider:before {
     justify-self: start;
     margin-top: 8px;
 }
+
+.translation-center-view {
+    min-height: calc(100vh - 64px);
+    padding: 28px clamp(16px, 4vw, 64px);
+    background: #f6f7fb;
+}
+
+.translation-center-header,
+.translation-task-heading,
+.translation-task-actions,
+.translation-log-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.translation-center-header p { margin: 6px 0 0; color: #667085; }
+.translation-filter-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 24px 0 16px; }
+.translation-filter-tabs button {
+    border: 1px solid #d9ddea; background: #fff; border-radius: 999px;
+    padding: 7px 14px; cursor: pointer;
+}
+.translation-filter-tabs button.active { color: #fff; background: #8b3de3; border-color: #8b3de3; }
+.translation-task-list { display: grid; gap: 14px; }
+.translation-task-card {
+    background: #fff; border: 1px solid #e4e7ec; border-left: 4px solid #98a2b3;
+    border-radius: 12px; padding: 18px; box-shadow: 0 4px 14px rgba(16,24,40,.05);
+}
+.translation-task-card.status-running,
+.translation-task-card.status-recovering { border-left-color: #8b3de3; }
+.translation-task-card.status-completed { border-left-color: #20a464; }
+.translation-task-card.status-failed { border-left-color: #d92d20; }
+.translation-task-heading h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.translation-task-badge { white-space: nowrap; color: #6941c6; background: #f4ebff; border-radius: 999px; padding: 4px 10px; }
+.translation-task-stage,.translation-task-meta { margin-top: 9px; color: #667085; font-size: 13px; }
+.translation-task-progress { height: 8px; margin-top: 12px; background: #eaecf0; border-radius: 99px; overflow: hidden; }
+.translation-task-progress span { display: block; height: 100%; background: linear-gradient(90deg,#9b51e0,#6941c6); transition: width .25s ease; }
+.translation-task-actions { justify-content: flex-start; flex-wrap: wrap; margin-top: 14px; }
+.translation-task-empty,.translation-center-status { padding: 28px; text-align: center; color: #667085; }
+.translation-log-summary { display: grid; gap: 6px; margin-bottom: 14px; }
+.translation-log-toolbar { justify-content: flex-start; margin-bottom: 10px; }
+.translation-raw-log {
+    max-height: 480px; overflow: auto; white-space: pre; padding: 14px;
+    color: #d4d4d4; background: #1e1e1e; border-radius: 8px;
+    font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (max-width: 720px) {
+    .translation-center-header,.translation-task-heading { align-items: flex-start; }
+    .translation-task-card { padding: 14px; }
+    .translation-task-actions .btn { padding: 7px 10px; }
+}

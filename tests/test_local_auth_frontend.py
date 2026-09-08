@@ -38,3 +38,21 @@ def test_dynamic_admin_tables_insert_server_values_as_text_only():
     auth = (ROOT / "static" / "js" / "auth.js").read_text(encoding="utf-8")
     assert "cell.textContent = String(value ?? '')" in auth
     assert ".innerHTML" not in auth
+
+
+def test_translation_task_center_uses_durable_api_and_readable_logs():
+    index = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+    app = (ROOT / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    styles = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
+
+    for element_id in ("translation-center-view", "translation-task-list", "translation-task-count"):
+        assert f'id="{element_id}"' in index
+    for endpoint in (
+        "/api/translations?limit=200",
+        "/api/translations/${jobId}/${action}",
+        "/queue-position",
+    ):
+        assert endpoint in app
+    assert "new EventSource('/api/translations/events')" in app
+    assert ".translation-raw-log" in styles
+    assert "white-space: pre;" in styles
