@@ -11712,9 +11712,9 @@ function renderDailyArxivCategoryTags() {
         tag.addEventListener('click', () => switchDailyArxivCategory(category));
         container.appendChild(tag);
     };
-    appendTag('all', allCount, 'All partitions');
+    appendTag('all', allCount, '全部分类');
     dailyArxivCategories.forEach(category => {
-        appendTag(category, categoryCounts[category], 'Click to load');
+        appendTag(category, categoryCounts[category], '点击加载');
     });
 }
 
