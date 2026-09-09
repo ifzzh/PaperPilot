@@ -137,6 +137,12 @@ class DocumentWorkerContractTests(unittest.TestCase):
             headers=self._headers(),
         )
         self.assertEqual(accepted.status_code, 202)
+        for _ in range(100):
+            state = client.get(f"/v1/jobs/{next_id}", headers=self._headers()).get_json()
+            if state["status"] in {"completed", "failed", "cancelled"}:
+                break
+            time.sleep(0.01)
+        client.delete(f"/v1/jobs/{next_id}", headers=self._headers())
 
     def test_dispatcher_survives_one_job_failure(self):
         first_id, _ = self._stage()
