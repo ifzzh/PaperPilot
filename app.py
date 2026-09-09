@@ -121,8 +121,6 @@ OUTBOUND_POLICY: Optional[DynamicOutboundPolicy] = None
 
 
 def _browser_security_headers() -> dict[str, str]:
-    connect_sources = ["'self'"]
-
     csp = "; ".join(
         [
             "default-src 'self'",
@@ -130,13 +128,14 @@ def _browser_security_headers() -> dict[str, str]:
             "object-src 'none'",
             "frame-ancestors 'self'",
             "form-action 'self'",
-            "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.bootcdn.net",
-            "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
-            "font-src 'self' data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
+            "script-src 'self'",
+            "script-src-attr 'none'",
+            "style-src 'self' 'unsafe-inline'",
+            "font-src 'self' data:",
             "img-src 'self' data: blob:",
-            f"connect-src {' '.join(connect_sources)}",
+            "connect-src 'self'",
             "frame-src 'self' blob:",
-            "worker-src 'self' blob: https://cdnjs.cloudflare.com",
+            "worker-src 'self' blob:",
         ]
     )
     return {
@@ -144,7 +143,7 @@ def _browser_security_headers() -> dict[str, str]:
         "Referrer-Policy": "same-origin",
         "X-Frame-Options": "SAMEORIGIN",
         "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-        "Content-Security-Policy-Report-Only": csp,
+        "Content-Security-Policy": csp,
     }
 
 
