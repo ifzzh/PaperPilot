@@ -41,7 +41,7 @@ def create_worker_app(*, jobs_root=None, token=None, service=None) -> Flask:
 
     @app.get("/healthz")
     def healthz():
-        return jsonify({"status": "ok"})
+        return jsonify({"status": "ok", **service.queue_stats()})
 
     @app.post("/v1/jobs")
     def create_job():
@@ -53,6 +53,6 @@ def create_worker_app(*, jobs_root=None, token=None, service=None) -> Flask:
 
     @app.delete("/v1/jobs/<job_id>")
     def cancel_job(job_id):
-        return jsonify(service.cancel(job_id))
+        return jsonify(service.release(job_id))
 
     return app

@@ -197,6 +197,11 @@ class DocumentWorkerClient:
         return manifest
 
     def cleanup(self, job_id: str) -> None:
+        try:
+            self.cancel(job_id)
+        except DocumentWorkerRejected as exc:
+            if exc.status_code != 404:
+                raise
         job = self.job_directory(job_id)
         if job.exists():
             shutil.rmtree(job)

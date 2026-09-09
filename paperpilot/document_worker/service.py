@@ -172,16 +172,32 @@ class DocumentWorkerService:
 
     def _dispatch(self) -> None:
         while True:
-            with self._condition:
-                while not self._queue:
-                    self._condition.wait()
-                job_id = self._queue.popleft()
-                state = self._jobs.get(job_id)
-                if state is None or state["status"] != "queued":
-                    continue
-                state.update(status="running", progress=10, updated_at=time.time())
-                self._write_status(job_id, state)
-            self._run(job_id)
+            try:
+                with self._condition:
+                    while not self._queue:
+                        self._condition.wait()
+                    job_id = self._queue.popleft()
+                    state = self._jobs.get(job_id)
+                    if state is None or state["status"] != "queued":
+                        continue
+                    state.update(status="running", progress=10, updated_at=time.time())
+                    self._write_status(job_id, state)
+                self._run(job_id)
+            except Exception:
+                # A corrupt status file or one failed task must not permanently stop
+                # the single worker dispatcher.
+                with self._condition:
+                    state = self._jobs.get(locals().get("job_id"))
+                    if state and state.get("status") not in TERMINAL_STATES:
+                        state.update(
+                            status="failed", error="document_processing_failed",
+                            process=None, updated_at=time.time(),
+                        )
+                        try:
+                            self._write_status(state["job_id"], state)
+                        except Exception:
+                            pass
+                    self._condition.notify_all()
 
     def _run(self, job_id: str) -> None:
         state = self._jobs[job_id]
@@ -202,6 +218,7 @@ class DocumentWorkerService:
         with self._condition:
             state.update(final, process=None, updated_at=time.time())
             self._write_status(job_id, state)
+            self._condition.notify_all()
 
     @staticmethod
     def _resource_limits() -> None:
@@ -277,19 +294,50 @@ class DocumentWorkerService:
                 for name in ("job_id", "kind", "status", "progress", "created_at", "updated_at", "error", "output")
             }
 
-    def cancel(self, job_id: str) -> dict:
+    def release(self, job_id: str) -> dict:
         job_id = canonical_job_id(job_id)
         with self._condition:
             state = self._jobs.get(job_id)
             if state is None:
-                raise DocumentWorkerError("job_not_found", 404)
-            if state["status"] in TERMINAL_STATES:
-                return self.public_state(job_id)
-            state["cancel"].set()
-            if state["status"] == "queued":
-                state.update(status="cancelled", error="cancelled", updated_at=time.time())
-                self._write_status(job_id, state)
-            process = state.get("process")
+                return {"job_id": job_id, "released": True}
+            if state["status"] not in TERMINAL_STATES:
+                state["cancel"].set()
+                if state["status"] == "queued":
+                    state.update(status="cancelled", error="cancelled", updated_at=time.time())
+                    self._write_status(job_id, state)
+                    self._condition.notify_all()
+                process = state.get("process")
+            else:
+                process = None
         if process is not None:
             self._terminate(process)
-        return self.public_state(job_id)
+        with self._condition:
+            deadline = time.monotonic() + 10
+            while state.get("status") not in TERMINAL_STATES and time.monotonic() < deadline:
+                self._condition.wait(timeout=0.1)
+            if state.get("status") not in TERMINAL_STATES:
+                state.update(
+                    status="cancelled", error="cancelled", process=None,
+                    updated_at=time.time(),
+                )
+                try:
+                    self._write_status(job_id, state)
+                except Exception:
+                    pass
+            self._jobs.pop(job_id, None)
+            self._condition.notify_all()
+        return {"job_id": job_id, "released": True}
+
+    def cancel(self, job_id: str) -> dict:
+        """Backward-compatible alias: DELETE now cancels and releases the job."""
+        return self.release(job_id)
+
+    def queue_stats(self) -> dict:
+        with self._condition:
+            running = sum(
+                state.get("status") == "running" for state in self._jobs.values()
+            )
+            queued = sum(
+                state.get("status") == "queued" for state in self._jobs.values()
+            )
+        return {"busy": bool(running), "queued": queued}
