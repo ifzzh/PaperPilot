@@ -157,7 +157,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.10.3 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
+   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.10.4 Web, translation-worker, and document-worker images. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -193,7 +193,7 @@ The password prompts are hidden; never put a password in shell history. Existing
 
 v0.10.0 adds a persistent per-user translation task center with structured progress, pause/resume/retry and seven-day task-local cache recovery. It also defaults the UI to Simplified Chinese and `YYYY-MM-DD`, provides self-service password changes with an 8-character minimum, and configures personalized Daily arXiv topics with a daily maximum of 24 papers retained for seven arXiv release dates.
 
-For an installation already on v0.10.2, stop all services, back up SQLite and the paper directory, then run `python -m paperpilot.migrations.v0103_daily_assets --db /path/to/paperpilot.db --dry-run` followed by `--apply --backup-dir /path/to/backups`, as documented in [the v0.10.3 release notes](docs/releases/v0.10.3.md). The migration adds persistent Daily arXiv asset leases and requeues unfinished candidates without rerunning LLM enrichment or moving PDFs. Deploy all three v0.10.3 image digests together. Rollback restores the migration manifest backup and all three v0.10.2 image digests.
+For an installation already on v0.10.2, stop all services, back up SQLite and the paper directory, then run `python -m paperpilot.migrations.v0103_daily_assets --db /path/to/paperpilot.db --dry-run` followed by `--apply --backup-dir /path/to/backups`, as documented in [the v0.10.4 release notes](docs/releases/v0.10.4.md). The migration adds persistent Daily arXiv asset leases and requeues unfinished candidates without rerunning LLM enrichment or moving PDFs. Deploy all three v0.10.4 image digests together. Rollback restores the migration manifest backup and all three v0.10.2 image digests.
 
 ### Upgrading from v0.9.0
 

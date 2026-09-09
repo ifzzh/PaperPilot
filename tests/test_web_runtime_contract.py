@@ -120,13 +120,13 @@ class ApplicationFactoryContractTests(unittest.TestCase):
         version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))[
             "project"
         ]["version"]
-        self.assertEqual(version, "0.10.3")
+        self.assertEqual(version, "0.10.4")
         lock = Path("uv.lock").read_text(encoding="utf-8")
-        self.assertIn('name = "paperpilot"\nversion = "0.10.3"', lock)
+        self.assertIn('name = "paperpilot"\nversion = "0.10.4"', lock)
         dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
-        self.assertEqual(dockerfile.count("ARG APP_VERSION=0.10.3"), 3)
+        self.assertEqual(dockerfile.count("ARG APP_VERSION=0.10.4"), 3)
         compose = Path("docker-compose.yaml").read_text(encoding="utf-8")
-        for tag in ("0.10.3", "0.10.3-worker", "0.10.3-document-worker"):
+        for tag in ("0.10.4", "0.10.4-worker", "0.10.4-document-worker"):
             with self.subTest(tag=tag):
                 self.assertIn(f"image: ifzzh520/paperpilot:{tag}", compose)
 
