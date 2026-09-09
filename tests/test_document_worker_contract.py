@@ -46,7 +46,9 @@ class DocumentWorkerContractTests(unittest.TestCase):
 
     def test_health_is_public_and_jobs_require_separate_token(self):
         client = self._client()
-        self.assertEqual(client.get("/healthz").status_code, 200)
+        health = client.get("/healthz")
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.get_json(), {"status": "ok", "busy": False, "queued": 0})
         self.assertEqual(client.get(f"/v1/jobs/{uuid.uuid4()}").status_code, 401)
 
     def test_create_accepts_only_uuid_and_kind(self):
@@ -104,6 +106,61 @@ class DocumentWorkerContractTests(unittest.TestCase):
                 break
             time.sleep(0.01)
         self.assertEqual(running, [first_id, second_id])
+
+    def test_delete_releases_terminal_job_and_is_idempotent(self):
+        job_id, work = self._stage()
+
+        def executor(_job_id, _kind, _state):
+            output = work / "output"
+            output.mkdir()
+            (output / "result.json").write_text("{}")
+
+        client = self._client(executor, max_queue=1)
+        self.assertEqual(client.post(
+            "/v1/jobs", json={"job_id": job_id, "kind": "pdf_inspect"},
+            headers=self._headers(),
+        ).status_code, 202)
+        for _ in range(100):
+            state = client.get(f"/v1/jobs/{job_id}", headers=self._headers()).get_json()
+            if state["status"] == "completed":
+                break
+            time.sleep(0.01)
+        first = client.delete(f"/v1/jobs/{job_id}", headers=self._headers())
+        second = client.delete(f"/v1/jobs/{job_id}", headers=self._headers())
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.get_json(), {"job_id": job_id, "released": True})
+        self.assertEqual(second.get_json(), {"job_id": job_id, "released": True})
+
+        next_id, _ = self._stage()
+        accepted = client.post(
+            "/v1/jobs", json={"job_id": next_id, "kind": "pdf_inspect"},
+            headers=self._headers(),
+        )
+        self.assertEqual(accepted.status_code, 202)
+
+    def test_dispatcher_survives_one_job_failure(self):
+        first_id, _ = self._stage()
+        second_id, second_work = self._stage()
+
+        def executor(job_id, _kind, _state):
+            if job_id == first_id:
+                raise RuntimeError("broken job")
+            output = second_work / "output"
+            output.mkdir()
+            (output / "result.json").write_text("{}")
+
+        client = self._client(executor, max_queue=2)
+        for job_id in (first_id, second_id):
+            self.assertEqual(client.post(
+                "/v1/jobs", json={"job_id": job_id, "kind": "pdf_inspect"},
+                headers=self._headers(),
+            ).status_code, 202)
+        for _ in range(100):
+            state = client.get(f"/v1/jobs/{second_id}", headers=self._headers()).get_json()
+            if state["status"] == "completed":
+                break
+            time.sleep(0.01)
+        self.assertEqual(state["status"], "completed")
 
     def test_restart_marks_queued_and_running_jobs_interrupted(self):
         for status in ("queued", "running"):
