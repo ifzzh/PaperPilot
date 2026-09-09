@@ -101,6 +101,11 @@ class DocumentWorkerClient:
             "zotero_rdf": self.limits.max_rdf_bytes,
         }[kind]
         return_path = work / INPUT_NAMES[kind]
+        # Gunicorn defaults to a restrictive umask. Apply the shared-group
+        # contract explicitly so the distinct Document Worker UID can create
+        # status and output files inside this Web-owned job directory.
+        os.chmod(job, 0o2770)
+        os.chmod(work, 0o2770)
         bounded_copy(stream, return_path, maximum)
         os.chmod(return_path, 0o640)
         return return_path

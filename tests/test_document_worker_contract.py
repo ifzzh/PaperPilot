@@ -1,5 +1,7 @@
 import json
 import hashlib
+import io
+import os
 import tempfile
 import threading
 import time
@@ -67,6 +69,20 @@ class DocumentWorkerContractTests(unittest.TestCase):
             headers=self._headers(),
         )
         self.assertEqual(response.get_json()["error"], "invalid_job_id")
+
+    def test_web_staging_permissions_ignore_restrictive_gunicorn_umask(self):
+        token = self.root / "token"
+        token.write_text(TOKEN)
+        client = DocumentWorkerClient(jobs_root=self.root, token_file=token)
+        job_id = str(uuid.uuid4())
+        previous = os.umask(0o027)
+        try:
+            client.stage(job_id, "pdf_inspect", io.BytesIO(b"%PDF-test"))
+        finally:
+            os.umask(previous)
+        job = self.root / job_id
+        self.assertEqual(job.stat().st_mode & 0o7777, 0o2770)
+        self.assertEqual((job / "work").stat().st_mode & 0o7777, 0o2770)
 
     def test_symlink_input_is_rejected(self):
         job_id, _ = self._stage(symlink=True)
