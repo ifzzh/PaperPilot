@@ -177,6 +177,10 @@ CREATE TABLE IF NOT EXISTS daily_arxiv_candidates (
     artifact_status TEXT NOT NULL DEFAULT 'candidate',
     retry_count INTEGER NOT NULL DEFAULT 0,
     next_retry_at TEXT,
+    asset_job_id TEXT,
+    claimed_at TEXT,
+    last_attempt_at TEXT,
+    artifact_error_code TEXT,
     updated_at TEXT NOT NULL,
     PRIMARY KEY(owner_id, arxiv_id)
 );
