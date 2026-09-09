@@ -1,6 +1,6 @@
 services:
   paperpilot:
-    image: ifzzh520/paperpilot:0.10.4
+    image: ifzzh520/paperpilot:0.10.5
     container_name: paperpilot
     ports:
       - "127.0.0.1:7191:7191"
@@ -67,7 +67,7 @@ services:
     restart: unless-stopped
 
   paperpilot-translation-worker:
-    image: ifzzh520/paperpilot:0.10.4-worker
+    image: ifzzh520/paperpilot:0.10.5-worker
     container_name: paperpilot-translation-worker
     environment:
       PAPERPILOT_WORKER_JOBS_ROOT: /work/jobs

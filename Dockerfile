@@ -67,7 +67,7 @@ RUN apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" upd
 
 FROM runtime-base AS translation-worker
 
-ARG APP_VERSION=0.10.4
+ARG TRANSLATION_WORKER_VERSION=0.10.5
 ARG VCS_REF=unknown
 
 ENV HOME=/tmp \
@@ -84,7 +84,7 @@ RUN groupadd --gid 1001 paperpilot \
  && chown 10002:1001 /work/jobs
 
 LABEL org.opencontainers.image.title="PaperPilot Translation Worker" \
-      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.version="${TRANSLATION_WORKER_VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.source="https://github.com/ifzzh/PaperPilot"
 
@@ -96,7 +96,7 @@ CMD ["python", "-m", "paperpilot.translation_worker"]
 
 FROM runtime-base AS document-worker
 
-ARG APP_VERSION=0.10.4
+ARG DOCUMENT_WORKER_VERSION=0.10.4
 ARG VCS_REF=unknown
 
 ENV HOME=/tmp \
@@ -112,7 +112,7 @@ RUN groupadd --gid 1001 paperpilot \
  && chown 10003:1001 /work/document-jobs
 
 LABEL org.opencontainers.image.title="PaperPilot Document Worker" \
-      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.version="${DOCUMENT_WORKER_VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.source="https://github.com/ifzzh/PaperPilot"
 
@@ -124,7 +124,7 @@ CMD ["python", "-m", "paperpilot.document_worker"]
 
 FROM runtime-base AS runtime
 
-ARG APP_VERSION=0.10.4
+ARG APP_VERSION=0.10.5
 ARG VCS_REF=unknown
 ARG ARXIV_PROXY=
 ARG ARXIV_API_PROXY=

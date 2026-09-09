@@ -1,3 +1,4 @@
+import json
 import threading
 import tempfile
 import time
@@ -116,17 +117,30 @@ class ApplicationFactoryContractTests(unittest.TestCase):
         compose = Path("docker-compose.yaml").read_text(encoding="utf-8")
         self.assertIn("stop_grace_period: 35s", compose)
 
-    def test_release_version_surfaces_are_synchronized(self):
+    def test_release_component_matrix_matches_version_surfaces(self):
         version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))[
             "project"
         ]["version"]
-        self.assertEqual(version, "0.10.4")
+        self.assertEqual(version, "0.10.5")
         lock = Path("uv.lock").read_text(encoding="utf-8")
-        self.assertIn('name = "paperpilot"\nversion = "0.10.4"', lock)
+        self.assertIn('name = "paperpilot"\nversion = "0.10.5"', lock)
+        matrix = json.loads(
+            Path("docker/release-components.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(matrix["release"], version)
+        self.assertEqual(matrix["web"]["tag"], "0.10.5")
+        self.assertEqual(matrix["translation_worker"]["tag"], "0.10.5-worker")
+        self.assertEqual(
+            matrix["document_worker"]["tag"], "0.10.4-document-worker"
+        )
+        self.assertFalse(matrix["document_worker"]["publish"])
         dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
-        self.assertEqual(dockerfile.count("ARG APP_VERSION=0.10.4"), 3)
+        self.assertIn("ARG APP_VERSION=0.10.5", dockerfile)
+        self.assertIn("ARG TRANSLATION_WORKER_VERSION=0.10.5", dockerfile)
+        self.assertIn("ARG DOCUMENT_WORKER_VERSION=0.10.4", dockerfile)
         compose = Path("docker-compose.yaml").read_text(encoding="utf-8")
-        for tag in ("0.10.4", "0.10.4-worker", "0.10.4-document-worker"):
+        for component in ("web", "translation_worker", "document_worker"):
+            tag = matrix[component]["tag"]
             with self.subTest(tag=tag):
                 self.assertIn(f"image: ifzzh520/paperpilot:{tag}", compose)
 
