@@ -29,8 +29,13 @@ from paperpilot.database.dao.paper_dao import PaperDAO
 from paperpilot.database.dao.daily_arxiv_dao import DailyArxivDAO
 from paperpilot.security.identity import current_identity, run_as_identity
 from paperpilot.database.dao.document_job_dao import DocumentJobDAO
-from paperpilot.document_worker.client import DocumentWorkerClient
+from paperpilot.document_worker.client import (
+    DocumentWorkerClient,
+    DocumentWorkerRejected,
+    DocumentWorkerUnavailable,
+)
 from paperpilot.document_worker.safety import bounded_copy
+from paperpilot.tools.basic_tools.daily_arxiv_assets import AssetResult
 from paperpilot.tools.basic_tools.arxiv_network import (
     arxiv_urlopen,
     configure_arxiv_client,
@@ -760,6 +765,7 @@ class ArxivPaper:
     artifact_status: str = "candidate"
     asset_retry_count: int = 0
     asset_next_retry_at: Optional[str] = None
+    artifact_error_code: Optional[str] = None
     selection_reason: Optional[str] = None
     matched_topics: List[Dict[str, Any]] = field(default_factory=list)
     relevance_score: float = 0.0
@@ -795,6 +801,7 @@ class ArxivPaper:
             "artifact_status": self.artifact_status,
             "asset_retry_count": self.asset_retry_count,
             "asset_next_retry_at": self.asset_next_retry_at,
+            "artifact_error_code": self.artifact_error_code,
             "selection_reason": self.selection_reason,
             "matched_topics": self.matched_topics,
             "relevance_score": self.relevance_score,
@@ -844,6 +851,7 @@ class ArxivPaper:
             artifact_status=data.get("artifact_status", "candidate"),
             asset_retry_count=int(data.get("asset_retry_count", 0) or 0),
             asset_next_retry_at=data.get("asset_next_retry_at"),
+            artifact_error_code=data.get("artifact_error_code"),
             selection_reason=data.get("selection_reason"),
             matched_topics=data.get("matched_topics", []),
             relevance_score=float(data.get("relevance_score", 0.0) or 0.0),
@@ -1040,6 +1048,8 @@ class DailyArxivManager:
         # User settings callback (for getting aiLanguage)
         self._get_user_settings: Optional[Callable[[], Dict]] = None
         self._document_client: Optional[DocumentWorkerClient] = None
+        self._asset_enqueue_callback: Optional[Callable[[str], Any]] = None
+        self._asset_queue_position_callback: Optional[Callable[[str], Optional[int]]] = None
 
         # LLM API Status tracking (for front-end display)
         self._llm_api_failed: bool = False
@@ -1055,6 +1065,14 @@ class DailyArxivManager:
 
     def set_document_client(self, client: DocumentWorkerClient) -> None:
         self._document_client = client
+
+    def set_asset_enqueue_callback(self, callback: Callable[[str], Any]) -> None:
+        self._asset_enqueue_callback = callback
+
+    def set_asset_queue_position_callback(
+        self, callback: Callable[[str], Optional[int]]
+    ) -> None:
+        self._asset_queue_position_callback = callback
 
     def extract_first_page_text(self, pdf_path: str) -> Optional[str]:
         if not os.path.isfile(pdf_path) or os.path.islink(pdf_path):
@@ -1159,6 +1177,10 @@ class DailyArxivManager:
                 paper_data['artifact_status'] = 'ready'
             else:
                 paper_data['artifact_status'] = paper_data.get('artifact_status') or 'retry_wait'
+            if self._asset_queue_position_callback:
+                paper_data['asset_queue_position'] = self._asset_queue_position_callback(
+                    paper_data.get('arxiv_id', '')
+                )
 
             if keyword_list and not settings.get("topicFilteringEnabled"):
                 matched = match_any_keyword_in_title_or_abstract(
@@ -1594,8 +1616,7 @@ class DailyArxivManager:
                     # And check if file exists
                     
                     if (
-                        not force
-                        and existing_paper_dict
+                        existing_paper_dict
                         and existing_paper_dict.get('is_daily')
                         and existing_paper_dict.get('file_path')
                         and os.path.exists(existing_paper_dict['file_path'])
@@ -1626,19 +1647,14 @@ class DailyArxivManager:
                         )
                         continue
 
-                    if not force and existing_paper_dict:
-                        retry_count = int(existing_paper_dict.get("asset_retry_count", 0) or 0)
-                        retry_at = existing_paper_dict.get("asset_next_retry_at")
-                        if retry_count >= 5:
-                            progress.update(i + 1, f"[下载失败] {paper.title[:40]}")
-                            continue
-                        if retry_at:
-                            try:
-                                if datetime.fromisoformat(retry_at) > datetime.now():
-                                    progress.update(i + 1, f"[等待重试] {paper.title[:40]}")
-                                    continue
-                            except ValueError:
-                                pass
+                    if existing_paper_dict and existing_paper_dict.get('is_daily'):
+                        # Metadata and LLM enrichment already exist. Asset retries are
+                        # deliberately independent and must never repeat those calls.
+                        if self._asset_enqueue_callback:
+                            self._asset_enqueue_callback(paper.arxiv_id)
+                        skipped_count += 1
+                        progress.update(i + 1, f"[已进入资产队列] {paper.title[:40]}")
+                        continue
 
                     # Update progress (update before starting the download so the frontend can see the current paper immediately)
                     # Set up first PDF Path (even if the file doesn't exist yet so the frontend can display it)
@@ -1654,39 +1670,19 @@ class DailyArxivManager:
                             )
                             continue
 
-                    # In topic mode, institution is only a weak ranking signal. The PDF
-                    # is streamed exactly once before isolated validation.
-                    pdf_path = self._download_pdf(paper, paper_cat_dir, progress)
-                    if pdf_path:
-                        paper.local_pdf_path = pdf_path
-                        paper.pdf_downloaded = True  # mark PDF Successfully downloaded
-                        paper.artifact_status = "ready"
-
-                        # Generate thumbnails (PDFFirst half of the first page)
-                        thumbnail_path = self._generate_thumbnail(
-                            pdf_path, paper_cat_dir
-                        )
-                        if thumbnail_path:
-                            paper.thumbnail_path = thumbnail_path
-                    else:
-                        # PDF Download failed
+                    # Ranking/enrichment completes before assets. The production app
+                    # installs the global coordinator; standalone compatibility users
+                    # retain the historical synchronous behavior.
+                    if self._asset_enqueue_callback:
                         paper.pdf_downloaded = False
-                        paper.artifact_status = "retry_wait"
-                        previous_attempts = int(
-                            (existing_paper_dict or {}).get("asset_retry_count", 0) or 0
-                        )
-                        paper.asset_retry_count = previous_attempts + 1
-                        retry_minutes = [5, 30, 120, 360][
-                            min(previous_attempts, 3)
-                        ]
-                        paper.asset_next_retry_at = (
-                            datetime.now() + timedelta(minutes=retry_minutes)
-                        ).isoformat()
-                        if paper.asset_retry_count >= 5:
-                            paper.artifact_status = "failed"
-                        print(
-                            f"[DailyArxiv] PDF Download failed, will try again at next check: {paper.arxiv_id}"
-                        )
+                        paper.artifact_status = "queued"
+                    else:
+                        downloaded = self._download_pdf(paper, paper_cat_dir, progress)
+                        paper.local_pdf_path = downloaded
+                        paper.pdf_downloaded = bool(downloaded)
+                        paper.artifact_status = "ready" if downloaded else "retry_wait"
+                        if downloaded:
+                            paper.thumbnail_path = self._generate_thumbnail(downloaded, paper_cat_dir)
 
                     # Extract abstracts and keywords (from abstract）
                     # NOTE: Even if PDF Download failed, you can also extract abstracts and keywords
@@ -1716,6 +1712,8 @@ class DailyArxivManager:
                     # even though PDF If the download fails, the metadata is also saved so that you can try again next time.
                     paper_dict = paper.to_dict()
                     self._save_paper(paper_dict, paper_cat_dir)
+                    if self._asset_enqueue_callback:
+                        self._asset_enqueue_callback(paper.arxiv_id)
 
                     papers.append(paper_dict)
                     progress.add_paper(paper_dict)
@@ -1978,22 +1976,21 @@ class DailyArxivManager:
                 )
                 return None
 
-        pdf_path = self._download_pdf(paper, paper_cat_dir, progress)
-        if pdf_path:
-            paper.local_pdf_path = pdf_path
-            paper.pdf_downloaded = True
-            paper.artifact_status = "ready"
-            thumbnail_path = self._generate_thumbnail(pdf_path, paper_cat_dir)
-            if thumbnail_path:
-                paper.thumbnail_path = thumbnail_path
-        else:
+        if self._asset_enqueue_callback:
             paper.pdf_downloaded = False
-            paper.artifact_status = "retry_wait"
-            paper.asset_retry_count = 1
-            paper.asset_next_retry_at = (datetime.now() + timedelta(minutes=5)).isoformat()
+            paper.artifact_status = "queued"
+        else:
+            downloaded = self._download_pdf(paper, paper_cat_dir, progress)
+            paper.local_pdf_path = downloaded
+            paper.pdf_downloaded = bool(downloaded)
+            paper.artifact_status = "ready" if downloaded else "retry_wait"
+            if downloaded:
+                paper.thumbnail_path = self._generate_thumbnail(downloaded, paper_cat_dir)
 
         paper_dict = paper.to_dict()
         self._save_paper(paper_dict, paper_cat_dir)
+        if self._asset_enqueue_callback:
+            self._asset_enqueue_callback(paper.arxiv_id)
         progress.add_paper(paper_dict)
         print(
             f"[DailyArxiv] Complete processing {index + 1}/{total} papers: {paper.arxiv_id}"
@@ -2204,6 +2201,101 @@ class DailyArxivManager:
         except Exception:
             return None
 
+    def process_paper_asset(
+        self,
+        arxiv_id: str,
+        stage_callback: Callable[[str, str | None], None],
+    ) -> AssetResult:
+        """Download, validate and atomically promote one already-ranked candidate."""
+        existing = PaperDAO.get_paper_by_arxiv_id(arxiv_id)
+        if not existing or not existing.get("is_daily"):
+            return AssetResult(False, "paper_not_found")
+        date_str = existing.get("daily_date") or get_today_arxiv_date()
+        category = existing.get("fetch_category") or existing.get("subject") or "cs.AI"
+        paper = ArxivPaper.from_dict({
+            **existing,
+            "published": existing.get("arxiv_published_date"),
+            "updated": existing.get("arxiv_published_date"),
+            "announced": existing.get("daily_date"),
+            "pdf_url": existing.get("arxiv_url"),
+            "primary_category": existing.get("subject"),
+            "fetch_category": category,
+            "fetch_date": date_str,
+        })
+        target_dir = self.get_category_dir(date_str, category)
+        os.makedirs(target_dir, exist_ok=True)
+        safe_id = arxiv_id.replace("/", "_").replace(":", "_")
+        pdf_path = os.path.join(target_dir, f"{safe_id}.pdf")
+        thumbnail_path = os.path.join(target_dir, f"{safe_id}_thumbnail.jpg")
+        job_id = str(uuid.uuid4())
+        temporary_pdf = f"{pdf_path}.tmp-{job_id}"
+        temporary_thumbnail = f"{thumbnail_path}.tmp-{job_id}"
+        try:
+            stage_callback("downloading", None)
+            pdf_url = self._get_export_pdf_url(paper)
+            with new_arxiv_requests_session(pdf_url) as session:
+                response = session.get(
+                    pdf_url,
+                    headers=self._get_pdf_request_headers(),
+                    timeout=30,
+                    stream=True,
+                    allow_redirects=True,
+                )
+                if response.status_code != 200:
+                    return AssetResult(False, f"pdf_http_{response.status_code}")
+                response.raw.decode_content = True
+                self._document_client.stage(job_id, "pdf_inspect", response.raw)
+            DocumentJobDAO.create(job_id, "pdf_inspect", paper_id=existing.get("id"))
+            stage_callback("validating", job_id)
+            self._document_client.create(job_id, "pdf_inspect")
+            state = self._document_client.wait(job_id, timeout=100)
+            DocumentJobDAO.update(
+                job_id, state["status"], progress=int(state.get("progress") or 0),
+                error=state.get("error"),
+            )
+            if state.get("status") != "completed":
+                return AssetResult(False, str(state.get("error") or "pdf_invalid"))
+            self._document_client.result_json(job_id)
+            job = self._document_client.job_directory(job_id)
+            with (job / "work" / "input.pdf").open("rb") as reader:
+                bounded_copy(reader, temporary_pdf, self._document_client.limits.max_pdf_bytes)
+            thumbnail = self._document_client.output(job_id) / "thumbnail.jpg"
+            with thumbnail.open("rb") as reader:
+                bounded_copy(
+                    reader, temporary_thumbnail,
+                    self._document_client.limits.max_thumbnail_bytes,
+                )
+            os.chmod(temporary_pdf, 0o660)
+            os.chmod(temporary_thumbnail, 0o660)
+            os.replace(temporary_pdf, pdf_path)
+            os.replace(temporary_thumbnail, thumbnail_path)
+            updated = dict(existing)
+            updated.update({
+                "file_path": pdf_path,
+                "thumbnail_path": thumbnail_path,
+                "artifact_status": "ready",
+                "asset_next_retry_at": None,
+                "artifact_error_code": None,
+            })
+            PaperDAO.save_paper(updated)
+            return AssetResult(True)
+        except DocumentWorkerRejected as exc:
+            return AssetResult(False, exc.reason)
+        except DocumentWorkerUnavailable as exc:
+            return AssetResult(False, str(exc) or "document_worker_unavailable")
+        except Exception:
+            return AssetResult(False, "pdf_download_failed")
+        finally:
+            for temporary in (temporary_pdf, temporary_thumbnail):
+                try:
+                    os.unlink(temporary)
+                except FileNotFoundError:
+                    pass
+            try:
+                self._document_client.cleanup(job_id)
+            except Exception:
+                pass
+
     def _generate_thumbnail(self, pdf_path: str, cat_dir: str) -> Optional[str]:
         """generatePDFthumbnail"""
         try:
@@ -2236,45 +2328,9 @@ class DailyArxivManager:
             return None
 
     def retry_paper_asset(self, arxiv_id: str) -> bool:
-        """Retry one failed Daily arXiv asset using only server-derived paths."""
-        existing = PaperDAO.get_paper_by_arxiv_id(arxiv_id)
-        if not existing or not existing.get("is_daily"):
-            return False
-        date_str = existing.get("daily_date") or get_today_arxiv_date()
-        category = existing.get("fetch_category") or existing.get("subject") or "cs.AI"
-        paper = ArxivPaper.from_dict({
-            **existing,
-            "published": existing.get("arxiv_published_date"),
-            "updated": existing.get("arxiv_published_date"),
-            "announced": existing.get("daily_date"),
-            "pdf_url": existing.get("arxiv_url"),
-            "primary_category": existing.get("subject"),
-            "fetch_category": category,
-            "fetch_date": date_str,
-        })
-        target_dir = self.get_category_dir(date_str, category)
-        os.makedirs(target_dir, exist_ok=True)
-        pdf_path = self._download_pdf(paper, target_dir)
-        updated = dict(existing)
-        if pdf_path:
-            safe_id = arxiv_id.replace("/", "_").replace(":", "_")
-            updated.update({
-                "file_path": pdf_path,
-                "thumbnail_path": os.path.join(target_dir, f"{safe_id}_thumbnail.jpg"),
-                "artifact_status": "ready",
-                "asset_retry_count": int(existing.get("asset_retry_count", 0) or 0) + 1,
-                "asset_next_retry_at": None,
-            })
-            PaperDAO.save_paper(updated)
-            return True
-        attempts = int(existing.get("asset_retry_count", 0) or 0) + 1
-        delay = [5, 30, 120, 360][min(max(attempts - 1, 0), 3)]
-        updated.update({
-            "artifact_status": "failed" if attempts >= 5 else "retry_wait",
-            "asset_retry_count": attempts,
-            "asset_next_retry_at": (datetime.now() + timedelta(minutes=delay)).isoformat(),
-        })
-        PaperDAO.save_paper(updated)
+        """Compatibility entry point; new callers enqueue through the coordinator."""
+        if self._asset_enqueue_callback:
+            return self._asset_enqueue_callback(arxiv_id) is not None
         return False
 
     def _extract_affiliations(
