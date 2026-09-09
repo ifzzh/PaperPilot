@@ -1,6 +1,4 @@
         const paperId = document.body.dataset.paperId;
-        const useChinese = document.body.dataset.useChinese === 'true';
-
         // Get paper information and set title
         async function loadPaperInfo() {
             try {
@@ -17,6 +15,40 @@
             } catch (error) {
                 console.error('Failed to load paper info:', error);
             }
+        }
+
+        function showPdfError(message, detail, pdfUrl) {
+            const loading = document.getElementById('loading');
+            const icon = document.createElement('i');
+            icon.className = 'fas fa-exclamation-triangle';
+            icon.style.cssText = 'font-size: 48px; color: #dc3545; margin-bottom: 15px;';
+
+            const messageElement = document.createElement('p');
+            messageElement.style.color = '#dc3545';
+            messageElement.textContent = message;
+
+            const reloadButton = document.createElement('button');
+            reloadButton.className = 'btn';
+            reloadButton.dataset.action = 'reload-page';
+            reloadButton.style.marginTop = '15px';
+            reloadButton.textContent = '重新加载';
+
+            const downloadLink = document.createElement('a');
+            downloadLink.className = 'btn btn-secondary';
+            downloadLink.href = pdfUrl;
+            downloadLink.download = '';
+            downloadLink.style.cssText = 'margin-top: 10px; margin-left: 10px;';
+            downloadLink.textContent = '下载 PDF';
+
+            const children = [icon, messageElement];
+            if (detail) {
+                const detailElement = document.createElement('p');
+                detailElement.style.cssText = 'color: #999; font-size: 12px; margin-top: 10px;';
+                detailElement.textContent = detail;
+                children.push(detailElement);
+            }
+            children.push(reloadButton, downloadLink);
+            loading.replaceChildren(...children);
         }
         
         // initialization PDF Viewer
@@ -47,47 +79,30 @@
                     iframe.src = pdfUrl;
                     
                     // Listen for iframe load
-                    iframe.onload = function() {
+                    iframe.addEventListener('load', function() {
                         console.log('PDF iframe loaded');
                         loading.style.display = 'none';
                         iframe.style.display = 'block';
-                    };
+                    }, { once: true });
                     
                     // Timeout: if not loaded in 10s, show error
                     setTimeout(() => {
                         if (loading.style.display !== 'none') {
                             console.error('PDF load timeout');
-                            loading.innerHTML = `
-                                <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #dc3545; margin-bottom: 15px;"></i>
-                                <p style="color: #dc3545;">PDF load timeout</p>
-                                <p style="color: #999; font-size: 12px; margin-top: 10px;">Please check if the PDF file exists, or try downloading directly.</p>
-                                <button class="btn" data-action="reload-page" style="margin-top: 15px;">重新加载</button>
-                                <a href="${pdfUrl}" class="btn btn-secondary" download style="margin-top: 10px; margin-left: 10px;">Download PDF</a>
-                            `;
+                            showPdfError('PDF 加载超时', '请检查 PDF 文件是否存在，或尝试直接下载。', pdfUrl);
                         }
                     }, 10000);
                 })
                 .catch(error => {
                     console.error('PDF file check failed:', error);
-                    loading.innerHTML = `
-                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #dc3545; margin-bottom: 15px;"></i>
-                        <p style="color: #dc3545;">PDF load failed</p>
-                        <p style="color: #999; font-size: 12px; margin-top: 10px;">Error: ${error.message}</p>
-                        <button class="btn" data-action="reload-page" style="margin-top: 15px;">重新加载</button>
-                        <a href="${pdfUrl}" class="btn btn-secondary" download style="margin-top: 10px; margin-left: 10px;">Download PDF</a>
-                    `;
+                    showPdfError('PDF 加载失败', `错误：${error.message}`, pdfUrl);
                 });
             
             // Fallback error handler
-            iframe.onerror = function() {
+            iframe.addEventListener('error', function() {
                 console.error('PDF iframe load error');
-                loading.innerHTML = `
-                    <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #dc3545; margin-bottom: 15px;"></i>
-                    <p style="color: #dc3545;">PDF load failed</p>
-                    <button class="btn" data-action="reload-page">重新加载</button>
-                    <a href="${pdfUrl}" class="btn btn-secondary" download style="margin-top: 10px; margin-left: 10px;">Download PDF</a>
-                `;
-            };
+                showPdfError('PDF 加载失败', '', pdfUrl);
+            });
         }
         
         // Close window helper

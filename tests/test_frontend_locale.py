@@ -54,6 +54,8 @@ def test_task_actions_and_viewers_do_not_ship_legacy_english_copy():
         "showMessage('Translation task not found'",
         "Loading AI analysis",
         "Loading PDF viewer",
+        "PDF load failed</p>",
+        "Failed to load: ${",
     ):
         assert legacy not in sources
     for expected in ("查看日志", "取消翻译", "翻译任务不存在", "PDF 阅读器"):

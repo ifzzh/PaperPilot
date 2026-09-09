@@ -7,7 +7,7 @@
             return markdown.replace(imageRegex, (match, alt, src) => {
                 if (!src.startsWith('http') && !src.startsWith('/')) {
                     const encodedPath = encodeURIComponent(src);
-                    return `![${alt}](/api/paper/${paperId}/analysis/image?path=${encodedPath})`;
+                    return `![${alt}](/api/paper/${encodeURIComponent(paperId)}/analysis/image?path=${encodedPath})`;
                 }
                 return match;
             });
@@ -76,9 +76,9 @@
 
         async function loadContent() {
             try {
-                const res = await fetch(`/api/paper/${paperId}/analysis/result`);
+                const res = await fetch(`/api/paper/${encodeURIComponent(paperId)}/analysis/result`);
                 const json = await res.json();
-                if (!res.ok || !json.success) throw new Error(json.error || 'Failed to load');
+                if (!res.ok || !json.success) throw new Error(json.error || 'load_failed');
 
                 currentPaperTitle = json.title || 'analysis';
                 rawMarkdown = json.content || '';
@@ -88,7 +88,7 @@
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('container').style.display = 'flex';
             } catch (e) {
-                document.getElementById('loading').textContent = `Failed to load: ${e.message}`;
+                document.getElementById('loading').textContent = `加载失败：${e.message}`;
             }
         }
 
@@ -120,7 +120,7 @@
             } catch (err) {
                 if (err.name !== 'AbortError') {
                     console.error('Export failed:', err);
-                    alert('Export failed: ' + err.message);
+                    alert('导出失败：' + err.message);
                 }
             }
         }
@@ -131,7 +131,7 @@
 
         function setupClose() {
             const btn = document.getElementById('close-btn');
-            btn.onclick = () => { window.close(); };
+            btn.addEventListener('click', () => { window.close(); });
             window.addEventListener('keydown', (e) => {
                 if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w') {
                     e.preventDefault(); window.close();
