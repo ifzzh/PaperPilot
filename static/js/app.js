@@ -9897,6 +9897,7 @@ let dailyArxivSettings = {
 };
 let dailyArxivEmptyDefaultHtml = null;
 let dailyArxivProgressIntervals = {};  // Progress polling timer for each partition: {category: intervalId}
+let dailyArxivAssetRefreshTimer = null;
 let dailyArxivSearchQuery = '';        // Daily arXiv Page search query
 let dailyArxivLLMConfigured = false;  // LLM configuration status
 let dailyArxivSlowDownloadNotified = {};  // Log whether each partition has shown a slow download prompt: {category: true}
@@ -11063,6 +11064,26 @@ async function loadPapersForCurrentDate() {
     renderDailyArxivFilterKeywords();
     renderDailyArxivGrid();
     renderDailyArxivCategoryTags();
+    scheduleDailyArxivAssetRefresh();
+}
+
+function scheduleDailyArxivAssetRefresh() {
+    if (dailyArxivAssetRefreshTimer) clearTimeout(dailyArxivAssetRefreshTimer);
+    const papers = getCurrentDailyArxivPapers(false);
+    const immediate = papers.some(paper =>
+        ['candidate', 'queued', 'downloading', 'validating'].includes(paper.artifact_status)
+    );
+    const waiting = papers.some(paper => paper.artifact_status === 'retry_wait');
+    if (!immediate && !waiting) return;
+    dailyArxivAssetRefreshTimer = setTimeout(async () => {
+        const categories = dailyArxivCurrentCategory === 'all'
+            ? dailyArxivCategories
+            : [dailyArxivCurrentCategory];
+        categories.forEach(category => {
+            delete dailyArxivPapers[`${dailyArxivCurrentDate}_${category}`];
+        });
+        await loadPapersForCurrentDate();
+    }, immediate ? 2000 : 60000);
 }
 
 // Mark Daily arXiv settings as unsaved after edits.
@@ -12877,10 +12898,14 @@ function renderDailyArxivGrid() {
         );
         const themeId = paper.matched_topics?.[0]?.id || 'general';
         const artifactLabels = {
-            candidate: '等待下载', downloading: '正在下载', validating: '安全验证中',
-            retry_wait: '等待重试', failed: '下载失败', ready: 'PDF 已就绪'
+            candidate: '等待下载', queued: '等待下载', downloading: '正在下载',
+            validating: '安全验证中', retry_wait: '等待重试',
+            failed: '处理失败', ready: 'PDF 已就绪'
         };
         const artifactStatus = paper.artifact_status || (paper.pdf_downloaded ? 'ready' : 'retry_wait');
+        const queueSuffix = paper.asset_queue_position ? ` · 队列 ${paper.asset_queue_position}` : '';
+        const errorSuffix = paper.artifact_error_code ? ` · ${paper.artifact_error_code}` : '';
+        const artifactDetail = `${artifactLabels[artifactStatus] || artifactStatus}${queueSuffix}${errorSuffix}`;
 
         // Organization information display（Complete display, gray rounded border, different colors for different units）
         let affiliationsHtml = '';
@@ -12974,7 +12999,7 @@ function renderDailyArxivGrid() {
                         <span class="daily-arxiv-card-category">${escapeHtml(displayCategoryLabel)}</span>
                         ${countriesFlagsHtml}
                     </div>
-                    <span class="daily-arxiv-asset-status status-${escapeHtml(artifactStatus)}">${escapeHtml(artifactLabels[artifactStatus] || artifactStatus)}</span>
+                    <span class="daily-arxiv-asset-status status-${escapeHtml(artifactStatus)}" title="${escapeHtml(artifactDetail)}">${escapeHtml(artifactDetail)}</span>
                 </div>
                 <div class="daily-arxiv-card-body">
                     <div class="daily-arxiv-card-title" title="${escapeHtml(paper.title)}">${highlight(paper.title)}</div>
@@ -13038,6 +13063,11 @@ async function retryDailyArxivAsset(index, event) {
     const response = await fetch(`/api/daily-arxiv/papers/${encodeURIComponent(paper.arxiv_id)}/retry`, { method: 'POST' });
     const data = await response.json().catch(() => ({}));
     showMessage(response.ok ? '已加入 PDF 重试队列' : (data.error || '重试失败'), response.ok ? 'success' : 'error');
+    if (response.ok) {
+        const categories = dailyArxivCurrentCategory === 'all' ? dailyArxivCategories : [dailyArxivCurrentCategory];
+        categories.forEach(category => delete dailyArxivPapers[`${dailyArxivCurrentDate}_${category}`]);
+        await loadPapersForCurrentDate();
+    }
 }
 
 // Render unit filter
