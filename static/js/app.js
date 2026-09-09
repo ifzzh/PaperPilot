@@ -883,7 +883,7 @@ async function loadPapers(categoryId, recursive = false) {
         papersList.innerHTML = `
             <div class="empty-state" style="opacity:.7">
                 <i class="fas fa-file-pdf"></i>
-                <p>loading...</p>
+                <p>加载中…</p>
             </div>
         `;
 
@@ -933,7 +933,7 @@ async function showReadingList(preloadedPapers = null) {
         papersList.innerHTML = `
             <div class="empty-state" style="opacity:.7">
                 <i class="fas fa-file-pdf"></i>
-                <p>loading...</p>
+                <p>加载中…</p>
             </div>
         `;
 
@@ -966,7 +966,7 @@ async function showReadingList(preloadedPapers = null) {
             papersList.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-book-open"></i>
-                    <p>Reading list is empty</p>
+                    <p>Reading List 为空</p>
                 </div>
             `;
             document.getElementById('sort-controls').style.display = 'none';
@@ -1244,8 +1244,8 @@ function renderPapersList() {
         papersList.innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-file-pdf"></i>
-                <p>There are currently no items in this category PDF document</p>
-                <p style="font-size: 12px; margin-top: 10px;">Drag the file to the upload area on the left or click the upload button</p>
+                <p>当前分类中暂无 PDF 文档</p>
+                <p style="font-size: 12px; margin-top: 10px;">将文件拖到左侧上传区域，或点击上传按钮</p>
             </div>
         `;
         sortControls.style.display = 'none';
@@ -1267,12 +1267,12 @@ function renderPapersList() {
     papersList.innerHTML = `
         <div class="paper-header">
             <div class="paper-header-col"></div>
-            <div class="paper-header-col">title<div class="paper-header-resizer" data-col="1"></div></div>
-            <div class="paper-header-col">date<div class="paper-header-resizer" data-col="2"></div></div>
-            <div class="paper-header-col">AI translate<div class="paper-header-resizer" data-col="3"></div></div>
-            <div class="paper-header-col">AI Interpretation<div class="paper-header-resizer" data-col="4"></div></div>
-            <div class="paper-header-col">AI Interaction<div class="paper-header-resizer" data-col="5"></div></div>
-            <div class="paper-header-col">To be read</div>
+            <div class="paper-header-col">标题<div class="paper-header-resizer" data-col="1"></div></div>
+            <div class="paper-header-col">日期<div class="paper-header-resizer" data-col="2"></div></div>
+            <div class="paper-header-col">AI 翻译<div class="paper-header-resizer" data-col="3"></div></div>
+            <div class="paper-header-col">AI 解析<div class="paper-header-resizer" data-col="4"></div></div>
+            <div class="paper-header-col">AI 交互<div class="paper-header-resizer" data-col="5"></div></div>
+            <div class="paper-header-col">Reading List</div>
         </div>
     `;
 
@@ -1452,7 +1452,7 @@ function renderPaperInfo(paper) {
                         </a>
                         ` : rawArxivUrl
                             ? `<span class="paper-url-invalid">${escapeHtml(rawArxivUrl)}</span>`
-                            : '<span style="color: #999; font-style: italic;">none URL</span>'}
+                            : '<span style="color: #999; font-style: italic;">无 URL</span>'}
                     </div>
                 </div>
             </div>
@@ -1469,7 +1469,7 @@ function renderPaperInfo(paper) {
                             </a>
                         ` : githubText
                             ? `<span class="paper-url-invalid">${escapeHtml(githubText)}</span>`
-                            : '<span style="color: #999; font-style: italic;">Click to add GitHub repository URL</span>'}
+                            : '<span style="color: #999; font-style: italic;">点击添加 GitHub 仓库 URL</span>'}
                     </div>
                 </div>
             </div>
@@ -1485,7 +1485,7 @@ function renderPaperInfo(paper) {
                             </a>
                         ` : homepageText
                             ? `<span class="paper-url-invalid">${escapeHtml(homepageText)}</span>`
-                            : '<span style="color: #999; font-style: italic;">Click to add project homepage URL</span>'}
+                            : '<span style="color: #999; font-style: italic;">点击添加项目主页 URL</span>'}
                     </div>
                 </div>
             </div>
@@ -1494,7 +1494,7 @@ function renderPaperInfo(paper) {
             <!-- Time info -->
             <div class="info-section compact">
                 <div class="info-header">
-                    <span class="info-label">Time</span>
+                    <span class="info-label">时间</span>
                 </div>
                 <div class="info-content">
                     <div class="info-value compact-text">
@@ -1526,7 +1526,7 @@ function renderPaperInfo(paper) {
             <!-- Notes -->
             <div class="info-section compact ${paper.notes ? '' : 'collapsed'}" data-field="notes">
                 <div class="info-header" data-action="toggle-info-section">
-                    <span class="info-label">Notes</span>
+                    <span class="info-label">笔记</span>
                     <i class="fas fa-chevron-down toggle-icon"></i>
                 </div>
                 <div class="info-content">
@@ -1727,7 +1727,7 @@ function clearPaperInfo() {
     paperInfo.innerHTML = `
         <div class="empty-state">
             <i class="fas fa-file-alt"></i>
-            <p>Select a paper to view details</p>
+            <p>选择论文以查看详情</p>
         </div>
     `;
     currentPaperId = null;
@@ -2152,7 +2152,7 @@ function showAddCategoryModal(parentId) {
     modalTitle.textContent = 'Add category';
     modalBody.innerHTML = `
         <div class="form-group">
-            <label for="category-name">Category name</label>
+            <label for="category-name">分类名称</label>
             <input type="text" id="category-name" placeholder="Please enter the category name">
         </div>
     `;
@@ -2204,7 +2204,7 @@ function showRenameCategoryModal(categoryId) {
     modalTitle.textContent = 'Rename category';
     modalBody.innerHTML = `
         <div class="form-group">
-            <label for="category-name">Category name</label>
+            <label for="category-name">分类名称</label>
             <input type="text" id="category-name" value="${escapeHtml(category.name)}">
         </div>
     `;
@@ -3330,7 +3330,7 @@ async function moveCategories(categoryIds, targetParentId) {
 function openChineseVersion(paperId) {
     const paper = papers.find(p => p.id === paperId);
     if (!paper || !paper.has_chinese_version) {
-        showMessage('Chinese version does not exist', 'error');
+        showMessage('中文版不存在', 'error');
         return;
     }
     const viewerUrl = `/viewer/${paperId}?chinese=true`;
@@ -3366,7 +3366,7 @@ function showArxivUploadModal() {
         <div id="arxiv-upload-status" style="display: none; margin-top: 10px;">
             <div class="loading-small" style="display: flex; align-items: center; gap: 10px;">
                 <div class="spinner-small"></div>
-                <span>Downloading and importing...</span>
+                <span>正在下载并导入…</span>
             </div>
         </div>
     `;
@@ -3613,11 +3613,11 @@ function renderSearchResults(panel, q, results) {
                             papersList.innerHTML = `
                                 <div class="paper-header">
                                     <div class="paper-header-col"></div>
-                                    <div class="paper-header-col">title<div class="paper-header-resizer" data-col="1"></div></div>
-                                    <div class="paper-header-col">date<div class="paper-header-resizer" data-col="2"></div></div>
-                                    <div class="paper-header-col">AI translate<div class="paper-header-resizer" data-col="3"></div></div>
-                                    <div class="paper-header-col">AI Interpretation<div class="paper-header-resizer" data-col="4"></div></div>
-                                    <div class="paper-header-col">To be read</div>
+                                    <div class="paper-header-col">标题<div class="paper-header-resizer" data-col="1"></div></div>
+                                    <div class="paper-header-col">日期<div class="paper-header-resizer" data-col="2"></div></div>
+                                    <div class="paper-header-col">AI 翻译<div class="paper-header-resizer" data-col="3"></div></div>
+                                    <div class="paper-header-col">AI 解析<div class="paper-header-resizer" data-col="4"></div></div>
+                                    <div class="paper-header-col">Reading List</div>
                                 </div>
                             `;
                             // Add column width adjustment function
@@ -3833,27 +3833,27 @@ async function editPaper(paperId, event) {
         modalTitle.textContent = 'Edit paper information';
         modalBody.innerHTML = `
             <div class="form-group">
-                <label for="paper-title">Paper title</label>
+                <label for="paper-title">论文标题</label>
                 <input type="text" id="paper-title" value="${escapeHtml(paper.title || '')}" placeholder="Paper title">
             </div>
             <div class="form-group">
-                <label for="paper-authors">author</label>
+                <label for="paper-authors">作者</label>
                 <input type="text" id="paper-authors" value="${escapeHtml(paper.authors || '')}" placeholder="Author name, multiple authors separated by commas">
             </div>
             <div class="form-group">
-                <label for="paper-affiliation">unit/mechanism</label>
+                <label for="paper-affiliation">单位/机构</label>
                 <input type="text" id="paper-affiliation" value="${escapeHtml(paper.affiliation || '')}" placeholder="Author's unit or institution">
             </div>
             <div class="form-group">
-                <label for="paper-year">year of publication</label>
+                <label for="paper-year">发表年份</label>
                 <input type="number" id="paper-year" value="${escapeHtml(paper.year || '')}" placeholder="year of publication" min="1900" max="2030">
             </div>
             <div class="form-group">
-                <label for="paper-journal">Journal/Meeting</label>
+                <label for="paper-journal">期刊/会议</label>
                 <input type="text" id="paper-journal" value="${escapeHtml(paper.journal || '')}" placeholder="Journal or conference name">
             </div>
             <div class="form-group">
-                <label for="paper-abstract">summary</label>
+                <label for="paper-abstract">摘要</label>
                 <textarea id="paper-abstract" rows="4" placeholder="Paper abstract">${escapeHtml(paper.abstract || '')}</textarea>
             </div>
         `;
@@ -6470,7 +6470,7 @@ function renderRecentActivity() {
             container.innerHTML = `
                 <div class="recent-empty">
                     <i class="fas fa-book-open"></i>
-                    <p>No reading record yet</p>
+                    <p>暂无阅读记录</p>
                 </div>
             `;
             return;
@@ -6495,7 +6495,7 @@ function renderRecentActivity() {
                 container.innerHTML = `
                     <div class="recent-empty">
                         <i class="fas fa-book-open"></i>
-                        <p>No reading record yet</p>
+                        <p>暂无阅读记录</p>
                     </div>
                 `;
                 return;
@@ -6538,7 +6538,7 @@ function renderRecentActivity() {
         container.innerHTML = `
             <div class="recent-empty">
                 <i class="fas fa-exclamation-circle"></i>
-                <p>Loading failed</p>
+                <p>加载失败</p>
             </div>
         `;
     }
@@ -6628,35 +6628,35 @@ function renderTaskTooltip() {
     const tBlock = [];
     translationQueue.forEach(pid => {
         const p = (papers || []).find(x => x.id === pid) || {};
-        tBlock.push(`<div class=\"tt-item\"><i class=\"fas fa-file-pdf\"></i><span>(queue)</span> ${escapeHtml(p.title || p.filename || pid)}</div>`);
+        tBlock.push(`<div class=\"tt-item\"><i class=\"fas fa-file-pdf\"></i><span>（排队）</span> ${escapeHtml(p.title || p.filename || pid)}</div>`);
     });
     Object.entries(translationStatus).forEach(([pid, s]) => {
         if (s.status === 'translating') {
             const p = (papers || []).find(x => x.id === pid) || {};
-            tBlock.push(`<div class=\"tt-item\"><i class=\"fas fa-file-pdf\"></i><span>(implement)</span> ${escapeHtml(p.title || p.filename || pid)}</div>`);
+            tBlock.push(`<div class=\"tt-item\"><i class=\"fas fa-file-pdf\"></i><span>（执行中）</span> ${escapeHtml(p.title || p.filename || pid)}</div>`);
         }
     });
     if (tBlock.length) {
-        parts.push('<div class="tt-title">turn translate</div>');
+        parts.push('<div class="tt-title">翻译任务</div>');
         parts.push(`<div class=\"tt-group\">${tBlock.join('')}</div>`);
     }
     // Interpretation
     const aBlock = [];
     analysisQueue.forEach(pid => {
         const p = (papers || []).find(x => x.id === pid) || {};
-        aBlock.push(`<div class=\"tt-item\"><i class=\"fas fa-file-pdf\"></i><span>(queue)</span> ${escapeHtml(p.title || p.filename || pid)}</div>`);
+        aBlock.push(`<div class=\"tt-item\"><i class=\"fas fa-file-pdf\"></i><span>（排队）</span> ${escapeHtml(p.title || p.filename || pid)}</div>`);
     });
     Object.entries(analysisStatus).forEach(([pid, s]) => {
         if (s.status === 'analyzing') {
             const p = (papers || []).find(x => x.id === pid) || {};
-            aBlock.push(`<div class=\"tt-item\"><i class=\"fas fa-file-pdf\"></i><span>(implement)</span> ${escapeHtml(p.title || p.filename || pid)}</div>`);
+            aBlock.push(`<div class=\"tt-item\"><i class=\"fas fa-file-pdf\"></i><span>（执行中）</span> ${escapeHtml(p.title || p.filename || pid)}</div>`);
         }
     });
     if (aBlock.length) {
-        parts.push('<div class="tt-title">untie read</div>');
+        parts.push('<div class="tt-title">解析任务</div>');
         parts.push(`<div class=\"tt-group\">${aBlock.join('')}</div>`);
     }
-    tooltip.innerHTML = parts.length ? parts.join('') : '<div class="tt-item" style="color:#888;">No tasks in progress</div>';
+    tooltip.innerHTML = parts.length ? parts.join('') : '<div class="tt-item" style="color:#888;">没有正在进行的任务</div>';
 }
 
 // Show empty status（When no directory is selected）
@@ -6716,7 +6716,7 @@ async function requestTranslation(paperId, event) {
 
     // Check if there is a Chinese version
     if (paper.has_chinese_version) {
-        if (confirm('This paper already has a Chinese version. Do you want to re-translate it?')) {
+        if (confirm('这篇论文已有中文版，是否重新翻译？')) {
             // You can add re-translation logic here
         } else {
             return;
@@ -6923,7 +6923,7 @@ async function showTranslationLogs(paperId, event) {
     const latestTask = latestTranslationTaskForPaper(paperId);
     const taskId = status?.taskId || latestTask?.job_id;
     if (!taskId) {
-        showMessage('Translation task not found', 'warning');
+        showMessage('翻译任务不存在', 'warning');
         return;
     }
     await openTranslationTask(taskId);
@@ -7260,7 +7260,7 @@ function showLogModal(taskId, logs, status, paperId) {
     `;
 
     confirmBtn.style.display = 'none';
-    cancelBtn.textContent = 'closure';
+    cancelBtn.textContent = '关闭';
     cancelBtn.onclick = () => hideModal();
 
     showModal();
@@ -7367,12 +7367,12 @@ async function cancelTranslation(taskId, paperId) {
                 // Continue processing the queue
                 processTranslationQueue();
             } else {
-                showMessage(result.error || 'Cancel translation failed', 'error');
+                showMessage(result.error || '取消翻译失败', 'error');
             }
         }
     } catch (error) {
         console.error('Cancel translation failed:', error);
-        showMessage('Cancel translation failed', 'error');
+        showMessage('取消翻译失败', 'error');
     }
 }
 
@@ -7381,7 +7381,7 @@ async function cancelTranslationFromStatus(paperId, event) {
     if (event) event.stopPropagation();
     const status = translationStatus[paperId];
     if (!status || !status.taskId) {
-        showMessage('Translation task not found', 'warning');
+        showMessage('翻译任务不存在', 'warning');
         return;
     }
     await cancelTranslation(status.taskId, paperId);
@@ -7563,7 +7563,7 @@ function parseTranslationProgressFromLogs(logs) {
 function openChineseVersion(paperId) {
     const paper = papers.find(p => p.id === paperId);
     if (!paper || !paper.has_chinese_version) {
-        showMessage('Chinese version does not exist', 'error');
+        showMessage('中文版不存在', 'error');
         return;
     }
     const viewerUrl = `/viewer/${paperId}?chinese=true`;
@@ -7929,7 +7929,7 @@ async function populateImportTargetCategories() {
     const currentValue = select.value;
 
     // Keep default options
-    select.innerHTML = '<option value="">root directory（default）</option>';
+    select.innerHTML = '<option value="">根目录（默认）</option>';
 
     try {
         // from API Get the latest directory data
@@ -8522,7 +8522,7 @@ async function requestAnalysis(paperId, event) {
     // Check if interpretation results already exist
     const hasResult = paper.has_analysis_result;
     if (hasResult) {
-        if (!confirm('This paper already has an AI Interpretation, reinterpret?')) {
+        if (!confirm('这篇论文已有 AI 解析结果，是否重新解析？')) {
             return;
         }
     }
@@ -9076,8 +9076,8 @@ function showAnalysisLogModal(taskId, logs, status, step, paperId) {
     modalTitle.textContent = 'Interpret logs';
     modalBody.innerHTML = `
         <div style="margin-bottom: 10px;">
-            <strong>state:</strong> <span id="log-status">${getStatusText(status)}</span>
-            ${step ? `<br><strong>current step:</strong> ${step === 'pdf2md' ? 'PDFchangeMarkdown' : step === 'llm_analysis' ? 'LLMInterpretation' : step}` : ''}
+            <strong>状态：</strong> <span id="log-status">${getStatusText(status)}</span>
+            ${step ? `<br><strong>当前步骤：</strong> ${step === 'pdf2md' ? 'PDF 转 Markdown' : step === 'llm_analysis' ? 'LLM 解析' : escapeHtml(step)}` : ''}
         </div>
         <div style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; max-height: 400px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px; white-space: pre-wrap; word-wrap: break-word;" id="log-content">
             ${logs.map(log => escapeHtml(log)).join('\n')}
@@ -9086,7 +9086,7 @@ function showAnalysisLogModal(taskId, logs, status, step, paperId) {
 
     confirmBtn.style.display = status === 'running' ? 'inline-block' : 'none';
     confirmBtn.textContent = 'Cancel interpretation';
-    cancelBtn.textContent = 'closure';
+    cancelBtn.textContent = '关闭';
 
     // Clear previous event listeners
     const confirmBtnClone = confirmBtn.cloneNode(true);
@@ -9329,10 +9329,10 @@ async function viewAnalysisResult(paperId, event) {
         // Inject trusted structure first; sanitized Markdown is mounted separately.
         paperInfoEl.innerHTML = `
             <div class="paper-info-toolbar">
-                <div style="font-weight:600;">AI Interpretation</div>
+                <div style="font-weight:600;">AI 解析</div>
             </div>
             <button class="analysis-fullscreen-btn" type="button" title="View full screen"><i class="fas fa-expand"></i></button>
-            <button class="analysis-close-btn" type="button" title="closure"><i class="fas fa-times"></i></button>
+            <button class="analysis-close-btn" type="button" title="关闭"><i class="fas fa-times"></i></button>
             <div class="paper-info-content markdown-viewer"></div>
         `;
         paperInfoEl.querySelector('.analysis-fullscreen-btn').addEventListener('click', () => openAnalysisFullscreen(paperId));
@@ -9655,12 +9655,12 @@ function cancelTranslation(paperId, event) {
                         processTranslationQueue();
                     }
                 } else {
-                    showMessage(data.error || 'Cancel translation failed', 'error');
+                    showMessage(data.error || '取消翻译失败', 'error');
                 }
             })
             .catch(err => {
                 console.error('Cancel translation failed:', err);
-                showMessage('Cancel translation failed', 'error');
+                showMessage('取消翻译失败', 'error');
             });
     }
 
@@ -11375,7 +11375,7 @@ function renderDailyArxivKeywordList() {
     const keywordList = dailyArxivSettings.keywordList || [];
 
     if (keywordList.length === 0) {
-        container.innerHTML = '<div style="color: #8b949e; font-size: 13px; padding: 8px;">There are no keywords yet, please add them in the input box below</div>';
+        container.innerHTML = '<div style="color: #8b949e; font-size: 13px; padding: 8px;">暂无关键词，请在下方输入框添加</div>';
         return;
     }
 
@@ -12680,8 +12680,8 @@ function renderDailyArxivGrid() {
             gridEl.innerHTML = `
                 <div class="daily-arxiv-no-results">
                     <i class="fas fa-filter fa-3x" style="margin-bottom: 20px; color: #bbb;"></i>
-                    <h3 style="margin-bottom: 10px; font-size: 1.5em; color: #555;">No matching search results</h3>
-                    <p style="font-size: 1em; color: #888;">Please try adjusting your search terms or filters</p>
+                    <h3 style="margin-bottom: 10px; font-size: 1.5em; color: #555;">没有匹配的搜索结果</h3>
+                    <p style="font-size: 1em; color: #888;">请调整搜索词或筛选条件</p>
                 </div>
             `;
             if (emptyEl) emptyEl.style.display = 'none';
@@ -12996,7 +12996,7 @@ function renderDailyArxivFilterAffiliations() {
     const entries = Array.from(stats.entries());
     // Just clear it when there are no units
     if (entries.length === 0) {
-        container.innerHTML = '<span class="filter-empty">There is currently no institution information in the current view</span>';
+        container.innerHTML = '<span class="filter-empty">当前视图暂无机构信息</span>';
         return;
     }
 
@@ -13167,7 +13167,7 @@ function renderDailyArxivFilterCountries() {
     const entries = Array.from(stats.entries());
     // Just clear it if there is no region
     if (entries.length === 0) {
-        container.innerHTML = '<span class="filter-empty">There is currently no region information in the current view</span>';
+        container.innerHTML = '<span class="filter-empty">当前视图暂无地区信息</span>';
         return;
     }
 
@@ -13347,7 +13347,7 @@ function renderDailyArxivFilterKeywords() {
     const entries = Array.from(stats.entries());
     // Just clear it when there are no keywords
     if (entries.length === 0) {
-        container.innerHTML = '<span class="filter-empty">There is currently no keyword information in the current view</span>';
+        container.innerHTML = '<span class="filter-empty">当前视图暂无关键词信息</span>';
         return;
     }
 
@@ -13492,7 +13492,7 @@ function showDailyArxivDetail(index) {
                 }).filter(tag => tag).join('');
                 if (flagTags) {
                     countriesFlagsHtml = `<div class="country-flags-section">
-                        <span class="country-flags-label">Regions:</span>
+                        <span class="country-flags-label">地区：</span>
                         <div class="country-flags">${flagTags}</div>
                     </div>`;
                 }
@@ -15413,7 +15413,7 @@ async function openChat(paperId, event) {
 
     const sessionListEl = document.getElementById('chat-session-list');
     if (sessionListEl) {
-        sessionListEl.innerHTML = '<div style="text-align:center; padding:16px; color:#999;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+        sessionListEl.innerHTML = '<div style="text-align:center; padding:16px; color:#999;"><i class="fas fa-spinner fa-spin"></i> 加载中…</div>';
     }
 
     // Load sessions
@@ -15424,7 +15424,7 @@ async function loadChatSessions(paperId) {
     const expectedPaperId = paperId;
     const sessionListEl = document.getElementById('chat-session-list');
     if (!sessionListEl) return;
-    sessionListEl.innerHTML = '<div style="text-align:center; padding:16px; color:#999;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    sessionListEl.innerHTML = '<div style="text-align:center; padding:16px; color:#999;"><i class="fas fa-spinner fa-spin"></i> 加载中…</div>';
     try {
         const response = await fetch(`/api/paper/chat/sessions?paper_id=${paperId}`);
         const data = await response.json();
@@ -15535,7 +15535,7 @@ async function switchSession(sessionId) {
 
     // Load session details
     const chatBody = document.getElementById('chat-messages');
-    chatBody.innerHTML = '<div style="text-align:center; padding:20px; color:#999;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    chatBody.innerHTML = '<div style="text-align:center; padding:20px; color:#999;"><i class="fas fa-spinner fa-spin"></i> 加载中…</div>';
 
     try {
         const response = await fetch(`/api/paper/chat/session?paper_id=${currentChatPaperId}&session_id=${sessionId}`);
@@ -15567,7 +15567,7 @@ async function switchSession(sessionId) {
             await createNewSession(true);
         }
     } catch (e) {
-        chatBody.innerHTML = '<div style="text-align:center; color:red;">Failed to load chat history.</div>';
+        chatBody.innerHTML = '<div style="text-align:center; color:red;">聊天记录加载失败。</div>';
         console.error(e);
     }
 }

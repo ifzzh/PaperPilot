@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Interpretation - PaperPilot</title>
+    <title>AI 解析 - PaperPilot</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/website_logo.svg') }}">
     <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='images/website_logo.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -463,26 +463,26 @@
 <body data-paper-id="{{ paper_id|e }}">
     <div class="header">
         <div class="header-content">
-            <button id="close-btn" class="btn" title="Close current tab (Ctrl+W / Esc)">
-                <i class="fas fa-arrow-left"></i> Back
+            <button id="close-btn" class="btn" title="关闭当前标签页（Ctrl+W / Esc）">
+                <i class="fas fa-arrow-left"></i> 返回
             </button>
-            <div class="title">AI Analysis Reader</div>
+            <div class="title">AI 解析阅读器</div>
             <div class="dropdown">
                 <button class="btn">
-                    <i class="fas fa-download"></i> Export
+                    <i class="fas fa-download"></i> 导出
                 </button>
                 <div class="dropdown-content">
                     <button data-action="export-markdown">
-                        <i class="fab fa-markdown"></i> Export Markdown
+                        <i class="fab fa-markdown"></i> 导出 Markdown
                     </button>
                     <button data-action="export-pdf">
-                        <i class="fas fa-file-pdf"></i> Export PDF
+                        <i class="fas fa-file-pdf"></i> 导出 PDF
                     </button>
                 </div>
             </div>
         </div>
     </div>
-    <div id="loading" class="loading">Loading AI analysis...</div>
+    <div id="loading" class="loading">正在加载 AI 解析…</div>
     <div id="container" class="container" style="display:none;">
         <div class="content">
             <div id="md" class="markdown-viewer"></div>

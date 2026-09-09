@@ -34,3 +34,27 @@ def test_login_and_onboarding_ship_with_chinese_copy():
     assert "Configure AI features" not in source
     assert "欢迎使用 PaperPilot 智能论文阅读" in source
     assert "选择 AI 输出语言" in source
+
+
+def test_task_actions_and_viewers_do_not_ship_legacy_english_copy():
+    sources = "\n".join(
+        (ROOT / path).read_text(encoding="utf-8")
+        for path in (
+            "static/js/app.js",
+            "static/js/pdf_viewer.js",
+            "templates/analysis_viewer.html",
+            "templates/pdf_viewer.html",
+        )
+    )
+    for legacy in (
+        'title="View logs"',
+        'title="Cancel translation"',
+        "> Chinese version</button>",
+        ">Reload<",
+        "showMessage('Translation task not found'",
+        "Loading AI analysis",
+        "Loading PDF viewer",
+    ):
+        assert legacy not in sources
+    for expected in ("查看日志", "取消翻译", "翻译任务不存在", "PDF 阅读器"):
+        assert expected in sources

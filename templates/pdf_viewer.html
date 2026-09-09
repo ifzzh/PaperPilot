@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ paper_title or 'PDF Viewer' }} - PaperPilot</title>
+    <title>{{ paper_title or 'PDF 阅读器' }} - PaperPilot</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/website_logo.svg') }}">
     <link rel="alternate icon" type="image/png" href="{{ url_for('static', filename='images/website_logo.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}?v=6.0.0">
@@ -103,14 +103,14 @@
     <script src="{{ url_for('static', filename='js/api_auth_patch.js') }}?v=0.10.2"></script>
     <div class="header">
         <div>
-            <button id="back-btn" class="btn btn-secondary" title="Close current tab (Ctrl+W)">
-                <i class="fas fa-times"></i> Close
+            <button id="back-btn" class="btn btn-secondary" title="关闭当前标签页（Ctrl+W）">
+                <i class="fas fa-times"></i> 关闭
             </button>
         </div>
-        <h3 id="pdf-title">{{ paper_title or 'PDF Viewer' }}</h3>
+        <h3 id="pdf-title">{{ paper_title or 'PDF 阅读器' }}</h3>
         <div>
             <a href="/api/paper/{{ paper_id }}/file" class="btn btn-secondary" download>
-                <i class="fas fa-download"></i> Download
+                <i class="fas fa-download"></i> 下载
             </a>
         </div>
     </div>
@@ -118,13 +118,13 @@
     <div class="pdf-container">
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <p>Loading PDF viewer...</p>
+            <p>正在加载 PDF 阅读器…</p>
         </div>
         <iframe 
             id="pdf-iframe" 
             style="display: none;"
             src=""
-            title="PDF Viewer">
+            title="PDF 阅读器">
         </iframe>
     </div>
     

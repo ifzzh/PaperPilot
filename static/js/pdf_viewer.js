@@ -7,7 +7,7 @@
                 const response = await fetch(`/api/paper/${encodeURIComponent(paperId)}`);
                 if (response.ok) {
                     const paper = await response.json();
-                    const resolvedTitle = paper.title || paper.filename || 'PDF Viewer';
+                    const resolvedTitle = paper.title || paper.filename || 'PDF 阅读器';
                     const titleEl = document.getElementById('pdf-title');
                     if (titleEl) {
                         titleEl.textContent = resolvedTitle;
