@@ -38,27 +38,34 @@ class TestBrowserSecurityHeaders(unittest.TestCase):
                     response.headers["Permissions-Policy"],
                     "camera=(), microphone=(), geolocation=()",
                 )
-                self.assertIn("Content-Security-Policy-Report-Only", response.headers)
-                self.assertNotIn("Content-Security-Policy", response.headers)
+                self.assertIn("Content-Security-Policy", response.headers)
+                self.assertNotIn("Content-Security-Policy-Report-Only", response.headers)
 
-    def test_report_only_policy_documents_current_runtime_sources(self):
+    def test_enforced_policy_allows_only_self_hosted_scripts(self):
         response = self.client.get("/")
-        policy = response.headers["Content-Security-Policy-Report-Only"]
+        policy = response.headers["Content-Security-Policy"]
 
         for directive in (
             "default-src 'self'",
             "object-src 'none'",
             "frame-ancestors 'self'",
-            "script-src 'self' 'unsafe-inline'",
+            "script-src 'self'",
+            "script-src-attr 'none'",
+            "style-src 'self' 'unsafe-inline'",
             "worker-src 'self' blob:",
-            "https://cdnjs.cloudflare.com",
-            "https://cdn.jsdelivr.net",
-            "https://unpkg.com",
-            "https://cdn.bootcdn.net",
             "connect-src 'self'",
         ):
             self.assertIn(directive, policy)
-        self.assertNotIn("supabase", policy.lower())
+        for forbidden in (
+            "unsafe-eval",
+            "script-src 'self' 'unsafe-inline'",
+            "cdnjs.cloudflare.com",
+            "cdn.jsdelivr.net",
+            "unpkg.com",
+            "cdn.bootcdn.net",
+            "supabase",
+        ):
+            self.assertNotIn(forbidden, policy.lower())
 
 
 if __name__ == "__main__":
