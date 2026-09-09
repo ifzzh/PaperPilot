@@ -41,7 +41,7 @@ def test_sanitizer_is_self_hosted_and_loaded_before_application_code():
 
 def test_markdown_and_plain_text_sinks_use_security_layer():
     app_source = (ROOT / "static" / "js" / "app.js").read_text(encoding="utf-8")
-    viewer_source = (ROOT / "templates" / "analysis_viewer.html").read_text(encoding="utf-8")
+    viewer_source = (ROOT / "static" / "js" / "analysis_viewer.js").read_text(encoding="utf-8")
 
     assert "sanitizeMarkdownHtml(marked.parse(markdown)" in app_source
     assert "renderChatMarkdown(fullResponse) +" not in app_source

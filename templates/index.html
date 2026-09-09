@@ -10,28 +10,15 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.1">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}?v=1.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-purple.css') }}?v=1.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <!-- Marked.js (CDN) for rendering Markdown -->
-    <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/marked@15.0.12/marked.min.js';"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}?v=6.0.0">
+    <script src="{{ url_for('static', filename='vendor/marked/marked.min.js') }}?v=15.0.12"></script>
     <script src="{{ url_for('static', filename='vendor/dompurify/purify.min.js') }}?v=3.4.14"></script>
     <script src="{{ url_for('static', filename='js/content_security.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/i18n_zh_cn.js') }}?v=0.10.2"></script>
-    <!-- Highlight.js (CDN) for code highlighting -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script>
-        window.MathJax = {
-            tex: {
-                inlineMath: [["$", "$"], ["\\(", "\\)"]],
-                displayMath: [["$$", "$$"], ["\\[", "\\]"]]
-            },
-            options: {
-                skipHtmlTags: ["script", "noscript", "style", "textarea", "pre"],
-                processHtmlClass: "markdown-viewer"
-            }
-        };
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-chtml.min.js';"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/highlight/styles/atom-one-dark.min.css') }}?v=11.9.0">
+    <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}?v=11.9.0"></script>
+    <script src="{{ url_for('static', filename='js/mathjax_config.js') }}?v=0.11.0"></script>
+    <script src="{{ url_for('static', filename='vendor/mathjax/tex-chtml.js') }}?v=3.2.2"></script>
 </head>
 
 <body>
@@ -1716,87 +1703,6 @@
             <div class="auth-footer">无需邮箱；新用户须使用管理员签发的一次性邀请码。</div>
         </div>
     </div>
-
-    <!-- CDN Fallback Mechanism -->
-    <script>
-        (function () {
-            'use strict';
-
-            // CDN fallback configuration
-            const cdnFallbacks = {
-                marked: [
-                    'https://cdn.jsdelivr.net/npm/marked/marked.min.js',
-                    'https://cdn.bootcdn.net/ajax/libs/marked/9.1.6/marked.min.js',
-                    'https://unpkg.com/marked/marked.min.js'
-                ],
-                hljs: [
-                    'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js',
-                    'https://cdn.bootcdn.net/ajax/libs/highlight.js/11.9.0/highlight.min.js'
-                ]
-            };
-
-            let fallbackAttempts = { marked: 0, hljs: 0 };
-
-            // Load script with fallback
-            function loadScriptWithFallback(name, urls, index = 0) {
-                if (index >= urls.length) {
-                    console.error(`❌ All CDN sources failed for ${name}`);
-                    if (name === 'marked') {
-                        const msg = '⚠️ Markdown rendering library failed to load.\n' +
-                            'AI analysis may not display properly.\n\n' +
-                            'Solutions:\n' +
-                            '1. Check network connection\n' +
-                            '2. Disable ad blockers\n' +
-                            '3. Try a different browser\n' +
-                            '4. Contact administrator';
-                        console.error(msg);
-                    }
-                    return;
-                }
-
-                const script = document.createElement('script');
-                script.src = urls[index];
-                script.async = false;
-
-                script.onload = function () {
-                    console.log(`✅ ${name} loaded from: ${urls[index]}`);
-                };
-
-                script.onerror = function () {
-                    console.warn(`⚠️ Failed to load ${name} from: ${urls[index]}`);
-                    loadScriptWithFallback(name, urls, index + 1);
-                };
-
-                document.head.appendChild(script);
-            }
-
-            // Check and load missing libraries after a short delay
-            setTimeout(function () {
-                // Check Marked.js
-                if (typeof marked === 'undefined') {
-                    console.warn('Marked.js not loaded, trying fallback sources...');
-                    loadScriptWithFallback('marked', cdnFallbacks.marked, 0);
-                } else {
-                    console.log('✅ Marked.js already loaded');
-                }
-
-                // Check Highlight.js
-                if (typeof hljs === 'undefined') {
-                    console.warn('Highlight.js not loaded, trying fallback sources...');
-                    loadScriptWithFallback('hljs', cdnFallbacks.hljs, 0);
-                } else {
-                    console.log('✅ Highlight.js already loaded');
-                }
-
-                // Check MathJax
-                if (typeof MathJax === 'undefined') {
-                    console.warn('⚠️ MathJax not loaded - mathematical formulas may not render');
-                } else {
-                    console.log('✅ MathJax already loaded');
-                }
-            }, 1000);
-        })();
-    </script>
 
     <!-- Main App Logic -->
     <!-- app.js will be dynamically loaded by auth.js after authentication -->
