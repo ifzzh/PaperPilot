@@ -48,6 +48,7 @@ from paperpilot.database.connection import init_db as register_db_teardown
 from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.document_worker.client import DocumentWorkerClient
 from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
+from paperpilot.tools.basic_tools.daily_arxiv_assets import DailyAssetCoordinator
 from paperpilot.tools.agent_tools.translation_worker_client import TranslationWorkerClient
 from paperpilot.database.db_manager import init_db_schema
 from paperpilot.routes.agent_routes.agent_summary_route import (
@@ -576,6 +577,7 @@ _application_lock = threading.RLock()
 _application_initialized = False
 _application_papers_dir: Optional[str] = None
 _daily_arxiv_manager = None
+_daily_asset_coordinator = None
 _shutdown_registered = False
 _analysis_executor = BoundedExecutor(
     max_workers=1, max_queue=2, thread_name_prefix="analysis"
@@ -853,7 +855,7 @@ def admin_delete_ai_provider(provider_id: str):
 
 def register_routes():
     """Register all routes (must be called after init_app)"""
-    global _daily_arxiv_manager
+    global _daily_arxiv_manager, _daily_asset_coordinator
     register_category_routes(
         app,
         get_categories=get_categories,
@@ -923,6 +925,23 @@ def register_routes():
 
     daily_arxiv_manager.set_user_settings_callback(get_user_settings)
 
+    _daily_asset_coordinator = DailyAssetCoordinator(
+        DB_PATH,
+        lambda _owner_id, arxiv_id, stage: daily_arxiv_manager.process_paper_asset(
+            arxiv_id, stage
+        ),
+    )
+    daily_arxiv_manager.set_asset_enqueue_callback(
+        lambda arxiv_id: _daily_asset_coordinator.enqueue(
+            current_user_id(), arxiv_id
+        )
+    )
+    daily_arxiv_manager.set_asset_queue_position_callback(
+        lambda arxiv_id: _daily_asset_coordinator.queue_position(
+            current_user_id(), arxiv_id
+        )
+    )
+
     def submit_daily_arxiv(function, *args, **kwargs):
         try:
             return _daily_arxiv_executor.submit(function, *args, **kwargs)
@@ -976,6 +995,7 @@ def register_routes():
         document_client=DocumentWorkerClient(),
         task_executor=_daily_arxiv_executor,
         auxiliary_executor=_daily_aux_executor,
+        asset_coordinator=_daily_asset_coordinator,
     )
 
     register_settings_routes(
@@ -1254,6 +1274,8 @@ def shutdown_application() -> None:
         _daily_arxiv_manager, "_scheduler_running", False
     ):
         _daily_arxiv_manager.stop_scheduler()
+    if _daily_asset_coordinator is not None:
+        _daily_asset_coordinator.shutdown(timeout=5)
     with analysis_tasks_lock:
         for task in analysis_tasks.values():
             if task.get("status") not in {"queued", "running"}:

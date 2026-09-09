@@ -18,6 +18,7 @@ from paperpilot.core.base_paper import Paper
 from paperpilot.core.paper_store import paper_store
 from paperpilot.database.dao.user_data_dao import DailyArxivReadDAO, ReadingListDAO
 from paperpilot.database.dao.paper_dao import PaperDAO
+from paperpilot.database.dao.daily_arxiv_dao import DailyArxivDAO
 from paperpilot.database.dao.settings_dao import SettingsDAO
 from paperpilot.document_worker.client import DocumentWorkerClient
 from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
@@ -36,6 +37,7 @@ from paperpilot.tools.basic_tools.daily_arxiv import (
     normalize_daily_arxiv_settings,
     validate_arxiv_category_ratios,
 )
+from paperpilot.tools.basic_tools.daily_arxiv_assets import DailyAssetCoordinator
 from paperpilot.tools.basic_tools.daily_arxiv_quality import get_default_quality_config
 from paperpilot.tools.basic_tools.daily_arxiv_quality import normalize_quality_config
 from paperpilot.tools.basic_tools.upload_paper import fetch_bibtex_from_dblp
@@ -67,6 +69,7 @@ def register_daily_arxiv_routes(
     document_client: DocumentWorkerClient | None = None,
     task_executor: BoundedExecutor | None = None,
     auxiliary_executor: BoundedExecutor | None = None,
+    asset_coordinator: DailyAssetCoordinator | None = None,
 ) -> None:
     """
     register Daily arXiv Related routes
@@ -528,13 +531,22 @@ def register_daily_arxiv_routes(
     @app.route("/api/daily-arxiv/papers/<path:arxiv_id>/retry", methods=["POST"])
     def api_retry_daily_arxiv_asset(arxiv_id: str):
         """Queue a retry for one failed PDF without reranking the whole day."""
-        if not PaperDAO.get_paper_by_arxiv_id(arxiv_id):
+        paper = PaperDAO.get_paper_by_arxiv_id(arxiv_id)
+        if not paper:
             return jsonify({"success": False, "error": "paper_not_found"}), 404
-        try:
-            task_executor.submit(manager.retry_paper_asset, arxiv_id)
-        except QueueFull:
-            return queue_full_response()
-        return jsonify({"success": True, "status": "queued"}), 202
+        candidate = DailyArxivDAO.get_candidate(arxiv_id)
+        if candidate and candidate.get("artifact_status") == "ready":
+            return jsonify({"success": False, "error": "asset_already_ready"}), 409
+        if asset_coordinator is None:
+            return jsonify({"success": False, "error": "document_worker_unavailable"}), 503
+        queued = asset_coordinator.enqueue(current_user_id(), arxiv_id, force=True)
+        if queued is None:
+            return jsonify({"success": False, "error": "paper_not_found"}), 404
+        return jsonify({
+            "success": True,
+            "status": queued.get("artifact_status"),
+            "queue_position": asset_coordinator.queue_position(current_user_id(), arxiv_id),
+        }), 202
 
     # ========================================
     # Fetch All Categories
