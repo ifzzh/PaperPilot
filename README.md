@@ -157,7 +157,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.10.5 Web and Translation Worker with the compatible v0.10.4 Document Worker. Component versions are tracked in `docker/release-components.json`; unchanged services keep their previously verified digest instead of being rebuilt for every PaperPilot release. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
+   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.11.0 Web with the compatible v0.10.5 Translation Worker and v0.10.4 Document Worker. Component versions are tracked in `docker/release-components.json`; unchanged services keep their previously verified digest instead of being rebuilt for every PaperPilot release. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -194,6 +194,8 @@ The password prompts are hidden; never put a password in shell history. Existing
 v0.10.0 adds a persistent per-user translation task center with structured progress, pause/resume/retry and seven-day task-local cache recovery. It also defaults the UI to Simplified Chinese and `YYYY-MM-DD`, provides self-service password changes with an 8-character minimum, and configures personalized Daily arXiv topics with a daily maximum of 24 papers retained for seven arXiv release dates.
 
 v0.10.5 fixes Translation Worker subprocess imports when BabelDOC runs from a task working directory and lets paper cards open the latest persisted task log after completion or failure. Existing failed tasks remain visible and require an explicit manual retry. Releases now publish only changed component images while scanning and recording the complete compatible deployment matrix.
+
+v0.11.0 self-hosts Marked, Highlight.js, MathJax, Font Awesome and DOMPurify, removes dormant browser PDF parsing, and enforces a blocking Content Security Policy with `script-src 'self'` and `script-src-attr 'none'`. No database or paper migration is required. Only the Web image changes; keep the pinned v0.10.5 Translation Worker and v0.10.4 Document Worker digests listed in `docker/release-components.json`. Inline styles remain temporarily allowed for visual compatibility and are scheduled for v0.11.1.
 
 For an installation already on v0.10.2, stop all services, back up SQLite and the paper directory, then run `python -m paperpilot.migrations.v0103_daily_assets --db /path/to/paperpilot.db --dry-run` followed by `--apply --backup-dir /path/to/backups`, as documented in [the v0.10.4 release notes](docs/releases/v0.10.4.md). The migration adds persistent Daily arXiv asset leases and requeues unfinished candidates without rerunning LLM enrichment or moving PDFs. Deploy all three v0.10.4 image digests together. Rollback restores the migration manifest backup and all three v0.10.2 image digests.
 

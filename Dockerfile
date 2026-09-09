@@ -125,7 +125,7 @@ CMD ["python", "-m", "paperpilot.document_worker"]
 
 FROM runtime-base AS runtime
 
-ARG APP_VERSION=0.10.5
+ARG APP_VERSION=0.11.0
 ARG VCS_REF=unknown
 ARG ARXIV_PROXY=
 ARG ARXIV_API_PROXY=
