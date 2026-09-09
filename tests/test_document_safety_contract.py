@@ -151,7 +151,7 @@ class DocumentSafetyContractTests(unittest.TestCase):
         document.close()
         run(job, "pdf_inspect")
         output = work / "output"
-        self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o2750)
+        self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o2770)
         self.assertEqual(
             stat.S_IMODE((output / "result.json").stat().st_mode), 0o640
         )

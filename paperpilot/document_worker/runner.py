@@ -44,12 +44,12 @@ def run(job: Path, kind: str) -> None:
     # Web and Worker deliberately use distinct UIDs with the shared GID 1001.
     # Grant only that group read/traverse access after every output is final.
     for current_root, directories, files in os.walk(output, followlinks=False):
-        os.chmod(current_root, 0o2750)
+        os.chmod(current_root, 0o2770)
         for name in directories:
             path = Path(current_root) / name
             if path.is_symlink() or not path.is_dir():
                 raise RuntimeError("unsafe_worker_output")
-            os.chmod(path, 0o2750)
+            os.chmod(path, 0o2770)
         for name in files:
             path = Path(current_root) / name
             mode = os.lstat(path).st_mode
