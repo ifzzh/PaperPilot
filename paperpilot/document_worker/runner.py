@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import sys
 from pathlib import Path
 
@@ -22,12 +23,10 @@ def run(job: Path, kind: str) -> None:
         raise RuntimeError("output_exists")
     if kind == "pdf_inspect":
         inspect_pdf(work / "input.pdf", output, limits)
-        return
-    if kind in {"metadata_zip", "mineru_zip"}:
+    elif kind in {"metadata_zip", "mineru_zip"}:
         manifest = preflight_archive(work / "input.zip", kind, limits)
         extract_validated_archive(work / "input.zip", output, manifest, limits)
-        return
-    if kind == "zotero_rdf":
+    elif kind == "zotero_rdf":
         data = (work / "input.rdf").read_bytes()
         count = validate_zotero_rdf(data, limits)
         output.mkdir(mode=0o700)
@@ -39,9 +38,24 @@ def run(job: Path, kind: str) -> None:
         result = {"papers": [paper.to_dict() for paper in papers]}
         target = output / "result.json"
         target.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
-        os.chmod(target, 0o600)
-        return
-    raise RuntimeError("unsupported_document_kind")
+    else:
+        raise RuntimeError("unsupported_document_kind")
+
+    # Web and Worker deliberately use distinct UIDs with the shared GID 1001.
+    # Grant only that group read/traverse access after every output is final.
+    for current_root, directories, files in os.walk(output, followlinks=False):
+        os.chmod(current_root, 0o2750)
+        for name in directories:
+            path = Path(current_root) / name
+            if path.is_symlink() or not path.is_dir():
+                raise RuntimeError("unsafe_worker_output")
+            os.chmod(path, 0o2750)
+        for name in files:
+            path = Path(current_root) / name
+            mode = os.lstat(path).st_mode
+            if not stat.S_ISREG(mode):
+                raise RuntimeError("unsafe_worker_output")
+            os.chmod(path, 0o640)
 
 
 def main() -> None:

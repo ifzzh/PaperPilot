@@ -15,6 +15,7 @@ from paperpilot.document_worker.safety import (
     preflight_archive,
     validate_zotero_rdf,
 )
+from paperpilot.document_worker.runner import run
 
 
 class DocumentSafetyContractTests(unittest.TestCase):
@@ -136,6 +137,27 @@ class DocumentSafetyContractTests(unittest.TestCase):
         link.symlink_to(valid)
         with self.assertRaisesRegex(DocumentLimitError, "unsafe_input"):
             inspect_pdf(link, self.root / "link-out", self.limits)
+
+    def test_worker_outputs_are_readable_by_the_shared_web_group(self):
+        import fitz
+
+        job = self.root / "job"
+        work = job / "work"
+        work.mkdir(parents=True)
+        pdf = work / "input.pdf"
+        document = fitz.open()
+        document.new_page().insert_text((72, 72), "Title")
+        document.save(pdf)
+        document.close()
+        run(job, "pdf_inspect")
+        output = work / "output"
+        self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o2750)
+        self.assertEqual(
+            stat.S_IMODE((output / "result.json").stat().st_mode), 0o640
+        )
+        self.assertEqual(
+            stat.S_IMODE((output / "thumbnail.jpg").stat().st_mode), 0o640
+        )
 
     def test_rdf_rejects_entities_and_record_limit(self):
         with self.assertRaisesRegex(DocumentLimitError, "rdf_unsafe_xml"):
