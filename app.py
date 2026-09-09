@@ -27,6 +27,7 @@ from paperpilot.local_auth import LocalAuthError, LocalAuthService
 from paperpilot.security.identity import (
     DEVELOPMENT_USER_ID,
     Identity,
+    current_user_id,
     set_background_identity,
 )
 from paperpilot.security.paths import UserScopedPath, paper_directory
