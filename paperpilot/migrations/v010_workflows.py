@@ -136,6 +136,8 @@ def apply(db_path: Path, settings_path: Path, backup_dir: Path) -> Path:
                 topic_id = matches[0].get("id") if matches and isinstance(matches[0], dict) else None
                 connection.execute(
                     '''INSERT OR REPLACE INTO daily_arxiv_candidates
+                       (owner_id,arxiv_id,release_date,topic_id,relevance_score,
+                        selection_reason,artifact_status,retry_count,next_retry_at,updated_at)
                        VALUES (?,?,?,?,?,?,?,?,?,?)''',
                     (row["owner_id"], row["arxiv_id"], row["daily_date"], topic_id,
                      float(metadata.get("relevance_score", 0) or 0),
