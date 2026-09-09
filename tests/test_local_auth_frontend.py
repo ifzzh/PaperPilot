@@ -56,3 +56,12 @@ def test_translation_task_center_uses_durable_api_and_readable_logs():
     assert "new EventSource('/api/translations/events')" in app
     assert ".translation-raw-log" in styles
     assert "white-space: pre;" in styles
+
+
+def test_paper_log_button_falls_back_to_latest_persisted_terminal_task():
+    app = (ROOT / "static" / "js" / "app.js").read_text(encoding="utf-8")
+
+    assert "latestTranslationTaskByPaper" in app
+    assert "latestTranslationTaskForPaper(paperId)" in app
+    assert "status?.taskId || latestTask?.job_id" in app
+    assert "babeldoc_failed: 'BabelDOC 翻译失败，请查看日志后重试'" in app

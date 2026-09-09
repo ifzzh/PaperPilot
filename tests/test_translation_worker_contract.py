@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import io
+import os
 import signal
 import subprocess
 import tempfile
@@ -226,6 +228,40 @@ class WorkerContractTests(unittest.TestCase):
             killpg.call_args_list,
             [call(1234, signal.SIGTERM), call(1234, signal.SIGKILL)],
         )
+
+    def test_babeldoc_runner_is_importable_from_job_working_directory(self):
+        job_id, work = self._job()
+        service = TranslationWorkerService(self.root)
+        process = Mock()
+        process.stdin = io.StringIO()
+        process.stdout = io.StringIO("")
+        process.poll.return_value = 0
+        process.returncode = 0
+        state = {"cancel": threading.Event()}
+
+        with patch("paperpilot.translation_worker.service.subprocess.Popen", return_value=process) as popen:
+            service._execute_babeldoc(job_id, "fake-model", "https://fake.invalid/v1", "secret", state)
+
+        kwargs = popen.call_args.kwargs
+        self.assertEqual(Path(kwargs["cwd"]), work)
+        application_root = str(Path(__file__).resolve().parents[1])
+        self.assertIn(application_root, kwargs["env"]["PYTHONPATH"].split(os.pathsep))
+
+    def test_babeldoc_nonzero_exit_uses_stable_error_code(self):
+        job_id, _ = self._job()
+        service = TranslationWorkerService(self.root)
+        process = Mock()
+        process.stdin = io.StringIO()
+        process.stdout = io.StringIO("")
+        process.poll.return_value = 1
+        process.returncode = 23
+        state = {"cancel": threading.Event()}
+
+        with patch("paperpilot.translation_worker.service.subprocess.Popen", return_value=process):
+            with self.assertRaisesRegex(RuntimeError, "^babeldoc_failed$"):
+                service._execute_babeldoc(
+                    job_id, "fake-model", "https://fake.invalid/v1", "secret", state
+                )
 
 
 if __name__ == "__main__":
