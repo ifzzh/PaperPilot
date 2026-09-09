@@ -61,7 +61,7 @@
                                 <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #dc3545; margin-bottom: 15px;"></i>
                                 <p style="color: #dc3545;">PDF load timeout</p>
                                 <p style="color: #999; font-size: 12px; margin-top: 10px;">Please check if the PDF file exists, or try downloading directly.</p>
-                                <button class="btn" onclick="location.reload()" style="margin-top: 15px;">Reload</button>
+                                <button class="btn" data-action="reload-page" style="margin-top: 15px;">重新加载</button>
                                 <a href="${pdfUrl}" class="btn btn-secondary" download style="margin-top: 10px; margin-left: 10px;">Download PDF</a>
                             `;
                         }
@@ -73,7 +73,7 @@
                         <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #dc3545; margin-bottom: 15px;"></i>
                         <p style="color: #dc3545;">PDF load failed</p>
                         <p style="color: #999; font-size: 12px; margin-top: 10px;">Error: ${error.message}</p>
-                        <button class="btn" onclick="location.reload()" style="margin-top: 15px;">Reload</button>
+                        <button class="btn" data-action="reload-page" style="margin-top: 15px;">重新加载</button>
                         <a href="${pdfUrl}" class="btn btn-secondary" download style="margin-top: 10px; margin-left: 10px;">Download PDF</a>
                     `;
                 });
@@ -84,7 +84,7 @@
                 loading.innerHTML = `
                     <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #dc3545; margin-bottom: 15px;"></i>
                     <p style="color: #dc3545;">PDF load failed</p>
-                    <button class="btn" onclick="location.reload()">Reload</button>
+                    <button class="btn" data-action="reload-page">重新加载</button>
                     <a href="${pdfUrl}" class="btn btn-secondary" download style="margin-top: 10px; margin-left: 10px;">Download PDF</a>
                 `;
             };

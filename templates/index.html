@@ -15,6 +15,7 @@
     <script src="{{ url_for('static', filename='vendor/dompurify/purify.min.js') }}?v=3.4.14"></script>
     <script src="{{ url_for('static', filename='js/content_security.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/i18n_zh_cn.js') }}?v=0.10.2"></script>
+    <script src="{{ url_for('static', filename='js/page_actions.js') }}?v=0.11.0"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/highlight/styles/atom-one-dark.min.css') }}?v=11.9.0">
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}?v=11.9.0"></script>
     <script src="{{ url_for('static', filename='js/mathjax_config.js') }}?v=0.11.0"></script>
@@ -28,7 +29,7 @@
             <div class="navbar-brand" id="navbar-brand" style="cursor: pointer;" title="Back to Home">
                 <img src="{{ url_for('static', filename='images/hompage_logo.svg') }}" alt="PaperPilot" class="navbar-logo"
                     id="navbar-logo"
-                    onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+                    data-image-fallback="inline-block">
                 <span class="navbar-brand-text" id="navbar-brand-text" style="display:none;"><i class="fas fa-book"></i>
                     PaperPilot</span>
             </div>
@@ -266,7 +267,7 @@
             <h3>Please configure arXiv categories first</h3>
             <p>Click the "Settings" button in the top right to add arXiv categories you care about, e.g., cs.CV, cs.AI
             </p>
-            <button class="btn btn-primary" onclick="showDailyArxivSettingsModal()">
+            <button class="btn btn-primary" data-action="show-daily-settings">
                 <i class="fas fa-plus"></i> Add category
             </button>
         </div>
@@ -285,7 +286,7 @@
                     </button>
                 </div>
                 <div class="filter-section-box">
-                    <div class="filter-section-header" onclick="toggleFilterSection(this)">
+                    <div class="filter-section-header" data-action="toggle-filter-section">
                         <div class="filter-section-title">
                             <i class="fas fa-chevron-down filter-toggle-icon"></i>
                             <i class="fas fa-building"></i>
@@ -297,7 +298,7 @@
                     </div>
                 </div>
                 <div class="filter-section-box">
-                    <div class="filter-section-header" onclick="toggleFilterSection(this)">
+                    <div class="filter-section-header" data-action="toggle-filter-section">
                         <div class="filter-section-title">
                             <i class="fas fa-chevron-down filter-toggle-icon"></i>
                             <i class="fas fa-globe"></i>
@@ -309,7 +310,7 @@
                     </div>
                 </div>
                 <div class="filter-section-box">
-                    <div class="filter-section-header" onclick="toggleFilterSection(this)">
+                    <div class="filter-section-header" data-action="toggle-filter-section">
                         <div class="filter-section-title">
                             <i class="fas fa-chevron-down filter-toggle-icon"></i>
                             <i class="fas fa-key"></i>
@@ -853,20 +854,20 @@
                             <div class="daily-arxiv-add-category">
                                 <input type="text" id="daily-arxiv-new-category"
                                     placeholder="Enter category name, e.g., cs.CV" class="setting-input" />
-                                <button class="btn btn-secondary" onclick="addDailyArxivCategory()">
+                                <button class="btn btn-secondary" data-action="add-daily-category">
                                     <i class="fas fa-plus"></i> Add
                                 </button>
                             </div>
                         </div>
                         <div class="arxiv-category-suggestions">
                             <span class="suggestion-label">Common categories:</span>
-                            <button class="suggestion-tag" onclick="addDailyArxivCategoryQuick('cs.CV')">cs.CV</button>
-                            <button class="suggestion-tag" onclick="addDailyArxivCategoryQuick('cs.AI')">cs.AI</button>
-                            <button class="suggestion-tag" onclick="addDailyArxivCategoryQuick('cs.LG')">cs.LG</button>
-                            <button class="suggestion-tag" onclick="addDailyArxivCategoryQuick('cs.CL')">cs.CL</button>
-                            <button class="suggestion-tag" onclick="addDailyArxivCategoryQuick('cs.RO')">cs.RO</button>
+                            <button class="suggestion-tag" data-action="add-daily-category-quick" data-category="cs.CV">cs.CV</button>
+                            <button class="suggestion-tag" data-action="add-daily-category-quick" data-category="cs.AI">cs.AI</button>
+                            <button class="suggestion-tag" data-action="add-daily-category-quick" data-category="cs.LG">cs.LG</button>
+                            <button class="suggestion-tag" data-action="add-daily-category-quick" data-category="cs.CL">cs.CL</button>
+                            <button class="suggestion-tag" data-action="add-daily-category-quick" data-category="cs.RO">cs.RO</button>
                             <button class="suggestion-tag"
-                                onclick="addDailyArxivCategoryQuick('stat.ML')">stat.ML</button>
+                                data-action="add-daily-category-quick" data-category="stat.ML">stat.ML</button>
                         </div>
                     </div>
                 </div>
@@ -995,7 +996,7 @@
                             <div class="custom-institution-list" id="custom-institution-list">
                                 <!-- Custom institution tags will be rendered here -->
                             </div>
-                            <button class="btn btn-secondary" onclick="showAddInstitutionModal()"
+                            <button class="btn btn-secondary" data-action="show-add-institution"
                                 style="margin-top: 12px;">
                                 <i class="fas fa-plus"></i> Add alias
                             </button>
@@ -1057,7 +1058,7 @@
                                     <i class="fas fa-cloud-upload-alt"></i>
                                     <p>Drag Zotero RDF file here</p>
                                     <span>or <a href="#"
-                                            onclick="document.getElementById('rdf-file-input').click(); return false;">click
+                                            data-action="choose-rdf-file">选择
                                             to choose a file</a></span>
                                     <small>Export from Zotero: File → Export Library → choose RDF format</small>
                                 </div>
@@ -1071,7 +1072,7 @@
                                     <i class="fas fa-spinner fa-spin" id="import-status-icon"></i>
                                     <span id="import-status-text">Parsing RDF file...</span>
                                     <!-- Cancel import button is hidden -->
-                                    <!-- <button class="btn btn-danger btn-sm" id="cancel-import-btn" onclick="cancelImport()" style="margin-left: 10px; display: none;">
+                                    <!-- <button class="btn btn-danger btn-sm" id="cancel-import-btn" data-action="cancel-import" style="margin-left: 10px; display: none;">
                                     <i class="fas fa-times"></i> Cancel import
                                 </button> -->
                                 </div>
@@ -1113,10 +1114,10 @@
                                         into the "Others" folder.</p>
                                 </div>
                                 <div class="import-result-actions">
-                                    <button class="btn btn-primary" onclick="resetImport()">
+                                    <button class="btn btn-primary" data-action="reset-import">
                                         <i class="fas fa-redo"></i> Import again
                                     </button>
-                                    <button class="btn btn-secondary" onclick="switchToOverview()">
+                                    <button class="btn btn-secondary" data-action="switch-import-overview">
                                         <i class="fas fa-arrow-left"></i> Back to Overview
                                     </button>
                                 </div>
@@ -1187,7 +1188,7 @@
                                     <i class="fas fa-cloud-upload-alt"></i>
                                     <p>Drag exported ZIP file here</p>
                                     <span>or <a href="#"
-                                            onclick="document.getElementById('export-file-input').click(); return false;">click
+                                            data-action="choose-export-file">选择
                                             to choose a file</a></span>
                                     <small>ZIP file generated by the Export feature</small>
                                 </div>
@@ -1510,14 +1511,14 @@
 
     <!-- Institution edit modal -->
     <div id="institution-modal" class="institution-modal" style="display: none;">
-        <div class="institution-modal-overlay" onclick="closeInstitutionModal()"></div>
+        <div class="institution-modal-overlay" data-action="close-institution-modal"></div>
         <div class="institution-modal-container">
             <div class="institution-modal-header">
                 <div class="institution-modal-title-group">
                     <i class="fas fa-university"></i>
                     <h3 id="institution-modal-title">Add institution mapping</h3>
                 </div>
-                <button class="institution-modal-close" onclick="closeInstitutionModal()">
+                <button class="institution-modal-close" data-action="close-institution-modal">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -1552,7 +1553,7 @@
                         <input type="text" id="modal-new-variant" class="institution-input"
                             placeholder="Type full institution name (e.g., Zhejiang University) and press Enter"
                             autocomplete="off" />
-                        <button class="institution-add-btn" onclick="addVariantInModal()">
+                        <button class="institution-add-btn" data-action="add-institution-variant">
                             <i class="fas fa-plus"></i>
                         </button>
                     </div>
@@ -1561,15 +1562,15 @@
 
             <div class="institution-modal-footer">
                 <button id="institution-modal-delete" class="institution-btn institution-btn-danger"
-                    onclick="deleteInstitutionInModal()" style="display: none;">
+                    data-action="delete-institution" style="display: none;">
                     <i class="fas fa-trash-alt"></i>
                     Delete institution
                 </button>
                 <div class="institution-modal-actions">
-                    <button class="institution-btn institution-btn-cancel" onclick="closeInstitutionModal()">
+                    <button class="institution-btn institution-btn-cancel" data-action="close-institution-modal">
                         Cancel
                     </button>
-                    <button class="institution-btn institution-btn-primary" onclick="saveInstitutionInModal()">
+                    <button class="institution-btn institution-btn-primary" data-action="save-institution">
                         <i class="fas fa-check"></i>
                         Save
                     </button>
@@ -1580,11 +1581,11 @@
 
     <!-- Onboarding modal -->
     <div id="onboarding-modal" class="onboarding-modal" style="display: none;">
-        <div class="onboarding-overlay" onclick="closeOnboardingModal()"></div>
+        <div class="onboarding-overlay" data-action="close-onboarding"></div>
         <div class="onboarding-card">
             <div class="onboarding-header">
                 <h2><i class="fas fa-graduation-cap"></i> 欢迎使用 PaperPilot</h2>
-                <button class="onboarding-close" onclick="closeOnboardingModal()">
+                <button class="onboarding-close" data-action="close-onboarding">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -1657,7 +1658,7 @@
                     <input type="checkbox" id="onboarding-dont-show">
                     <span>不再显示</span>
                 </label>
-                <button class="btn btn-primary" onclick="closeOnboardingModal()">
+                <button class="btn btn-primary" data-action="close-onboarding">
                     开始使用
                 </button>
             </div>
@@ -1669,7 +1670,7 @@
         <div class="login-card">
             <div class="login-header">
                 <img src="{{ url_for('static', filename='images/website_logo.svg') }}" alt="PaperPilot Logo"
-                    class="login-logo" onerror="this.style.display='none'">
+                    class="login-logo" data-image-fallback="hide">
                 <h2 id="auth-title">Log In</h2>
                 <p>欢迎使用 PaperPilot 智能论文阅读</p>
             </div>
@@ -1706,7 +1707,6 @@
 
     <!-- Main App Logic -->
     <!-- app.js will be dynamically loaded by auth.js after authentication -->
-    <!-- <script src="{{ url_for('static', filename='js/app.js') }}?v=1.1"></script> -->
 
     <script src="{{ url_for('static', filename='js/auth.js') }}?v=0.10.2"></script>
 </body>

@@ -15,6 +15,7 @@
     <script src="{{ url_for('static', filename='vendor/dompurify/purify.min.js') }}?v=3.4.14"></script>
     <script src="{{ url_for('static', filename='js/content_security.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/i18n_zh_cn.js') }}?v=0.10.2"></script>
+    <script src="{{ url_for('static', filename='js/page_actions.js') }}?v=0.11.0"></script>
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}?v=11.9.0"></script>
     <script src="{{ url_for('static', filename='js/api_auth_patch.js') }}?v=0.10.2"></script>
     <script src="{{ url_for('static', filename='js/mathjax_config.js') }}?v=0.11.0"></script>
@@ -471,10 +472,10 @@
                     <i class="fas fa-download"></i> Export
                 </button>
                 <div class="dropdown-content">
-                    <button onclick="exportMarkdown()">
+                    <button data-action="export-markdown">
                         <i class="fab fa-markdown"></i> Export Markdown
                     </button>
-                    <button onclick="exportPDF()">
+                    <button data-action="export-pdf">
                         <i class="fas fa-file-pdf"></i> Export PDF
                     </button>
                 </div>

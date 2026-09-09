@@ -1146,11 +1146,11 @@ function generatePaperItemHTML(paper, showCheckbox = false) {
             <div style="display: flex; flex-direction: column; width: 100%; gap: 4px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; line-height: 1;">
                     <div style="display: flex; align-items: center; gap: 4px;">
-                        <button class="paper-action-log" onclick="showTranslationLogs('${paper.id}', event)" title="View logs"><i class="fas fa-list"></i></button>
+                        <button class="paper-action-log" data-action="translation-logs" data-paper-id="${escapeHtml(paper.id)}" title="查看日志"><i class="fas fa-list"></i></button>
                         <span style="font-size: 11px; color: #007bff; font-weight: 500;">${Math.round(progress)}%</span>
                     </div>
-                    <button onclick="cancelTranslationFromStatus('${paper.id}', event)" title="Cancel translation" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
-                        <i class="fas fa-stop" style="font-size: 8px;"></i> Cancel
+                    <button data-action="cancel-translation-status" data-paper-id="${escapeHtml(paper.id)}" title="取消翻译" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
+                        <i class="fas fa-stop" style="font-size: 8px;"></i> 取消
                     </button>
                 </div>
                 <div class="progress-bar-container translation-progress-bar" style="height: 4px; background: #e9ecef; border-radius: 2px;">
@@ -1160,23 +1160,23 @@ function generatePaperItemHTML(paper, showCheckbox = false) {
         </div>`;
     } else if (tStatus && tStatus.status === 'queued') {
         const currentIndex = translationQueue.indexOf(paper.id) + 1;
-        const queueText = currentIndex > 0 ? `Queue ${currentIndex}` : 'Queueing';
+        const queueText = currentIndex > 0 ? `队列 ${currentIndex}` : '排队中';
         translateCol = `<div class="paper-col-action">
             <div style="display: flex; flex-direction: column; width: 100%; gap: 4px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; line-height: 1;">
                     <span style="font-size: 11px; color: #ffc107; display: flex; align-items: center; gap: 4px;">
                         <i class="fas fa-clock" style="font-size: 10px;"></i> ${queueText}
                     </span>
-                    <button onclick="cancelTranslationFromQueue('${paper.id}', event)" title="Cancel queue" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
-                        <i class="fas fa-times" style="font-size: 8px;"></i> Cancel
+                    <button data-action="cancel-translation-queue" data-paper-id="${escapeHtml(paper.id)}" title="取消排队" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
+                        <i class="fas fa-times" style="font-size: 8px;"></i> 取消
                     </button>
                 </div>
             </div>
         </div>`;
     } else if (paper.has_chinese_version) {
-        translateCol = `<div class="paper-col-action"><button class="paper-col-btn view chinese" onclick="openChineseVersion('${paper.id}', event)"><i class="fas fa-language"></i> Chinese version</button></div>`;
+        translateCol = `<div class="paper-col-action"><button class="paper-col-btn view chinese" data-action="open-chinese" data-paper-id="${escapeHtml(paper.id)}"><i class="fas fa-language"></i> 中文版</button></div>`;
     } else {
-        translateCol = `<div class="paper-col-action"><button class="paper-col-btn translate icon-only" onclick="requestTranslation('${paper.id}', event)" title="AI Translate"><i class="fas fa-language"></i></button></div>`;
+        translateCol = `<div class="paper-col-action"><button class="paper-col-btn translate icon-only" data-action="request-translation" data-paper-id="${escapeHtml(paper.id)}" title="AI 翻译"><i class="fas fa-language"></i></button></div>`;
     }
 
     // AIInterpret columns
@@ -1188,11 +1188,11 @@ function generatePaperItemHTML(paper, showCheckbox = false) {
             <div style="display: flex; flex-direction: column; width: 100%; gap: 4px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; line-height: 1;">
                     <div style="display: flex; align-items: center; gap: 4px;">
-                         <button class="paper-action-log" onclick="showAnalysisLogs('${paper.id}', event)" title="View logs"><i class="fas fa-list"></i></button>
+                         <button class="paper-action-log" data-action="analysis-logs" data-paper-id="${escapeHtml(paper.id)}" title="查看日志"><i class="fas fa-list"></i></button>
                         <span style="font-size: 11px; color: #6f42c1; font-weight: 500;">${Math.round(progress)}%</span>
                     </div>
-                    <button onclick="cancelAnalysis('${paper.id}', event)" title="Cancel interpretation" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
-                        <i class="fas fa-stop" style="font-size: 8px;"></i> Cancel
+                    <button data-action="cancel-analysis" data-paper-id="${escapeHtml(paper.id)}" title="取消解析" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
+                        <i class="fas fa-stop" style="font-size: 8px;"></i> 取消
                     </button>
                 </div>
                 <div class="progress-bar-container" style="height: 4px; background: #e9ecef; border-radius: 2px; width: 100%;">
@@ -1202,35 +1202,35 @@ function generatePaperItemHTML(paper, showCheckbox = false) {
         </div>`;
     } else if (aStatus && aStatus.status === 'queued') {
         const currentIndex = analysisQueue.indexOf(paper.id) + 1;
-        const queueText = currentIndex > 0 ? `Queue ${currentIndex}` : 'Queueing';
+        const queueText = currentIndex > 0 ? `队列 ${currentIndex}` : '排队中';
         analyzeCol = `<div class="paper-col-action">
             <div style="display: flex; flex-direction: column; width: 100%; gap: 4px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; line-height: 1;">
                     <span style="font-size: 11px; color: #ffc107; display: flex; align-items: center; gap: 4px;">
                         <i class="fas fa-clock" style="font-size: 10px;"></i> ${queueText}
                     </span>
-                    <button onclick="cancelAnalysis('${paper.id}', event)" title="Cancel queue" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
-                        <i class="fas fa-times" style="font-size: 8px;"></i> Cancel
+                    <button data-action="cancel-analysis" data-paper-id="${escapeHtml(paper.id)}" title="取消排队" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
+                        <i class="fas fa-times" style="font-size: 8px;"></i> 取消
                     </button>
                 </div>
             </div>
         </div>`;
     } else if (paper.has_analysis_result) {
-        analyzeCol = `<div class="paper-col-action"><button class="paper-col-btn view analysis" onclick="viewAnalysisResult('${paper.id}', event)"><i class="fas fa-brain"></i> AI Interpretation</button></div>`;
+        analyzeCol = `<div class="paper-col-action"><button class="paper-col-btn view analysis" data-action="view-analysis" data-paper-id="${escapeHtml(paper.id)}"><i class="fas fa-brain"></i> AI 解析</button></div>`;
     } else {
-        analyzeCol = `<div class="paper-col-action"><button class="paper-col-btn analyze icon-only" onclick="requestAnalysis('${paper.id}', event)" title="AI Interpretation"><i class="fas fa-brain"></i></button></div>`;
+        analyzeCol = `<div class="paper-col-action"><button class="paper-col-btn analyze icon-only" data-action="request-analysis" data-paper-id="${escapeHtml(paper.id)}" title="AI 解析"><i class="fas fa-brain"></i></button></div>`;
     }
 
     // AI Interaction column
-    const chatCol = `<div class="paper-col-action"><button class="paper-col-btn chat" onclick="openChat('${paper.id}', event)"><i class="fas fa-comments"></i> Chat</button></div>`;
+    const chatCol = `<div class="paper-col-action"><button class="paper-col-btn chat" data-action="open-chat" data-paper-id="${escapeHtml(paper.id)}"><i class="fas fa-comments"></i> 聊天</button></div>`;
 
     // Column to be read
     const isInReadingList = readingListPaperIds.has(paper.id);
     let readingCol = '';
     if (isInReadingList) {
-        readingCol = `<div class="paper-col-action"><button class="paper-col-btn reading in-list icon-only" onclick="removeFromReadingList('${paper.id}', event)" title="Remove from to-read list"><i class="fas fa-times"></i></button></div>`;
+        readingCol = `<div class="paper-col-action"><button class="paper-col-btn reading in-list icon-only" data-action="remove-reading-list" data-paper-id="${escapeHtml(paper.id)}" title="从 Reading List 移除"><i class="fas fa-times"></i></button></div>`;
     } else {
-        readingCol = `<div class="paper-col-action"><button class="paper-col-btn reading icon-only" onclick="addToReadingList('${paper.id}', event)" title="Add to Readling List"><i class="fas fa-book-open"></i></button></div>`;
+        readingCol = `<div class="paper-col-action"><button class="paper-col-btn reading icon-only" data-action="add-reading-list" data-paper-id="${escapeHtml(paper.id)}" title="加入 Reading List"><i class="fas fa-book-open"></i></button></div>`;
     }
 
     return iconCol + titleCol + dateCol + translateCol + analyzeCol + chatCol + readingCol;
@@ -1411,11 +1411,11 @@ function renderPaperInfo(paper) {
                          data-full-text="${escapeHtml(content)}"
                          style="${multiline ? 'white-space: pre-wrap;' : ''}">${escapeHtml(content || '')}</div>
                     ${needsExpand ? `
-                    <div class="text-expand-btn" onclick="toggleTextExpand(this)" style="display: ${isCollapsed ? 'block' : 'none'}">
-                        <i class="fas fa-chevron-down"></i> Expand
+                    <div class="text-expand-btn" data-action="expand-text" style="display: ${isCollapsed ? 'block' : 'none'}">
+                        <i class="fas fa-chevron-down"></i> 展开
                     </div>
-                    <div class="text-collapse-btn" onclick="toggleTextCollapse(this)" style="display: ${isCollapsed ? 'none' : 'block'}">
-                        <i class="fas fa-chevron-up"></i> close
+                    <div class="text-collapse-btn" data-action="collapse-text" style="display: ${isCollapsed ? 'none' : 'block'}">
+                        <i class="fas fa-chevron-up"></i> 收起
                     </div>
                     ` : ''}
                 </div>
@@ -1464,7 +1464,7 @@ function renderPaperInfo(paper) {
                 <div class="info-content">
                     <div class="info-value editable" contenteditable="true" data-field="github" data-url-field="true" data-full-text="${escapeHtml(githubText)}">
                         ${githubUrl ? `
-                            <a href="${escapeHtml(githubUrl)}" target="_blank" rel="noopener noreferrer" class="paper-url-link" onclick="event.stopPropagation();">
+                            <a href="${escapeHtml(githubUrl)}" target="_blank" rel="noopener noreferrer" class="paper-url-link" data-action="stop-propagation">
                                 <i class="fab fa-github"></i> ${escapeHtml(githubText)}
                             </a>
                         ` : githubText
@@ -1480,7 +1480,7 @@ function renderPaperInfo(paper) {
                 <div class="info-content">
                     <div class="info-value editable" contenteditable="true" data-field="homepage" data-url-field="true" data-full-text="${escapeHtml(homepageText)}">
                         ${homepageUrl ? `
-                            <a href="${escapeHtml(homepageUrl)}" target="_blank" rel="noopener noreferrer" class="paper-url-link" onclick="event.stopPropagation();">
+                            <a href="${escapeHtml(homepageUrl)}" target="_blank" rel="noopener noreferrer" class="paper-url-link" data-action="stop-propagation">
                                 <i class="fas fa-home"></i> ${escapeHtml(homepageText)}
                             </a>
                         ` : homepageText
@@ -1510,9 +1510,9 @@ function renderPaperInfo(paper) {
             <!-- BibTeX -->
             ${paper.bibtex ? `
             <div class="info-section compact collapsed" data-field="bibtex">
-                <div class="info-header" onclick="toggleInfoSection(this)">
+                <div class="info-header" data-action="toggle-info-section">
                     <span class="info-label">BibTeX</span>
-                    <button class="btn-icon" onclick="event.stopPropagation(); copyBibtex('${paper.id}')" title="Copy">
+                    <button class="btn-icon" data-action="copy-bibtex" data-paper-id="${escapeHtml(paper.id)}" title="复制">
                         <i class="fas fa-copy"></i>
                     </button>
                     <i class="fas fa-chevron-down toggle-icon"></i>
@@ -1525,7 +1525,7 @@ function renderPaperInfo(paper) {
             
             <!-- Notes -->
             <div class="info-section compact ${paper.notes ? '' : 'collapsed'}" data-field="notes">
-                <div class="info-header" onclick="toggleInfoSection(this)">
+                <div class="info-header" data-action="toggle-info-section">
                     <span class="info-label">Notes</span>
                     <i class="fas fa-chevron-down toggle-icon"></i>
                 </div>
@@ -1543,8 +1543,8 @@ function renderPaperInfo(paper) {
             ${paper.has_chinese_version ? `
             <div class="info-section compact">
                 <div class="info-content">
-                    <button class="btn btn-primary btn-block" onclick="openChineseVersion('${paper.id}')">
-                        <i class="fas fa-language"></i> Open Chinese version
+                    <button class="btn btn-primary btn-block" data-action="open-chinese" data-paper-id="${escapeHtml(paper.id)}">
+                        <i class="fas fa-language"></i> 打开中文版
                     </button>
                 </div>
             </div>
@@ -6519,7 +6519,7 @@ function renderRecentActivity() {
                 }
 
                 return `
-                    <div class="recent-item" onclick="openPaperFromRecent('${paper.id}')">
+                    <div class="recent-item" data-action="open-recent-paper" data-paper-id="${escapeHtml(paper.id)}">
                         <div class="recent-item-icon">
                             <i class="fas fa-file-pdf"></i>
                         </div>
@@ -7234,23 +7234,23 @@ function showLogModal(taskId, logs, status, paperId) {
     const confirmBtn = document.querySelector('#modal-confirm');
     const cancelBtn = document.querySelector('#modal-cancel');
 
-    modalTitle.textContent = 'Translation log';
+    modalTitle.textContent = '翻译日志';
 
-    const logContent = logs.length > 0 ? logs.join('\n') : 'No logs yet';
+    const logContent = logs.length > 0 ? logs.join('\n') : '暂无日志';
     const canCancel = status === 'running' || status === 'queued';
 
     modalBody.innerHTML = `
         <div style="margin-bottom: 15px;">
-            <strong>state:</strong> 
+            <strong>状态：</strong>
             <span id="log-status">${getStatusText(status)}</span>
         </div>
         <div style="margin-bottom: 15px;">
-            <button class="btn btn-secondary" onclick="refreshLogs('${taskId}', '${paperId}')" style="margin-right: 10px;">
-                <i class="fas fa-refresh"></i> Refresh log
+            <button class="btn btn-secondary" data-action="refresh-translation-log" data-task-id="${escapeHtml(taskId)}" data-paper-id="${escapeHtml(paperId)}" style="margin-right: 10px;">
+                <i class="fas fa-refresh"></i> 刷新日志
             </button>
             ${canCancel ? `
-            <button class="btn btn-danger" onclick="cancelTranslation('${taskId}', '${paperId}')">
-                <i class="fas fa-stop"></i> Terminate translation
+            <button class="btn btn-danger" data-action="cancel-translation" data-task-id="${escapeHtml(taskId)}" data-paper-id="${escapeHtml(paperId)}">
+                <i class="fas fa-stop"></i> 终止翻译
             </button>
             ` : ''}
         </div>
@@ -7492,9 +7492,9 @@ function getTranslationStatusText(paperId) {
     if (status.status === 'translating') {
         const progress = clampProgress(status.progress ?? 0);
         return `<span class="translation-status translating">
-            Translating ${Math.round(progress)}%
+            正在翻译 ${Math.round(progress)}%
             <span class="progress-bar-container translation-status-bar"><span class="progress-bar" style="width: ${progress}%;"></span></span>
-            <button class="status-cancel-btn" onclick="cancelTranslationFromStatus('${paperId}', event)" title="Cancel translation">
+            <button class="status-cancel-btn" data-action="cancel-translation-status" data-paper-id="${escapeHtml(paperId)}" title="取消翻译">
                 <i class="fas fa-times"></i>
             </button>
         </span>`;
@@ -7502,8 +7502,8 @@ function getTranslationStatusText(paperId) {
         // Calculate the current position in the queue
         const currentIndex = translationQueue.indexOf(paperId) + 1;
         return `<span class="translation-status queued">
-            <i class="fas fa-clock"></i> in queue (${currentIndex}/${translationQueue.length})
-            <button class="status-cancel-btn" onclick="cancelTranslationFromQueue('${paperId}', event)" title="Cancel queue">
+            <i class="fas fa-clock"></i> 排队中 (${currentIndex}/${translationQueue.length})
+            <button class="status-cancel-btn" data-action="cancel-translation-queue" data-paper-id="${escapeHtml(paperId)}" title="取消排队">
                 <i class="fas fa-times"></i>
             </button>
         </span>`;
@@ -8776,11 +8776,11 @@ function updatePaperStatusDisplay(paperId) {
             <div style="display: flex; flex-direction: column; width: 100%; gap: 4px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; line-height: 1;">
                     <div style="display: flex; align-items: center; gap: 4px;">
-                        <button class="paper-action-log" onclick="showTranslationLogs('${paperId}', event)" title="View logs"><i class="fas fa-list"></i></button>
+                        <button class="paper-action-log" data-action="translation-logs" data-paper-id="${escapeHtml(paperId)}" title="查看日志"><i class="fas fa-list"></i></button>
                         <span style="font-size: 11px; color: #007bff; font-weight: 500;">${Math.round(progress)}%</span>
                     </div>
-                    <button onclick="cancelTranslationFromStatus('${paperId}', event)" title="Cancel translation" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
-                        <i class="fas fa-stop" style="font-size: 8px;"></i> Cancel
+                    <button data-action="cancel-translation-status" data-paper-id="${escapeHtml(paperId)}" title="取消翻译" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
+                        <i class="fas fa-stop" style="font-size: 8px;"></i> 取消
                     </button>
                 </div>
                 <div class="progress-bar-container translation-progress-bar" style="height: 4px; background: #e9ecef; border-radius: 2px;">
@@ -8789,22 +8789,22 @@ function updatePaperStatusDisplay(paperId) {
             </div>`;
         } else if (tStatus && tStatus.status === 'queued') {
             const currentIndex = translationQueue.indexOf(paperId) + 1;
-            const queueText = currentIndex > 0 ? `Queue ${currentIndex}` : 'Queueing';
+            const queueText = currentIndex > 0 ? `队列 ${currentIndex}` : '排队中';
             translateColHtml = `
             <div style="display: flex; flex-direction: column; width: 100%; gap: 4px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; line-height: 1;">
                     <span style="font-size: 11px; color: #ffc107; display: flex; align-items: center; gap: 4px;">
                         <i class="fas fa-clock" style="font-size: 10px;"></i> ${queueText}
                     </span>
-                    <button onclick="cancelTranslationFromQueue('${paperId}', event)" title="Cancel queue" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
-                        <i class="fas fa-times" style="font-size: 8px;"></i> Cancel
+                    <button data-action="cancel-translation-queue" data-paper-id="${escapeHtml(paperId)}" title="取消排队" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
+                        <i class="fas fa-times" style="font-size: 8px;"></i> 取消
                     </button>
                 </div>
             </div>`;
         } else if (paper.has_chinese_version) {
-            translateColHtml = `<button class="paper-col-btn view chinese" onclick="openChineseVersion('${paperId}', event)"><i class="fas fa-language"></i> Chinese version</button>`;
+            translateColHtml = `<button class="paper-col-btn view chinese" data-action="open-chinese" data-paper-id="${escapeHtml(paperId)}"><i class="fas fa-language"></i> 中文版</button>`;
         } else {
-            translateColHtml = `<button class="paper-col-btn translate icon-only" onclick="requestTranslation('${paperId}', event)" title="AI Translate"><i class="fas fa-language"></i></button>`;
+            translateColHtml = `<button class="paper-col-btn translate icon-only" data-action="request-translation" data-paper-id="${escapeHtml(paperId)}" title="AI 翻译"><i class="fas fa-language"></i></button>`;
         }
         translateActionCol.innerHTML = translateColHtml;
 
@@ -8814,19 +8814,19 @@ function updatePaperStatusDisplay(paperId) {
         if (aStatus && aStatus.status === 'analyzing') {
             const progress = clampProgress(aStatus.progress ?? 0);
             // Estimate step text
-            let stepText = 'Processing...';
-            if (aStatus.step === 'pdf2md') stepText = 'Parsing PDF';
-            else if (aStatus.step === 'llm_analysis') stepText = 'AI Thinking';
+            let stepText = '处理中…';
+            if (aStatus.step === 'pdf2md') stepText = '正在解析 PDF';
+            else if (aStatus.step === 'llm_analysis') stepText = 'AI 思考中';
 
             analyzeColHtml = `
             <div style="display: flex; flex-direction: column; width: 100%; gap: 4px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; line-height: 1;">
                     <div style="display: flex; align-items: center; gap: 4px;">
-                         <button class="paper-action-log" onclick="showAnalysisLogs('${paperId}', event)" title="View logs"><i class="fas fa-list"></i></button>
+                         <button class="paper-action-log" data-action="analysis-logs" data-paper-id="${escapeHtml(paperId)}" title="查看日志"><i class="fas fa-list"></i></button>
                         <span style="font-size: 11px; color: #6f42c1; font-weight: 500;">${Math.round(progress)}%</span>
                     </div>
-                    <button onclick="cancelAnalysis('${paperId}', event)" title="Cancel interpretation" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
-                        <i class="fas fa-stop" style="font-size: 8px;"></i> Cancel
+                    <button data-action="cancel-analysis" data-paper-id="${escapeHtml(paperId)}" title="取消解析" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
+                        <i class="fas fa-stop" style="font-size: 8px;"></i> 取消
                     </button>
                 </div>
                 <div class="progress-bar-container" style="height: 4px; background: #e9ecef; border-radius: 2px; width: 100%;">
@@ -8835,22 +8835,22 @@ function updatePaperStatusDisplay(paperId) {
             </div>`;
         } else if (aStatus && aStatus.status === 'queued') {
             const currentIndex = analysisQueue.indexOf(paperId) + 1;
-            const queueText = currentIndex > 0 ? `Queue ${currentIndex}` : 'Queueing';
+            const queueText = currentIndex > 0 ? `队列 ${currentIndex}` : '排队中';
             analyzeColHtml = `
             <div style="display: flex; flex-direction: column; width: 100%; gap: 4px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; line-height: 1;">
                     <span style="font-size: 11px; color: #ffc107; display: flex; align-items: center; gap: 4px;">
                         <i class="fas fa-clock" style="font-size: 10px;"></i> ${queueText}
                     </span>
-                    <button onclick="cancelAnalysis('${paperId}', event)" title="Cancel queue" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
-                        <i class="fas fa-times" style="font-size: 8px;"></i> Cancel
+                    <button data-action="cancel-analysis" data-paper-id="${escapeHtml(paperId)}" title="取消排队" style="font-size: 10px; padding: 2px 6px; border: 1px solid #dc3545; background: #fff; color: #dc3545; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; line-height: 1;">
+                        <i class="fas fa-times" style="font-size: 8px;"></i> 取消
                     </button>
                 </div>
             </div>`;
         } else if (paper.has_analysis_result) {
-            analyzeColHtml = `<button class="paper-col-btn view analysis" onclick="viewAnalysisResult('${paperId}', event)"><i class="fas fa-brain"></i> AI Interpretation</button>`;
+            analyzeColHtml = `<button class="paper-col-btn view analysis" data-action="view-analysis" data-paper-id="${escapeHtml(paperId)}"><i class="fas fa-brain"></i> AI 解析</button>`;
         } else {
-            analyzeColHtml = `<button class="paper-col-btn analyze icon-only" onclick="requestAnalysis('${paperId}', event)" title="AI Interpretation"><i class="fas fa-brain"></i></button>`;
+            analyzeColHtml = `<button class="paper-col-btn analyze icon-only" data-action="request-analysis" data-paper-id="${escapeHtml(paperId)}" title="AI 解析"><i class="fas fa-brain"></i></button>`;
         }
         analyzeActionCol.innerHTML = analyzeColHtml;
     }
@@ -8887,14 +8887,14 @@ function updatePaperStatusDisplay(paperId) {
 
         // Update view results button
         // Check if it needs to be displayed"View Chinese version"button
-        const existingChineseBtn = paperItem.querySelector('.chinese-version-btn-container .chinese-version-btn[onclick*="openChineseVersion"]');
+        const existingChineseBtn = paperItem.querySelector('.chinese-version-btn-container .chinese-version-btn[data-action="open-chinese"]');
         if (paper.has_chinese_version && !existingChineseBtn) {
             const btnContainer = paperItem.querySelector('.paper-details');
             if (btnContainer) {
                 const btnHtml = `
                     <div class="chinese-version-btn-container" style="margin-top: 5px;">
-                        <button class="chinese-version-btn" onclick="openChineseVersion('${paperId}', event)" title="View Chinese versionPDF">
-                            <i class="fas fa-language"></i> View Chinese version
+                        <button class="chinese-version-btn" data-action="open-chinese" data-paper-id="${escapeHtml(paperId)}" title="查看中文 PDF">
+                            <i class="fas fa-language"></i> 查看中文版
                         </button>
                     </div>
                 `;
@@ -8903,15 +8903,15 @@ function updatePaperStatusDisplay(paperId) {
         }
 
         // Check if it needs to be displayed"Check AI Interpretation"button
-        const existingAnalysisBtn = paperItem.querySelector('.chinese-version-btn-container .chinese-version-btn[onclick*="viewAnalysisResult"]');
+        const existingAnalysisBtn = paperItem.querySelector('.chinese-version-btn-container .chinese-version-btn[data-action="view-analysis"]');
         if (paper.has_analysis_result) {
             if (!existingAnalysisBtn) {
                 const btnContainer = paperItem.querySelector('.paper-details');
                 if (btnContainer) {
                     const btnHtml = `
                         <div class="chinese-version-btn-container" style="margin-top: 5px;">
-                            <button class="chinese-version-btn" onclick="viewAnalysisResult('${paperId}', event)" title="Check AI Interpretation" style="background: #6f42c1; color: white; border-color: #6f42c1;">
-                                <i class="fas fa-brain"></i> Check AI Interpretation
+                            <button class="chinese-version-btn" data-action="view-analysis" data-paper-id="${escapeHtml(paperId)}" title="查看 AI 解析" style="background: #6f42c1; color: white; border-color: #6f42c1;">
+                                <i class="fas fa-brain"></i> 查看 AI 解析
                             </button>
                         </div>
                     `;
@@ -8928,18 +8928,18 @@ function getAnalysisStatusText(paperId) {
     if (!status) return '';
 
     if (status.status === 'analyzing') {
-        const step = status.step === 'pdf2md' ? 'PDFchangeMarkdown' : status.step === 'llm_analysis' ? 'LLMInterpretation' : 'Interpreting';
+        const step = status.step === 'pdf2md' ? 'PDF 转 Markdown' : status.step === 'llm_analysis' ? 'LLM 解析' : '解析中';
         return `<span class="translation-status translating">
-            <i class="fas fa-spinner fa-spin"></i> Interpreting (${step})...
-            <button class="status-cancel-btn" onclick="cancelAnalysisFromStatus('${paperId}', event)" title="Cancel interpretation">
+            <i class="fas fa-spinner fa-spin"></i> 正在解析（${step}）…
+            <button class="status-cancel-btn" data-action="cancel-analysis-status" data-paper-id="${escapeHtml(paperId)}" title="取消解析">
                 <i class="fas fa-times"></i>
             </button>
         </span>`;
     } else if (status.status === 'queued') {
         const currentIndex = analysisQueue.indexOf(paperId) + 1;
         return `<span class="translation-status queued">
-            <i class="fas fa-clock"></i> Interpretation queue (${currentIndex}/${analysisQueue.length})
-            <button class="status-cancel-btn" onclick="cancelAnalysisFromQueue('${paperId}', event)" title="Cancel queue">
+            <i class="fas fa-clock"></i> 解析队列 (${currentIndex}/${analysisQueue.length})
+            <button class="status-cancel-btn" data-action="cancel-analysis-queue" data-paper-id="${escapeHtml(paperId)}" title="取消排队">
                 <i class="fas fa-times"></i>
             </button>
         </span>`;
@@ -9997,10 +9997,10 @@ function setDailyArxivEmptyState(mode) {
     if (mode === 'disabled') {
         emptyEl.innerHTML = `
             <i class="fas fa-ban fa-3x"></i>
-            <h3>Daily arXiv is disabled</h3>
-            <p>Please enable it in Settings → Daily arXiv → "Enable Daily arXiv".</p>
-            <button class="btn btn-primary" onclick="showDailyArxivSettingsModal()">
-                <i class="fas fa-cog"></i> Open settings
+            <h3>Daily arXiv 已禁用</h3>
+            <p>请在“设置 → Daily arXiv”中启用该功能。</p>
+            <button class="btn btn-primary" data-action="show-daily-settings">
+                <i class="fas fa-cog"></i> 打开设置
             </button>
         `;
         emptyEl.style.display = 'flex';
@@ -10365,7 +10365,7 @@ async function restartDailyArxivFetch() {
     if (!testResult.success) {
         // The test fails and the error message is redisplayed.（With refresh effect）
         const actionButton = `
-            <button class="notification-action-btn" onclick="restartDailyArxivFetch()" style="
+            <button class="notification-action-btn" data-action="restart-daily-fetch" style="
                 background: #c62828;
                 color: white;
                 border: none;
@@ -10375,11 +10375,11 @@ async function restartDailyArxivFetch() {
                 cursor: pointer;
                 margin-left: 8px;
                 transition: background 0.2s;
-            " onmouseover="this.style.background='#a02020'" onmouseout="this.style.background='#c62828'" title="Retest and start crawling">
-                <i class="fas fa-redo"></i> Restart
+            " title="重新测试并开始收集">
+                <i class="fas fa-redo"></i> 重新开始
             </button>
         `;
-        showRoundedNotification('LLM API Call failed, stop Daily arXiv,Check, please LLM API set up.', 'error', true, 'daily-arxiv-api-notification', actionButton);
+        showRoundedNotification('LLM API 调用失败，Daily arXiv 已停止，请检查 LLM API 设置。', 'error', true, 'daily-arxiv-api-notification', actionButton);
         return;
     }
 
@@ -10413,7 +10413,7 @@ async function checkDailyArxivLLMConfig(options = {}) {
                 if (data.llm_api_failed && notify) {
                     // Display a permanent pop-up window with a restart button
                     const actionButton = `
-                        <button class="notification-action-btn" onclick="restartDailyArxivFetch()" style="
+                        <button class="notification-action-btn" data-action="restart-daily-fetch" style="
                             background: #c62828;
                             color: white;
                             border: none;
@@ -10423,11 +10423,11 @@ async function checkDailyArxivLLMConfig(options = {}) {
                             cursor: pointer;
                             margin-left: 8px;
                             transition: background 0.2s;
-                        " onmouseover="this.style.background='#a02020'" onmouseout="this.style.background='#c62828'" title="Retest and start crawling">
-                            <i class="fas fa-redo"></i> Restart
+                        " title="重新测试并开始收集">
+                            <i class="fas fa-redo"></i> 重新开始
                         </button>
                     `;
-                    showRoundedNotification('LLM API Call failed, stop Daily arXiv,Check, please LLM API set up.', 'error', true, 'daily-arxiv-api-notification', actionButton);
+                    showRoundedNotification('LLM API 调用失败，Daily arXiv 已停止，请检查 LLM API 设置。', 'error', true, 'daily-arxiv-api-notification', actionButton);
                 } else if (!data.llm_api_failed) {
                     // if API Normal, remove the pop-up window（If present, animate）
                     removeNotificationWithAnimation('daily-arxiv-api-notification');
@@ -11507,20 +11507,20 @@ function renderDailyArxivInstitutionTiers() {
                     <span>${items.length}</span>
                 </div>
                 <div style="font-size: 12px; color: #64748b; margin-bottom: 10px;">${tierMeta[tier]}</div>
-                <div class="daily-arxiv-tier-list" data-tier="${tier}" ondragover="onDailyArxivInstitutionDragOver(event)" ondragleave="onDailyArxivInstitutionDragLeave(event)" ondrop="onDailyArxivInstitutionDrop(event, '${tier}')">
-                    ${items.length === 0 ? '<div class="daily-arxiv-tier-empty">Drop institutions here</div>' : items.map((name, index) => `
-                        <div class="daily-arxiv-tier-item" draggable="true" data-tier="${tier}" data-index="${index}" ondragstart="onDailyArxivInstitutionDragStart(event, '${tier}', ${index})" ondragend="onDailyArxivInstitutionDragEnd(event)" style="background:${bg}; color:${fg};">
+                <div class="daily-arxiv-tier-list" data-daily-tier-dropzone data-tier="${tier}">
+                    ${items.length === 0 ? '<div class="daily-arxiv-tier-empty">将机构拖到这里</div>' : items.map((name, index) => `
+                        <div class="daily-arxiv-tier-item" draggable="true" data-daily-tier-item data-tier="${tier}" data-index="${index}" style="background:${bg}; color:${fg};">
                             <i class="fas fa-grip-vertical" aria-hidden="true"></i>
                             <span>${escapeHtml(name)}</span>
-                            <span class="tier-remove" onclick="event.stopPropagation(); removeDailyArxivInstitution('${tier}', ${index})" title="Delete institution">
+                            <span class="tier-remove" data-action="remove-daily-institution" data-tier="${tier}" data-index="${index}" title="删除机构">
                                 <i class="fas fa-times"></i>
                             </span>
                         </div>
                     `).join('')}
                 </div>
                 <div class="daily-arxiv-tier-add">
-                    <input type="text" class="setting-input" id="daily-arxiv-tier-input-${tier}" placeholder="Add institution to tier ${tier}" />
-                    <button class="btn btn-secondary" onclick="addDailyArxivInstitution('${tier}')">
+                    <input type="text" class="setting-input" id="daily-arxiv-tier-input-${tier}" placeholder="向 ${tier} 级添加机构" />
+                    <button class="btn btn-secondary" data-action="add-daily-institution" data-tier="${tier}">
                         <i class="fas fa-plus"></i>
                     </button>
                 </div>
@@ -11803,7 +11803,7 @@ function showRoundedNotification(message, type = 'error', persistent = true, not
         <i class="fas fa-exclamation-triangle" style="font-size: 14px;"></i>
         <span class="notification-message"></span>
         ${actionButton || ''}
-        <button onclick="removeNotificationWithAnimation('${notificationId}')" style="
+        <button data-action="remove-notification" data-notification-id="${escapeHtml(notificationId)}" style="
             background: none;
             border: none;
             color: inherit;
@@ -11814,7 +11814,7 @@ function showRoundedNotification(message, type = 'error', persistent = true, not
             font-size: 16px;
             line-height: 1;
             transition: opacity 0.2s;
-        " onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'" title="closure">
+        " title="关闭">
             <i class="fas fa-times"></i>
         </button>
     `;
@@ -11892,7 +11892,7 @@ async function triggerFetchPapers(force = false) {
     const testResult = await testLLMAPIForDailyArxiv();
     if (!testResult.success) {
         const actionButton = `
-            <button class="notification-action-btn" onclick="restartDailyArxivFetch()" style="
+            <button class="notification-action-btn" data-action="restart-daily-fetch" style="
                 background: #c62828;
                 color: white;
                 border: none;
@@ -11902,11 +11902,11 @@ async function triggerFetchPapers(force = false) {
                 cursor: pointer;
                 margin-left: 8px;
                 transition: background 0.2s;
-            " onmouseover="this.style.background='#a02020'" onmouseout="this.style.background='#c62828'" title="Retest and start crawling">
-                <i class="fas fa-redo"></i> Restart crawling
+            " title="重新测试并开始收集">
+                <i class="fas fa-redo"></i> 重新收集
             </button>
         `;
-        showRoundedNotification('LLM API Call failed, stop Daily arXiv,Check, please LLM API set up.', 'error', true, 'daily-arxiv-api-notification', actionButton);
+        showRoundedNotification('LLM API 调用失败，Daily arXiv 已停止，请检查 LLM API 设置。', 'error', true, 'daily-arxiv-api-notification', actionButton);
         return false;
     }
 
@@ -11970,7 +11970,7 @@ async function triggerFetchAllCategories(force = false, dateStr = null) {
     const testResult = await testLLMAPIForDailyArxiv();
     if (!testResult.success) {
         const actionButton = `
-            <button class="notification-action-btn" onclick="restartDailyArxivFetch()" style="
+            <button class="notification-action-btn" data-action="restart-daily-fetch" style="
                 background: #c62828;
                 color: white;
                 border: none;
@@ -11980,11 +11980,11 @@ async function triggerFetchAllCategories(force = false, dateStr = null) {
                 cursor: pointer;
                 margin-left: 8px;
                 transition: background 0.2s;
-            " onmouseover="this.style.background='#a02020'" onmouseout="this.style.background='#c62828'" title="Retest and start crawling">
-                <i class="fas fa-redo"></i> Restart crawling
+            " title="重新测试并开始收集">
+                <i class="fas fa-redo"></i> 重新收集
             </button>
         `;
-        showRoundedNotification('LLM API Call failed, stop Daily arXiv,Check, please LLM API set up.', 'error', true, 'daily-arxiv-api-notification', actionButton);
+        showRoundedNotification('LLM API 调用失败，Daily arXiv 已停止，请检查 LLM API 设置。', 'error', true, 'daily-arxiv-api-notification', actionButton);
         return false;
     }
 
@@ -12710,7 +12710,7 @@ function renderDailyArxivGrid() {
 
                 let hint = '';
                 if (isToday && hasOtherDates) {
-                    hint = '<p style="margin-top: 15px; font-size: 0.9em; color: #2196F3;"><i class="fas fa-info-circle"></i> Tip: Click on the date navigation above to view historical papers</p>';
+                    hint = '<p style="margin-top: 15px; font-size: 0.9em; color: #2196F3;"><i class="fas fa-info-circle"></i> 提示：点击上方日期导航可查看历史论文</p>';
                 }
 
                 // show"Waiting"hint
@@ -12722,11 +12722,11 @@ function renderDailyArxivGrid() {
                     gridEl.innerHTML = `
                         <div class="daily-arxiv-waiting" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; text-align: center; color: #666; width: 100%;">
                             <i class="fas fa-exclamation-triangle fa-3x" style="margin-bottom: 20px; color: #f39c12;"></i>
-                            <h3 style="margin-bottom: 10px; font-size: 1.5em; color: #555;">LLM API Not configured</h3>
-                            <p style="margin-bottom: 30px; font-size: 1em; color: #888;">Daily arXiv needs to be configured with LLM API. Please configure in settings LLM API（Model、Base URL、API Key）</p>
+                            <h3 style="margin-bottom: 10px; font-size: 1.5em; color: #555;">尚未配置 LLM API</h3>
+                            <p style="margin-bottom: 30px; font-size: 1em; color: #888;">Daily arXiv 需要 LLM API，请先在设置中配置模型、Base URL 和 API Key。</p>
                             <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
-                                <button class="btn btn-primary" onclick="switchTab('setting'); setTimeout(() => { const btn = document.querySelector('[data-setting=\\'agentic\\']'); if (btn) btn.click(); }, 100);">
-                                    <i class="fas fa-cog"></i> Go to settings
+                                <button class="btn btn-primary" data-action="open-agent-settings">
+                                    <i class="fas fa-cog"></i> 前往设置
                                 </button>
                             </div>
                         </div>
@@ -12735,14 +12735,14 @@ function renderDailyArxivGrid() {
                     gridEl.innerHTML = `
                         <div class="daily-arxiv-waiting" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; text-align: center; color: #666; width: 100%;">
                             <i class="fas fa-clock fa-3x" style="margin-bottom: 20px; color: #999;"></i>
-                            <h3 style="margin-bottom: 10px; font-size: 1.5em; color: #555;">No new papers yet</h3>
-                            <p style="margin-bottom: 30px; font-size: 1em; color: #888;">Wait for automatic fetching, or click the button below to trigger manually</p>
+                            <h3 style="margin-bottom: 10px; font-size: 1.5em; color: #555;">暂无新论文</h3>
+                            <p style="margin-bottom: 30px; font-size: 1em; color: #888;">等待自动收集，或点击下方按钮手动触发。</p>
                             <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
-                                <button class="btn btn-primary" onclick="triggerFetchPapers(false)">
-                                    <i class="fas fa-sync"></i> Grab the current partition
+                                <button class="btn btn-primary" data-action="fetch-daily">
+                                    <i class="fas fa-sync"></i> 收集当前分类
                                 </button>
-                                <button class="btn btn-secondary" onclick="triggerFetchAllCategories(false)">
-                                    <i class="fas fa-sync-alt"></i> Fetch all partitions
+                                <button class="btn btn-secondary" data-action="fetch-daily-all">
+                                    <i class="fas fa-sync-alt"></i> 收集全部分类
                                 </button>
                             </div>
                             ${hint}
@@ -12851,7 +12851,7 @@ function renderDailyArxivGrid() {
                 <img src="${thumbnailUrl}" 
                      loading="lazy"
                      alt="${escapeHtml(paper.title)}" 
-                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                     data-image-fallback="flex"
                      style="width: 100%; height: 100%; object-fit: cover;" />
                 <div class="thumbnail-fallback daily-arxiv-theme-cover theme-${escapeHtml(themeId)}" style="display: none;">
                     <span>${escapeHtml(paper.matched_topics?.[0]?.name || 'Daily arXiv')}</span>
@@ -12869,7 +12869,7 @@ function renderDailyArxivGrid() {
         const highlight = (text) => highlightDailyArxiv(text);
 
         return `
-            <div class="daily-arxiv-card ${isRead ? 'read' : ''}" data-index="${index}" onclick="showDailyArxivDetail(${index})">
+            <div class="daily-arxiv-card ${isRead ? 'read' : ''}" data-action="show-daily-detail" data-index="${index}">
                 <div class="daily-arxiv-card-thumbnail">
                     ${thumbnailHtml}
                     <div class="daily-arxiv-card-thumbnail-badges">
@@ -12892,27 +12892,27 @@ function renderDailyArxivGrid() {
                     <div class="daily-arxiv-card-meta">
                         <span class="daily-arxiv-card-date">${date}</span>
                         <div class="daily-arxiv-card-actions">
-                            ${homepageUrl ? `<button class="daily-arxiv-card-action" data-external-url="${escapeHtml(homepageUrl)}" title="Project home page">
+                            ${homepageUrl ? `<button class="daily-arxiv-card-action" data-external-url="${escapeHtml(homepageUrl)}" title="项目主页">
                                 <i class="fas fa-home"></i>
                             </button>` : ''}
-                            ${githubUrl ? `<button class="daily-arxiv-card-action" data-external-url="${escapeHtml(githubUrl)}" title="GitHub storehouse">
+                            ${githubUrl ? `<button class="daily-arxiv-card-action" data-external-url="${escapeHtml(githubUrl)}" title="GitHub 仓库">
                                 <i class="fab fa-github"></i>
                             </button>` : ''}
-                            <button class="daily-arxiv-card-action" data-external-url="${escapeHtml(arxivUrl)}" title="exist arXiv Check">
+                            <button class="daily-arxiv-card-action" data-external-url="${escapeHtml(arxivUrl)}" title="在 arXiv 查看">
                                 <i class="fas fa-external-link-alt"></i>
                             </button>
-                            ${artifactStatus !== 'ready' ? `<button class="daily-arxiv-card-action" onclick="retryDailyArxivAsset(${index}, event)" title="重试 PDF 下载">
+                            ${artifactStatus !== 'ready' ? `<button class="daily-arxiv-card-action" data-action="retry-daily-asset" data-index="${index}" title="重试 PDF 下载">
                                 <i class="fas fa-redo"></i>
                             </button>` : ''}
                             ${(() => {
                 // Check if the paper is on the to-read list
                 const isInReadingList = paper.paper_id && readingListPaperIds.has(paper.paper_id);
                 if (isInReadingList) {
-                    return `<button class="daily-arxiv-card-action add-to-reading-list paper-col-btn reading icon-only in-list" data-paper-id="${escapeHtml(paper.paper_id)}" onclick="onDailyArxivRemoveFromReadingList(${index}, event)" title="Remove from to-read list">
+                    return `<button class="daily-arxiv-card-action add-to-reading-list paper-col-btn reading icon-only in-list" data-action="daily-remove-reading-list" data-index="${index}" data-paper-id="${escapeHtml(paper.paper_id)}" title="从 Reading List 移除">
                                         <i class="fas fa-times"></i>
                                     </button>`;
                 } else {
-                    return `<button class="daily-arxiv-card-action add-to-reading-list paper-col-btn reading icon-only" onclick="onDailyArxivAddToReadingList(${index}, event)" title="Add to Readling List">
+                    return `<button class="daily-arxiv-card-action add-to-reading-list paper-col-btn reading icon-only" data-action="daily-add-reading-list" data-index="${index}" title="加入 Reading List">
                                         <i class="fas fa-book-open"></i>
                                     </button>`;
                 }
@@ -13021,9 +13021,9 @@ function renderDailyArxivFilterAffiliations() {
         <div class="daily-arxiv-filter-special-items">
             <button 
                 class="daily-arxiv-filter-special ${dailyArxivFilterFirstAffiliation ? 'active' : ''}" 
-                onclick="toggleFirstAffiliationFilter()"
-                title="Show only papers with first unit">
-                <span class="label">first unit</span>
+                data-action="toggle-first-affiliation"
+                title="仅显示第一机构论文">
+                <span class="label">第一机构</span>
                 <span class="count">(${firstAffCount})</span>
             </button>
         </div>
@@ -13036,7 +13036,7 @@ function renderDailyArxivFilterAffiliations() {
     // List of common institutions
     if (knownEntries.length > 0) {
         if (shouldShowGroupTitles) {
-            html += '<div class="filter-section-divider">Common institutions</div>';
+            html += '<div class="filter-section-divider">常用机构</div>';
         }
         html += knownEntries.map(([aff, info]) => {
             const isSelected = dailyArxivSelectedAffiliations.has(aff);
@@ -13069,12 +13069,12 @@ function renderDailyArxivFilterAffiliations() {
         if (shouldShowGroupTitles) {
             html += `
                 <div class="filter-section-divider">
-                    <span>Other institutions</span>
+                    <span>其他机构</span>
                     <button 
                         class="hide-all-unknown-btn ${dailyArxivHideUnknownFirstAffiliation ? 'active' : ''}" 
-                        onclick="hideAllUnknownInstitutions()" 
-                        title="Hide the first unit belongs to「Other institutions」thesis；Click again to unhide">
-                        Hide all
+                        data-action="hide-unknown-institutions"
+                        title="隐藏第一机构属于“其他机构”的论文；再次点击取消隐藏">
+                        全部隐藏
                     </button>
                 </div>
             `;
@@ -13501,7 +13501,7 @@ function showDailyArxivDetail(index) {
 
         affiliationsHtml = `
             <div class="daily-arxiv-detail-affiliations">
-                <h4><i class="fas fa-building"></i> Affiliations</h4>
+                <h4><i class="fas fa-building"></i> 机构</h4>
                 <div class="affiliation-tags">${affTags}</div>
                 ${countriesFlagsHtml}
             </div>
@@ -13509,11 +13509,11 @@ function showDailyArxivDetail(index) {
     } else {
         affiliationsHtml = `
             <div class="daily-arxiv-detail-affiliations">
-                <h4><i class="fas fa-building"></i> Affiliations</h4>
+                <h4><i class="fas fa-building"></i> 机构</h4>
                 <div class="affiliation-extract-prompt">
-                    <p>Institutional information has not been extracted yet</p>
-                    <button class="btn btn-secondary btn-sm" onclick="extractAffiliationsForPaper(${index})">
-                        <i class="fas fa-magic"></i> Extract organization information
+                    <p>尚未提取机构信息</p>
+                    <button class="btn btn-secondary btn-sm" data-action="extract-affiliations" data-index="${index}">
+                        <i class="fas fa-magic"></i> 提取机构信息
                     </button>
                 </div>
             </div>
@@ -13531,7 +13531,7 @@ function showDailyArxivDetail(index) {
         }).join('');
         keywordsHtml = `
             <div class="daily-arxiv-detail-keywords">
-                <h4><i class="fas fa-key"></i> Keywords</h4>
+                <h4><i class="fas fa-key"></i> 关键词</h4>
                 <div class="keyword-tags">${kwTags}</div>
             </div>
         `;
@@ -13542,25 +13542,25 @@ function showDailyArxivDetail(index) {
     const summaryHtml = `
         <div class="daily-arxiv-detail-summary ${hasValidSummary ? '' : 'empty'}">
             <div class="daily-arxiv-detail-summary-header">
-                <h4><i class="fas fa-lightbulb"></i> Brief summary</h4>
-                <button class="btn btn-secondary btn-sm daily-arxiv-summary-generate-btn" onclick="generateBriefSummaryForPaper(${index})">
-                    <i class="fas fa-magic"></i> ${hasValidSummary ? 'Regenerate' : 'Generate'}
+                <h4><i class="fas fa-lightbulb"></i> 简要总结</h4>
+                <button class="btn btn-secondary btn-sm daily-arxiv-summary-generate-btn" data-action="generate-summary" data-index="${index}">
+                    <i class="fas fa-magic"></i> ${hasValidSummary ? '重新生成' : '生成'}
                 </button>
             </div>
             ${hasValidSummary
             ? `<p>${escapeHtml(paper.summary)}</p>`
             : `<div class="daily-arxiv-summary-empty-state">
-                    <p>Brief summary has not been generated yet.</p>
+                    <p>尚未生成简要总结。</p>
                 </div>`}
         </div>
     `;
 
     const modalHtml = `
-        <div class="daily-arxiv-detail-modal" onclick="if(event.target === this) closeDailyArxivDetail()">
+        <div class="daily-arxiv-detail-modal" data-action="close-daily-detail-overlay">
             <div class="daily-arxiv-detail-content">
                 <div class="daily-arxiv-detail-header">
                     <h3>${escapeHtml(paper.title)}</h3>
-                    <button class="daily-arxiv-detail-close" onclick="closeDailyArxivDetail()">
+                    <button class="daily-arxiv-detail-close" data-action="close-daily-detail" title="关闭">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
@@ -13576,7 +13576,7 @@ function showDailyArxivDetail(index) {
                         </div>
                         <div class="daily-arxiv-detail-meta-item">
                             <i class="fas fa-calendar"></i>
-                            <span>Announce: ${escapeHtml(announcedDate)} | submit: ${escapeHtml(submitDate)}</span>
+                            <span>公告：${escapeHtml(announcedDate)} | 提交：${escapeHtml(submitDate)}</span>
                         </div>
                         ${homepageUrl ? `<div class="daily-arxiv-detail-meta-item">
                             <i class="fas fa-home"></i>
@@ -13591,16 +13591,16 @@ function showDailyArxivDetail(index) {
                     ${keywordsHtml}
                     ${summaryHtml}
                     <div class="daily-arxiv-detail-abstract">
-                        <h4><i class="fas fa-file-alt"></i> Abstract</h4>
+                        <h4><i class="fas fa-file-alt"></i> 摘要</h4>
                         <p>${escapeHtml(paper.abstract)}</p>
                     </div>
                 </div>
                 <div class="daily-arxiv-detail-footer">
                     <div class="daily-arxiv-detail-links">
-                        ${homepageUrl ? `<a href="${escapeHtml(homepageUrl)}" target="_blank" rel="noopener noreferrer" title="Project home page">
-                            <i class="fas fa-home"></i> Homepage
+                        ${homepageUrl ? `<a href="${escapeHtml(homepageUrl)}" target="_blank" rel="noopener noreferrer" title="项目主页">
+                            <i class="fas fa-home"></i> 主页
                         </a>` : ''}
-                        ${githubUrl ? `<a href="${escapeHtml(githubUrl)}" target="_blank" rel="noopener noreferrer" title="GitHub storehouse">
+                        ${githubUrl ? `<a href="${escapeHtml(githubUrl)}" target="_blank" rel="noopener noreferrer" title="GitHub 仓库">
                             <i class="fab fa-github"></i> GitHub
                         </a>` : ''}
                         <a href="${escapeHtml(arxivUrl)}" target="_blank" rel="noopener noreferrer">
@@ -13610,8 +13610,8 @@ function showDailyArxivDetail(index) {
                             <i class="fas fa-file-pdf"></i> PDF
                         </a>` : ''}
                     </div>
-                    <button class="daily-arxiv-add-btn" onclick="onDailyArxivAddToReadingList(${index}, event); closeDailyArxivDetail();">
-                        <i class="fas fa-book-open"></i> Add to Readling List
+                    <button class="daily-arxiv-add-btn" data-action="daily-add-and-close" data-index="${index}">
+                        <i class="fas fa-book-open"></i> 加入 Reading List
                     </button>
                 </div>
             </div>
@@ -13879,10 +13879,11 @@ function onDailyArxivAddToReadingList(paperIndex, event) {
                             const btn = card.querySelector('.daily-arxiv-card-action.add-to-reading-list');
                             if (btn) {
                                 btn.dataset.paperId = data.paper_id;
-                                btn.title = 'Remove from to-read list';
+                                btn.title = '从 Reading List 移除';
                                 btn.innerHTML = '<i class="fas fa-times"></i>';
                                 btn.classList.add('in-list');
-                                btn.onclick = (e) => onDailyArxivRemoveFromReadingList(paperIndex, e);
+                                btn.dataset.action = 'daily-remove-reading-list';
+                                btn.dataset.index = String(paperIndex);
                             }
                         }
                     }
@@ -13943,10 +13944,11 @@ async function onDailyArxivRemoveFromReadingList(paperIndex, event) {
                     await updateReadingListCount();
                     // Purple book button that reverts to "Add to Read List"
                     btn.removeAttribute('data-paper-id');
-                    btn.title = 'Add to Readling List';
+                    btn.title = '加入 Reading List';
                     btn.innerHTML = '<i class="fas fa-book-open"></i>';
                     btn.classList.remove('in-list');
-                    btn.onclick = (e) => onDailyArxivAddToReadingList(paperIndex, e);
+                    btn.dataset.action = 'daily-add-reading-list';
+                    btn.dataset.index = String(paperIndex);
                     showMessage('Removed from to-read list', 'success');
                 } else {
                     showMessage('Removal failed', 'error');
@@ -13957,10 +13959,11 @@ async function onDailyArxivRemoveFromReadingList(paperIndex, event) {
             await updateReadingListCount();
             // Purple book button that reverts to "Add to Read List"
             btn.removeAttribute('data-paper-id');
-            btn.title = 'Add to Readling List';
+            btn.title = '加入 Reading List';
             btn.innerHTML = '<i class="fas fa-book-open"></i>';
             btn.classList.remove('in-list');
-            btn.onclick = (e) => onDailyArxivAddToReadingList(paperIndex, e);
+            btn.dataset.action = 'daily-add-reading-list';
+            btn.dataset.index = String(paperIndex);
             showMessage('Removed from to-read list', 'success');
         } else {
             showMessage('Removal failed', 'error');
