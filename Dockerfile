@@ -38,6 +38,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY Dockerfile gunicorn.conf.py ./
 COPY docker-compose.yaml ./
+COPY docker/release-components.json ./docker/release-components.json
 COPY app.py ./
 COPY paperpilot ./paperpilot
 COPY static ./static
