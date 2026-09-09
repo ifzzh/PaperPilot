@@ -237,7 +237,7 @@ class WorkerContractTests(unittest.TestCase):
         process.stdout = io.StringIO("")
         process.poll.return_value = 0
         process.returncode = 0
-        state = {"cancel": threading.Event()}
+        state = {"job_id": job_id, "logs": [], "cancel": threading.Event()}
 
         with patch("paperpilot.translation_worker.service.subprocess.Popen", return_value=process) as popen:
             service._execute_babeldoc(job_id, "fake-model", "https://fake.invalid/v1", "secret", state)
@@ -255,7 +255,7 @@ class WorkerContractTests(unittest.TestCase):
         process.stdout = io.StringIO("")
         process.poll.return_value = 1
         process.returncode = 23
-        state = {"cancel": threading.Event()}
+        state = {"job_id": job_id, "logs": [], "cancel": threading.Event()}
 
         with patch("paperpilot.translation_worker.service.subprocess.Popen", return_value=process):
             with self.assertRaisesRegex(RuntimeError, "^babeldoc_failed$"):

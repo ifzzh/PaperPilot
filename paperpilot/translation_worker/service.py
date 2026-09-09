@@ -23,6 +23,7 @@ TERMINATE_GRACE_SECONDS = 10
 TERMINAL_STATES = frozenset({"completed", "failed", "cancelled"})
 _PROGRESS_RE = re.compile(r"(?<!\d)(\d{1,3})(?:\.\d+)?\s*%")
 _EVENT_PREFIX = "PAPERPILOT_EVENT\t"
+_APPLICATION_ROOT = Path(__file__).resolve().parents[2]
 
 
 class WorkerRequestError(ValueError):
@@ -318,6 +319,19 @@ class TranslationWorkerService:
         environment = os.environ.copy()
         environment["PYTHONUNBUFFERED"] = "1"
         environment["XDG_CACHE_HOME"] = str(work / "cache")
+        inherited_pythonpath = [
+            item for item in environment.get("PYTHONPATH", "").split(os.pathsep) if item
+        ]
+        environment["PYTHONPATH"] = os.pathsep.join(
+            [
+                str(_APPLICATION_ROOT),
+                *[
+                    item
+                    for item in inherited_pythonpath
+                    if item != str(_APPLICATION_ROOT)
+                ],
+            ]
+        )
         process = subprocess.Popen(
             command,
             cwd=work,
@@ -357,7 +371,10 @@ class TranslationWorkerService:
         if state["cancel"].is_set():
             return
         if process.returncode != 0:
-            raise RuntimeError(f"babeldoc_failed:{process.returncode}")
+            self._append_log(
+                state, f"babeldoc process exited with status {process.returncode}", ()
+            )
+            raise RuntimeError("babeldoc_failed")
 
     def _read_output(self, pipe, state: dict, secrets: tuple[str, ...]) -> None:
         try:
