@@ -35,6 +35,7 @@ let isTranslating = false; // whether translating now
 let translationStatus = {}; // {paperId: 'translating' | 'queued' | 'completed' | 'error', queuePosition, taskId}
 let translationLogInterval = {}; // polling intervals per task
 let translationTasks = [];
+let latestTranslationTaskByPaper = new Map();
 let translationEventSource = null;
 let translationTaskFilter = 'all';
 
@@ -7034,36 +7035,13 @@ async function showTranslationLogs(paperId, event) {
         event.stopPropagation();
     }
     const status = translationStatus[paperId];
-    if (!status) {
+    const latestTask = latestTranslationTaskForPaper(paperId);
+    const taskId = status?.taskId || latestTask?.job_id;
+    if (!taskId) {
         showMessage('Translation task not found', 'warning');
         return;
     }
-    if (!status.taskId) {
-        showLogModal('N/A', [], 'queued', paperId);
-        return;
-    }
-
-    const taskId = status.taskId;
-    if (taskId) {
-        await openTranslationTask(taskId);
-        return;
-    }
-
-    // Get log
-    try {
-        const response = await fetch(`/api/paper/translate/${taskId}/logs`);
-        const result = await response.json();
-
-        if (response.ok && result.success) {
-            // Show log modal box
-            showLogModal(taskId, result.logs, result.status, paperId);
-        } else {
-            showMessage('Failed to get log', 'error');
-        }
-    } catch (error) {
-        console.error('Failed to get log:', error);
-        showMessage('Failed to get log', 'error');
-    }
+    await openTranslationTask(taskId);
 }
 
 const TRANSLATION_STAGE_LABELS = {
@@ -7088,9 +7066,13 @@ function translateErrorMessage(code) {
         worker_busy: '翻译 Worker 正忙，任务会继续排队',
         timeout: '翻译任务超时，可从缓存继续',
         interrupted: '任务因服务重启中断，可继续执行',
+        babeldoc_failed: 'BabelDOC 翻译失败，请查看日志后重试',
         task_not_found: '翻译任务不存在',
         csrf_failed: '安全令牌已失效，请刷新页面',
     };
+    if (String(code || '').startsWith('babeldoc_failed:')) {
+        return messages.babeldoc_failed;
+    }
     return messages[code] || code || '翻译操作失败';
 }
 
@@ -7125,7 +7107,11 @@ function translationMatchesFilter(task) {
 function syncTranslationPaperStatuses(tasks) {
     translationStatus = {};
     translationQueue = [];
+    latestTranslationTaskByPaper = new Map();
     tasks.forEach(task => {
+        if (!latestTranslationTaskByPaper.has(task.paper_id)) {
+            latestTranslationTaskByPaper.set(task.paper_id, task);
+        }
         if (!['queued', 'dispatching', 'running', 'recovering', 'paused'].includes(task.status)) return;
         if (task.status === 'queued') translationQueue.push(task.paper_id);
         translationStatus[task.paper_id] = {
@@ -7140,6 +7126,12 @@ function syncTranslationPaperStatuses(tasks) {
     isTranslating = tasks.some(task => ['dispatching', 'running', 'recovering'].includes(task.status));
     saveQueuesToStorage();
     updateTaskIndicator();
+}
+
+function latestTranslationTaskForPaper(paperId) {
+    return latestTranslationTaskByPaper.get(paperId)
+        || translationTasks.find(task => task.paper_id === paperId)
+        || null;
 }
 
 async function loadTranslationTasks() {

@@ -65,3 +65,4 @@ def test_paper_log_button_falls_back_to_latest_persisted_terminal_task():
     assert "latestTranslationTaskForPaper(paperId)" in app
     assert "status?.taskId || latestTask?.job_id" in app
     assert "babeldoc_failed: 'BabelDOC 翻译失败，请查看日志后重试'" in app
+    assert "startsWith('babeldoc_failed:')" in app
