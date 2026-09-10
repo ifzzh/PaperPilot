@@ -21,14 +21,15 @@ ensure_trivy() {
     if [[ ! -x "$binary" ]]; then
         local archive="$tool_dir/trivy-$trivy_version.tar.gz"
         curl --fail --silent --show-error --location \
+            --connect-timeout 30 --max-time 600 --retry 2 \
             "https://github.com/aquasecurity/trivy/releases/download/v${trivy_version}/trivy_${trivy_version}_Linux-64bit.tar.gz" \
-            --output "$archive"
-        echo "$trivy_sha256  $archive" | sha256sum --check --status
-        tar --extract --gzip --file "$archive" --directory "$tool_dir" trivy
-        mv "$tool_dir/trivy" "$binary"
-        chmod 0755 "$binary"
+            --output "$archive" || return 1
+        echo "$trivy_sha256  $archive" | sha256sum --check --status || return 1
+        tar --extract --gzip --file "$archive" --directory "$tool_dir" trivy || return 1
+        chmod 0755 "$tool_dir/trivy" || return 1
+        mv "$tool_dir/trivy" "$binary" || return 1
     fi
-    "$binary" --version | grep -F "Version: $trivy_version" >/dev/null
+    "$binary" --version | grep -F "Version: $trivy_version" >/dev/null || return 1
     printf '%s\n' "$binary"
 }
 
