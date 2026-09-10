@@ -18,8 +18,9 @@ from paperpilot.workbench import register_workbench
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def make_workbench_fixture(root, monkeypatch, count=3):
+def make_workbench_fixture(root, monkeypatch, count=3, *, cold=False):
     root = Path(root)
+    (root / "papers").mkdir(exist_ok=True)
     monkeypatch.setattr(connection, 'DB_PATH', str(root / 'paperpilot.db'))
     init_db_schema(connection.DB_PATH)
     application = Flask('workbench-test', static_folder=str(ROOT / 'static'), template_folder=str(ROOT / 'templates'))
@@ -45,11 +46,17 @@ def make_workbench_fixture(root, monkeypatch, count=3):
     app_module._rate_limiter.clear()
     store = PaperStore()
     monkeypatch.setattr(app_module, 'paper_store', store)
-    categories = {'id': 'root', 'name': 'Root', 'children': []}
+    from paperpilot.tools.basic_tools import paper_repository, category_manager
+    from paperpilot.security.paths import paper_path
+    from functools import partial
+    monkeypatch.setattr(paper_repository, 'paper_store', store)
+    categories = {'id': 'root', 'name': 'Root', 'children': [
+        {'id': 'library', 'name': '文献分类', 'children': []}
+    ]} if cold else {'id': 'root', 'name': 'Root', 'children': []}
     register_paper_operation_routes(
-        application, get_categories=lambda: categories,
-        get_category_path=lambda *args: ['Root'], find_category_node=lambda *args: categories,
-        get_papers_in_category=lambda *args: [], save_paper_metadata=lambda *args: None,
+        application, get_categories=(partial(category_manager.get_categories, str(root / "unused.json")) if cold else lambda: categories),
+        get_category_path=category_manager.get_category_path if cold else lambda *args: ['Root'], find_category_node=lambda *args: categories,
+        get_papers_in_category=partial(paper_repository.get_papers_in_category, str(root / "papers")) if cold else lambda *args: [], save_paper_metadata=lambda *args: None,
         delete_paper_files=lambda *args: None, extract_pdf_metadata=None,
         search_arxiv_by_title=None, reading_list_file=str(root / 'reading.json'),
         upload_folder=str(root / 'papers'), paper_store=store,
@@ -63,6 +70,8 @@ def make_workbench_fixture(root, monkeypatch, count=3):
         connection.get_db().commit()
         for user, prefix, amount in [(first, 'a', count), (second, 'b', 1)]:
             def seed():
+                if cold and prefix == "a":
+                    category_manager.save_categories("unused", categories)
                 for i in range(amount):
                     paper = Paper(id=f'{prefix}-{i}', title=(
                         'Learning to read the world: a unified framework for embodied reasoning' if i == 0 else
@@ -73,7 +82,14 @@ def make_workbench_fixture(root, monkeypatch, count=3):
                         upload_date=f'2026-09-10T{i:04d}', starred=i == 0,
                         has_chinese_version=i == 0, translation_status='completed' if i == 0 else 'idle',
                         analysis_status='failed' if i == 1 else 'idle')
+                    if cold:
+                        category = ('root', 'library', 'reading_list_temp')[i % 3]
+                        target = paper_path(root / 'papers', category, f'{prefix}-{i}.pdf', create_parent=True)
+                        target.write_bytes((ROOT / 'tests/fixtures/workbench/original.pdf').read_bytes())
+                        paper.filename = target.name
+                        paper.file_path = str(target)
                     PaperDAO.save_paper(paper.to_dict())
-                    store.upsert(paper, category_id='root', category_path=['Root'])
+                    if not cold:
+                        store.upsert(paper, category_id='root', category_path=['Root'])
             run_as_identity(Identity(user['id'], user['username'], user['role']), seed)
     return application, first, second

@@ -116,9 +116,9 @@ def scan_papers_in_directory(
     category_path: Iterable[str],
 ) -> List[Paper]:
     category_path_list = list(category_path)
-    paper_store.mark_category_initialized(category_id, category_path_list)
     papers: List[Paper] = []
     if not os.path.exists(directory_path):
+        paper_store.mark_category_initialized(category_id, category_path_list)
         return papers
 
     for filename in os.listdir(directory_path):
@@ -173,6 +173,9 @@ def scan_papers_in_directory(
         save_paper_metadata(pdf_path, registered, upload_root=directory_path)
         papers.append(registered)
 
+    # An upsert (including a concurrent upload) is not proof of a full scan.
+    # Publish completeness only after every existing file has been considered.
+    paper_store.mark_category_initialized(category_id, category_path_list)
     return papers
 
 

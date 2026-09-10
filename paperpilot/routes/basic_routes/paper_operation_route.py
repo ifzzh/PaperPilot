@@ -111,8 +111,29 @@ def register_paper_operation_routes(
     def is_in_reading_list(paper_id: str) -> bool:
         return paper_id in load_reading_list()
 
+    def ensure_library_loaded() -> None:
+        """Load the current owner's library without a legacy UI warm-up request."""
+        categories = get_categories()
+        pending = [categories]
+        seen: set[str] = set()
+        while pending:
+            node = pending.pop()
+            category_id = node.get("id")
+            if category_id and category_id not in seen:
+                seen.add(category_id)
+                path = get_category_path(categories, category_id)
+                if path:
+                    get_papers_in_category(category_id, path)
+                pending.extend(node.get("children", []))
+        # Reading List imports live outside the category tree. Merely load their
+        # existing assets; do not create tasks or change Reading List membership.
+        get_papers_in_category("reading_list_temp", ["Root", "_ReadingListTemp"])
+
     def find_paper(paper_id: str) -> Optional[Tuple[Paper, List[str], str]]:
         entry = paper_store.get_entry(paper_id)
+        if not entry:
+            ensure_library_loaded()
+            entry = paper_store.get_entry(paper_id)
         if not entry:
             return None
         return entry.paper, list(entry.category_path), entry.category_id
@@ -197,6 +218,7 @@ def register_paper_operation_routes(
     @app.route("/api/papers/all")
     def api_all_papers():
         """Get all papers, sorted by upload date in descending order"""
+        ensure_library_loaded()
         all_papers = paper_store.iter_all()
         # Sort by upload date in descending order (newest first)
         sorted_papers = sorted(

@@ -92,7 +92,6 @@ class PaperStore:
                 entry.category_path = path_tuple
             self._category_index[category_key][paper.id] = entry.paper
             self._category_paths[category_key] = path_tuple
-            self._initialized_categories.add(category_key)
             return entry.paper
 
     def get(self, paper_id: str) -> Optional[Paper]:
@@ -175,7 +174,6 @@ class PaperStore:
             category_key = (owner_id, category_id)
             self._category_index[category_key][paper_id] = entry.paper
             self._category_paths[category_key] = path_tuple
-            self._initialized_categories.add(category_key)
 
     def get_category_path(self, paper_id: str) -> Optional[List[str]]:
         with self._lock:
