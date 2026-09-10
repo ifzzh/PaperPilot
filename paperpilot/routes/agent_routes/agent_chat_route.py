@@ -448,6 +448,10 @@ If the user asks for details that require the paper text, say you don't know and
                     yield json.dumps({"session_id": session_id}) + "\n"
                     
                     for chunk in stream:
+                        # OpenAI-compatible providers may append a usage-only
+                        # chunk after finish_reason=stop. It has no choices.
+                        if not chunk.choices:
+                            continue
                         if chunk.choices[0].delta.content:
                             content = chunk.choices[0].delta.content
                             visible_content = think_filter.feed(content)

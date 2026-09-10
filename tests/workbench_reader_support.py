@@ -50,6 +50,8 @@ def fake_openai():
                         self.wfile.write(b'data: not-json\n\n'); self.wfile.flush(); return
                     if prompt == 'slow':
                         time.sleep(.1)
+                if prompt == 'usage-tail':
+                    self.wfile.write(b'data: {"id":"synthetic","choices":[],"usage":{"total_tokens":10}}\n\n')
                 self.wfile.write(b'data: [DONE]\n\n'); self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
                 pass

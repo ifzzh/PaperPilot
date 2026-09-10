@@ -70,3 +70,13 @@ def test_disconnect_has_no_false_assistant_history(reader):
     next(response.response);response.close()
     history=c.get(f'/api/paper/chat/session?paper_id=a-0&session_id={sid}').json['session']['messages']
     assert [m['role'] for m in history]==['user']
+
+
+def test_usage_only_tail_preserves_successful_answer(reader):
+    c=reader.test_client();token=login(c)
+    response=c.post('/api/paper/chat',json={'paper_id':'a-0','messages':[{'role':'user','content':'usage-tail'}]},headers={'X-CSRF-Token':token})
+    header,answer=response.text.split('\n',1)
+    assert 'llm_request_failed' not in answer
+    sid=json.loads(header)['session_id']
+    history=c.get(f'/api/paper/chat/session?paper_id=a-0&session_id={sid}').json['session']['messages']
+    assert history[-1]['role']=='assistant' and history[-1]['content']==answer
