@@ -86,7 +86,7 @@ def register_agent_translate_routes(
                 return found
         return None
 
-    def resolve_paper_file(paper: Paper) -> str:
+    def resolve_paper_file(paper: Paper, *, must_exist: bool = True) -> str:
         entry = paper_store.get_entry(paper.id)
         if not entry:
             raise PathSecurityError("paper_category_missing")
@@ -96,6 +96,7 @@ def register_agent_translate_routes(
                 entry.category_id,
                 paper.filename,
                 paper.file_path,
+                must_exist=must_exist,
             )
         )
 
@@ -511,9 +512,12 @@ def register_agent_translate_routes(
         if paper is None:
             return jsonify({"error": "Paper not found"}), 404
         try:
+            resolve_paper_file(paper, must_exist=False)
             pdf_path = resolve_paper_file(paper)
             chinese_path = paper_asset_paths(upload_folder, pdf_path).chinese_dual
-        except PathSecurityError:
+        except PathSecurityError as exc:
+            if str(exc) == "missing_path":
+                return jsonify({"error": "PDF file not found"}), 404
             return jsonify({"error": "unsafe_stored_path"}), 409
         if not chinese_path.exists():
             return jsonify({"error": "Chinese version file does not exist"}), 404

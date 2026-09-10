@@ -13,3 +13,9 @@ data/
 db/
 papers/
 .env
+
+.devnotes/
+frontend/node_modules/
+static/workbench/
+frontend/test-results/
+frontend/playwright-report/

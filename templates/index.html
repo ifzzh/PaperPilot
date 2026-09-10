@@ -34,6 +34,9 @@
                     PaperPilot</span>
             </div>
             <div class="navbar-tabs" style="margin-left:auto; display:flex; align-items:center; gap:12px;">
+                {% if config.PAPERPILOT_WORKBENCH_ENABLED %}
+                <a class="ti-item" href="/workbench">新版工作台（实验）</a>
+                {% endif %}
                 <button id="btn-show-reading-list" class="ti-item ti-reading" title="View reading list">
                     <i class="fas fa-book-open"></i>
                     <span class="ti-label">Reading List</span>

@@ -367,15 +367,22 @@ def register_paper_operation_routes(
 
         paper, _, category_id = result
         try:
+            # Validate confinement/mismatch before classifying an absent file.
+            resolve_paper_file(paper, category_id, must_exist=False)
             file_path = resolve_paper_file(paper, category_id)
-        except PathSecurityError:
+        except PathSecurityError as exc:
+            if str(exc) == "missing_path":
+                return jsonify({"error": "PDF file not found"}), 404
             return unsafe_stored_path_response()
 
-        response = send_file(
-            file_path,
-            as_attachment=False,
-            mimetype="application/pdf",
-        )
+        try:
+            response = send_file(
+                file_path,
+                as_attachment=False,
+                mimetype="application/pdf",
+            )
+        except FileNotFoundError:
+            return jsonify({"error": "PDF file not found"}), 404
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Methods"] = "GET"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"

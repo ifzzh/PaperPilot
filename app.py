@@ -14,9 +14,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import re
 import requests
-from flask import Flask, g, jsonify, make_response, redirect, render_template, request
+from flask import Flask, current_app, g, jsonify, make_response, redirect, render_template, request
 
+from paperpilot.workbench import register_workbench, parse_workbench_flag
 from paperpilot.core.base_paper import Paper
 from paperpilot.auth import (
     AuthConfig,
@@ -107,6 +109,7 @@ parser.add_argument(
 parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 
 app = Flask(__name__)
+register_workbench(app)
 app.config["PAPERPILOT_START_BACKGROUND_TASKS"] = True
 register_db_teardown(app)
 app.config["MAX_CONTENT_LENGTH"] = 210 * 1024 * 1024
@@ -203,7 +206,10 @@ def _sensitive_rate_policy():
 def _require_auth_for_api():
     g.request_id = uuid.uuid4().hex
     protects_api = request.path.startswith("/api/")
-    protects_viewer = request.path.startswith("/viewer/")
+    protects_workbench = request.path in {"/workbench", "/workbench/"}
+    if protects_workbench and not current_app.config["PAPERPILOT_WORKBENCH_ENABLED"]:
+        return "", 404
+    protects_viewer = request.path.startswith("/viewer/") or protects_workbench
     if not protects_api and not protects_viewer:
         return None
 
@@ -244,6 +250,8 @@ def _require_auth_for_api():
         "/api/auth/session", "/api/auth/change-password"
     }:
         g.audit_reason = "password_change_required"
+        if protects_workbench:
+            return redirect("/")
         return jsonify({"error": "password_change_required"}), 403
 
     if request.path.startswith("/api/admin/") and identity.role != "admin":
@@ -259,12 +267,21 @@ def _require_auth_for_api():
     return None
 
 
+def _private_paper_asset_response(response):
+    # Apply after authentication as well, so denied/range/error responses cannot be cached.
+    if re.fullmatch(r"/api/paper/[^/]+/(?:chinese/)?file", request.path):
+        response.headers["Cache-Control"] = "private, no-store"
+        response.vary.add("Cookie")
+    return response
+
+
 @app.after_request
 def _audit_sensitive_request(response):
     request_id = getattr(g, "request_id", uuid.uuid4().hex)
     response.headers["X-Request-ID"] = request_id
     for header, value in _browser_security_headers().items():
         response.headers[header] = value
+    _private_paper_asset_response(response)
     is_api = request.path.startswith("/api/")
     should_audit = is_api and (
         request.method in {"POST", "PUT", "PATCH", "DELETE"}
@@ -1143,6 +1160,9 @@ def analysis_viewer(paper_id):
 
 def _initialize_application(papers_dir: str) -> None:
     global AUTH_CONFIG, AUTH_SERVICE, AGENTIC_CREDENTIAL_STORE, OUTBOUND_POLICY
+    app.config["PAPERPILOT_WORKBENCH_ENABLED"] = parse_workbench_flag(
+        os.getenv("PAPERPILOT_WORKBENCH_ENABLED", "false")
+    )
     try:
         AUTH_CONFIG = AuthConfig.from_environ()
     except AuthConfigurationError as exc:
