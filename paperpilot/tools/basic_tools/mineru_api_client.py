@@ -18,6 +18,54 @@ from paperpilot.document_worker.safety import bounded_copy
 from paperpilot.security.outbound import OutboundPolicy, guarded_request
 
 
+def finalize_mineru_output(pdf_path: str, output_dir: str) -> Optional[str]:
+    """Apply the existing naming/retention policy to Worker-validated output."""
+    # Step 5: Find Markdown file and rename for consistency
+    # API returns full.md, but local mode generates {filename}.md
+    # Rename full.md to match local behavior
+    pdf_basename = os.path.splitext(os.path.basename(pdf_path))[0]
+    full_md = os.path.join(output_dir, "full.md")
+    target_md = os.path.join(output_dir, f"{pdf_basename}.md")
+
+    if os.path.exists(full_md):
+        shutil.move(full_md, target_md)
+        print(f"Renamed full.md to {pdf_basename}.md")
+    else:
+        # Try to find any .md file
+        md_files = [f for f in os.listdir(output_dir) if f.endswith(".md")]
+        if md_files:
+            target_md = os.path.join(output_dir, md_files[0])
+        else:
+            print("No Markdown file found in extracted results")
+            return None
+
+    # Verify images directory exists
+    images_dir = os.path.join(output_dir, "images")
+    if os.path.exists(images_dir):
+        print(f"Images directory found: {images_dir}")
+    else:
+        print("Warning: No images directory found")
+
+    # Clean up unwanted files (keep only .md and images/)
+    for item in os.listdir(output_dir):
+        item_path = os.path.join(output_dir, item)
+        if item == "images":
+            continue
+        elif item.endswith(".md"):
+            continue
+        else:
+            # Delete other files (layout.json, model.json, etc.)
+            if os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+                print(f"Removed directory: {item}")
+            else:
+                os.remove(item_path)
+                print(f"Removed file: {item}")
+
+    print(f"PDF parsing completed, Markdown file: {target_md}")
+    return target_md
+
+
 class MinerUAPIClient:
     """MinerU API client for PDF parsing via cloud API"""
 
@@ -364,50 +412,7 @@ class MinerUAPIClient:
                 print("Download/extraction failed")
                 return None
 
-            # Step 5: Find Markdown file and rename for consistency
-            # API returns full.md, but local mode generates {filename}.md
-            # Rename full.md to match local behavior
-            pdf_basename = os.path.splitext(os.path.basename(pdf_path))[0]
-            full_md = os.path.join(output_dir, "full.md")
-            target_md = os.path.join(output_dir, f"{pdf_basename}.md")
-
-            if os.path.exists(full_md):
-                shutil.move(full_md, target_md)
-                print(f"Renamed full.md to {pdf_basename}.md")
-            else:
-                # Try to find any .md file
-                md_files = [f for f in os.listdir(output_dir) if f.endswith(".md")]
-                if md_files:
-                    target_md = os.path.join(output_dir, md_files[0])
-                else:
-                    print("No Markdown file found in extracted results")
-                    return None
-
-            # Verify images directory exists
-            images_dir = os.path.join(output_dir, "images")
-            if os.path.exists(images_dir):
-                print(f"Images directory found: {images_dir}")
-            else:
-                print("Warning: No images directory found")
-
-            # Clean up unwanted files (keep only .md and images/)
-            for item in os.listdir(output_dir):
-                item_path = os.path.join(output_dir, item)
-                if item == "images":
-                    continue
-                elif item.endswith(".md"):
-                    continue
-                else:
-                    # Delete other files (layout.json, model.json, etc.)
-                    if os.path.isdir(item_path):
-                        shutil.rmtree(item_path)
-                        print(f"Removed directory: {item}")
-                    else:
-                        os.remove(item_path)
-                        print(f"Removed file: {item}")
-
-            print(f"PDF parsing completed, Markdown file: {target_md}")
-            return target_md
+            return finalize_mineru_output(pdf_path, output_dir)
 
         except Exception as e:
             print(f"PDF parsing failed: {e}")

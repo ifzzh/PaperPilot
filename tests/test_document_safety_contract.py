@@ -166,6 +166,37 @@ class DocumentSafetyContractTests(unittest.TestCase):
         with self.assertRaisesRegex(DocumentLimitError, "rdf_record_limit"):
             validate_zotero_rdf(too_many, self.limits)
 
+class MinerUCloudOriginTests(unittest.TestCase):
+    def test_origin_pdf_is_bounded_opaque_and_never_extracted(self):
+        from dataclasses import replace
+        name = '8559ed56-6701-42f4-84f2-6030687dc8e9_origin.pdf'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root/'input.zip'
+            def make(entries):
+                with zipfile.ZipFile(archive, 'w') as out:
+                    for key, value in entries: out.writestr(key, value)
+            make([(name, b'opaque; not parsed'), ('full.md', b'# synthetic'), ('layout.json', b'{}')])
+            manifest = preflight_archive(archive, 'mineru_zip')
+            self.assertEqual(manifest.ignored, [name])
+            extract_validated_archive(archive, root/'output', manifest)
+            self.assertFalse((root/'output'/name).exists())
+            self.assertEqual({e.path for e in manifest.entries}, {'full.md', 'layout.json'})
+            cases = [
+                ([('nested/'+name,b'x')], 'archive_type_forbidden', DocumentLimits()),
+                ([('arbitrary_origin.pdf',b'x')], 'archive_type_forbidden', DocumentLimits()),
+                ([(name,b'x'),('9559ed56-6701-42f4-84f2-6030687dc8e9_origin.pdf',b'x')], 'archive_origin_pdf_limit', DocumentLimits()),
+                ([(name,b'123')], 'archive_entry_too_large', replace(DocumentLimits(),max_pdf_bytes=2)),
+                ([('layout.json',b'123')], 'archive_entry_too_large', replace(DocumentLimits(),max_json_bytes=2)),
+                ([(name,b'123')], 'archive_expanded_limit', replace(DocumentLimits(),max_expanded_bytes=2)),
+            ]
+            link = zipfile.ZipInfo(name);link.create_system=3;link.external_attr=(stat.S_IFLNK|0o777)<<16
+            cases.append(([(link,b'x')], 'archive_link_forbidden', DocumentLimits()))
+            for entries, reason, limits in cases:
+                with self.subTest(reason=reason, entries=str(entries)[:80]):
+                    make(entries)
+                    with self.assertRaisesRegex(DocumentLimitError,reason): preflight_archive(archive,'mineru_zip',limits)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -24,6 +24,9 @@ _CONFIG_JSON_NAMES = frozenset({
     "daily_arxiv_settings.json",
 })
 _DRIVE_RE = re.compile(r"^[A-Za-z]:")
+_MINERU_ORIGIN_PDF_RE = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_origin\.pdf"
+)
 
 
 class DocumentLimitError(ValueError):
@@ -206,9 +209,18 @@ def _member_policy(path: str, kind: str, limits: DocumentLimits, size: int) -> s
             raise DocumentLimitError("archive_entry_too_large")
         return "include"
     if kind == "mineru_zip":
+        # Cloud bundles a redundant source PDF. Treat it as opaque discarded
+        # input, never as a readable/extracted result. All archive-level checks
+        # (regular file, path, count, size and ratio) precede this decision.
+        if _MINERU_ORIGIN_PDF_RE.fullmatch(path):
+            if size > limits.max_pdf_bytes:
+                raise DocumentLimitError("archive_entry_too_large")
+            return "ignore"
         if suffix not in {".md", ".json", ".png", ".jpg", ".jpeg"}:
             raise DocumentLimitError("archive_type_forbidden")
         if suffix == ".md" and size > limits.max_markdown_bytes:
+            raise DocumentLimitError("archive_entry_too_large")
+        if suffix == ".json" and size > limits.max_json_bytes:
             raise DocumentLimitError("archive_entry_too_large")
         return "include"
     raise DocumentLimitError("unsupported_document_kind")
@@ -253,6 +265,8 @@ def preflight_archive(
                     raise DocumentLimitError("archive_ratio_limit")
                 policy = _member_policy(path, kind, limits, info.file_size)
                 if policy == "ignore":
+                    if kind == "mineru_zip" and ignored:
+                        raise DocumentLimitError("archive_origin_pdf_limit")
                     ignored.append(path)
                     continue
                 if kind == "metadata_zip" and PurePosixPath(path).name not in _CONFIG_JSON_NAMES:
