@@ -121,29 +121,35 @@ class ApplicationFactoryContractTests(unittest.TestCase):
         version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))[
             "project"
         ]["version"]
-        self.assertEqual(version, "1.0.0")
+        self.assertEqual(version, "1.0.1")
         lock = Path("uv.lock").read_text(encoding="utf-8")
-        self.assertIn('name = "paperpilot"\nversion = "1.0.0"', lock)
+        self.assertIn('name = "paperpilot"\nversion = "1.0.1"', lock)
         matrix = json.loads(
             Path("docker/release-components.json").read_text(encoding="utf-8")
         )
         self.assertEqual(matrix["release"], version)
-        self.assertEqual(matrix["web"]["tag"], "1.0.0")
-        self.assertEqual(matrix["translation_worker"]["tag"], "0.10.5-worker")
+        self.assertEqual(matrix["web"]["tag"], "1.0.1")
+        self.assertEqual(matrix["translation_worker"]["tag"], "0.10.5")
         self.assertFalse(matrix["translation_worker"]["publish"])
         self.assertEqual(
-            matrix["document_worker"]["tag"], "1.0.0-document-worker"
+            matrix["document_worker"]["tag"], "1.0.0"
         )
-        self.assertTrue(matrix["document_worker"]["publish"])
+        self.assertFalse(matrix["document_worker"]["publish"])
         dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
-        self.assertIn("ARG APP_VERSION=1.0.0", dockerfile)
+        self.assertIn("ARG APP_VERSION=1.0.1", dockerfile)
         self.assertIn("ARG TRANSLATION_WORKER_VERSION=0.10.5", dockerfile)
         self.assertIn("ARG DOCUMENT_WORKER_VERSION=1.0.0", dockerfile)
         compose = Path("docker-compose.yaml").read_text(encoding="utf-8")
-        for component in ("web", "translation_worker", "document_worker"):
+        repositories = {
+            "web": "ifzzh520/paperpilot",
+            "translation_worker": "ifzzh520/paperpilot-translation-worker",
+            "document_worker": "ifzzh520/paperpilot-document-worker",
+        }
+        for component, repository in repositories.items():
+            self.assertEqual(matrix[component]["repository"], repository)
             tag = matrix[component]["tag"]
             with self.subTest(tag=tag):
-                self.assertIn(f"image: ifzzh520/paperpilot:{tag}", compose)
+                self.assertIn(f"image: {repository}:{tag}", compose)
                 digest = matrix[component].get("digest")
                 if digest:
                     self.assertIn(f"{tag}@{digest}", compose)

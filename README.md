@@ -157,7 +157,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v1.0.0 Web with the compatible v0.10.5 Translation Worker and v1.0.0 Document Worker. Component versions are tracked in `docker/release-components.json`; unchanged services keep their previously verified digest instead of being rebuilt for every PaperPilot release. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
+   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v1.0.1 Web with the compatible v0.10.5 Translation Worker and v1.0.0 Document Worker. Component versions are tracked in `docker/release-components.json`; unchanged services keep their previously verified digest instead of being rebuilt for every PaperPilot release. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -460,6 +460,10 @@ comparison. On rejection, keep the original archive private and perform any
 bounded directory diagnosis inside the isolated Worker; do not unpack it on the
 host/Web, strip files, or relax production validation for acceptance. The tool
 never starts AI interpretation or changes the production output-retention policy.
+
+### 1.0.1: Cold-start library correction
+
+Direct workbench access now loads the authenticated user's category and Reading List assets even when the process cache is empty or partial. v1.0.0 was rolled back after production acceptance exposed this regression. The patch publishes only Web; Translation 0.10.5 and Document 1.0.0 reuse verified digests in their independent `paperpilot-translation-worker` and `paperpilot-document-worker` repositories. No database migration or additional model calls are needed. See [patch release notes](docs/releases/v1.0.1.md).
 
 ### 1.0.0: P0 experimental workbench
 
