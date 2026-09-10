@@ -1,12 +1,13 @@
 services:
   paperpilot:
-    image: ifzzh520/paperpilot:0.11.0
+    image: ifzzh520/paperpilot:1.0.0
     container_name: paperpilot
     ports:
       - "127.0.0.1:7191:7191"
     env_file:
       - /mnt/raid1/projects/paperpilot/deploy/.env
     environment:
+      PAPERPILOT_WORKBENCH_ENABLED: ${PAPERPILOT_WORKBENCH_ENABLED:-false}
       PAPERPILOT_ENV: ${PAPERPILOT_ENV:-production}
       PAPERPILOT_AUTH_MODE: ${PAPERPILOT_AUTH_MODE:-local}
       PAPERPILOT_COOKIE_SECURE: ${PAPERPILOT_COOKIE_SECURE:-true}
@@ -92,7 +93,7 @@ services:
     restart: unless-stopped
 
   paperpilot-document-worker:
-    image: ifzzh520/paperpilot:0.10.4-document-worker@sha256:b76a018e9a906f030f9edc1fdf72c01e02ed462fc94b7c4af0e56bf3207b20bf
+    image: ifzzh520/paperpilot:1.0.0-document-worker
     container_name: paperpilot-document-worker
     environment:
       PAPERPILOT_DOCUMENT_JOBS_ROOT: /work/document-jobs

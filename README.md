@@ -157,7 +157,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v0.11.0 Web with the compatible v0.10.5 Translation Worker and v0.10.4 Document Worker. Component versions are tracked in `docker/release-components.json`; unchanged services keep their previously verified digest instead of being rebuilt for every PaperPilot release. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
+   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v1.0.0 Web with the compatible v0.10.5 Translation Worker and v1.0.0 Document Worker. Component versions are tracked in `docker/release-components.json`; unchanged services keep their previously verified digest instead of being rebuilt for every PaperPilot release. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -411,3 +411,60 @@ This project is licensed under the **CC BY-NC 4.0** License. See the [LICENSE](L
 <div align="center">
 Made with ❤️ by the PaperPilot Team
 </div>
+
+### Experimental workbench (opt-in)
+
+The React workbench is disabled by default. See [frontend development and verification](frontend/README.md) for the static build, `PAPERPILOT_WORKBENCH_ENABLED`, isolated browser tests, and rollback to the existing UI. This does not change the current release or deployment.
+
+### Isolated MinerU cloud acceptance
+
+`scripts/verify_mineru_cloud.py` is an operator-only acceptance tool, not a Web
+route or an interpretation task. Its default mode only checks the synthetic
+fixture hash and prints the offline test command; it makes no cloud request:
+
+```bash
+python scripts/verify_mineru_cloud.py
+pytest tests/test_mineru_cloud_probe.py
+```
+
+Live use requires explicit `--live`, `--evidence`, `--worker-url`, `--jobs-root`
+and `--worker-token-file` arguments. Use a disposable database/evidence volume,
+an independently authenticated Document Worker on an internal network, the
+existing Worker resource limits, and no production paper/database mounts. Run
+the caller as the staging writer with the Worker's shared group; initialize
+volume permissions before preflight and use Docker `volume-nocopy`. The caller
+needs outbound access; the Worker must not have public network access.
+
+Feed a JSON object directly to stdin through a controlled process pipe, with
+`account` set to `ifzzh`, `token` obtained by server-side decryption, and
+`transfer_origins` / `proxy_fake_ip_networks` from the existing outbound policy.
+Do not put credentials in shell arguments, environment variables, files, logs
+or fixtures, and never copy the production database or encryption master key
+into the acceptance environment. The credential provider must fail closed and
+must not print its output to a terminal. A configured token does not replace
+`PAPERPILOT_MINERU_TRANSFER_ALLOWED_ORIGINS`: an empty transfer allowlist is now
+rejected before batch creation. A nonempty list still requires exact origin,
+DNS and network validation under the existing policy.
+
+Keep the private evidence directory and its `state.json` after any outcome.
+The tool checkpoints the single creation attempt before the request, uploads
+at most once, and polls every 10 seconds for up to a 30-minute polling budget
+(network requests have separate timeouts). `--live --resume` only queries the
+recorded batch; it never creates or uploads again. An upload failure or uncertain
+response must not be worked around by deleting state or using a new directory.
+The cloud task is not cancelled by stopping this client.
+
+A downloaded ZIP remains opaque to the caller and is handed to the existing
+`mineru_zip` Worker. Only manifest-verified output is copied for retention
+comparison. On rejection, keep the original archive private and perform any
+bounded directory diagnosis inside the isolated Worker; do not unpack it on the
+host/Web, strip files, or relax production validation for acceptance. The tool
+never starts AI interpretation or changes the production output-retention policy.
+
+### 1.0.0: P0 experimental workbench
+
+This release delivers the authenticated React workbench, single-page self-hosted PDF.js reader, and existing single-paper chat protocol. The old homepage remains the default. Set `PAPERPILOT_WORKBENCH_ENABLED=true` to expose the experimental link; false restores the old entry experience. P1 (complete library) is planned for 1.1.0 and P2 (complete reading workspace/M1) for 1.2.0.
+
+The Document Worker discards at most one strictly named top-level UUID origin PDF from MinerU bundles after archive safety checks; JSON is capped at 4 MiB. JSON is still removed by the existing final Markdown cleanup. Exact MinerU transfer origins must be configured separately. Web and Document Worker advance to 1.0.0; Translation Worker retains its verified 0.10.5 digest.
+
+The existing full-site inline-style remediation moves from the previously planned 0.11.1 to 1.1.0/P1. Script CSP remains strict. The repository CC BY-NC license and MIT package classifier remain inconsistent pending clarification; this release does not change the legal license or incorporate PaperQuay code.

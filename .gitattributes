@@ -1,0 +1,4 @@
+# Preserve authored PDF fixture bytes; do not interpret streams as source text.
+*.pdf binary
+# Keep the upstream font license verbatim, including its whitespace.
+tests/fixtures/workbench/FONT-LICENSE.txt whitespace=-blank-at-eol

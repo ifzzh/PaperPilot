@@ -1,3 +1,10 @@
+FROM node:22.23.2-bookworm-slim AS frontend-build
+WORKDIR /build/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY frontend ./
+RUN npm run typecheck && npm test && npm run build && npm audit --audit-level=high
+
 FROM ubuntu:24.04 AS build-base
 
 ARG HTTP_PROXY=
@@ -42,6 +49,7 @@ COPY docker/release-components.json ./docker/release-components.json
 COPY app.py ./
 COPY paperpilot ./paperpilot
 COPY static ./static
+COPY --from=frontend-build /build/static/workbench ./static/workbench
 COPY templates ./templates
 COPY scripts ./scripts
 COPY security ./security
@@ -97,7 +105,7 @@ CMD ["python", "-m", "paperpilot.translation_worker"]
 
 FROM runtime-base AS document-worker
 
-ARG DOCUMENT_WORKER_VERSION=0.10.4
+ARG DOCUMENT_WORKER_VERSION=1.0.0
 ARG VCS_REF=unknown
 
 ENV HOME=/tmp \
@@ -125,7 +133,7 @@ CMD ["python", "-m", "paperpilot.document_worker"]
 
 FROM runtime-base AS runtime
 
-ARG APP_VERSION=0.11.0
+ARG APP_VERSION=1.0.0
 ARG VCS_REF=unknown
 ARG ARXIV_PROXY=
 ARG ARXIV_API_PROXY=
@@ -144,6 +152,7 @@ COPY wsgi.py /app/wsgi.py
 COPY gunicorn.conf.py /app/gunicorn.conf.py
 COPY paperpilot /app/paperpilot
 COPY static /app/static
+COPY --from=frontend-build /build/static/workbench /app/static/workbench
 COPY templates /app/templates
 
 RUN groupadd --gid 1001 paperpilot \

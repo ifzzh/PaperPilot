@@ -1,7 +1,7 @@
 {
-  "release": "0.11.0",
+  "release": "1.0.0",
   "web": {
-    "tag": "0.11.0",
+    "tag": "1.0.0",
     "publish": true
   },
   "translation_worker": {
@@ -10,8 +10,7 @@
     "publish": false
   },
   "document_worker": {
-    "tag": "0.10.4-document-worker",
-    "digest": "sha256:b76a018e9a906f030f9edc1fdf72c01e02ed462fc94b7c4af0e56bf3207b20bf",
-    "publish": false
+    "tag": "1.0.0-document-worker",
+    "publish": true
   }
 }
