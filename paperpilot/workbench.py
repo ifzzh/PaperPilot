@@ -1,15 +1,8 @@
-"""Opt-in, same-origin entry for the experimental Web workbench."""
+"""Unified same-origin application assets and historical URL compatibility."""
 from pathlib import Path, PurePosixPath
 import json
 
 from flask import abort, redirect, render_template, request
-
-
-def parse_workbench_flag(value: str = "false") -> bool:
-    value = value.strip().lower()
-    if value not in {"true", "false", "1", "0"}:
-        raise ValueError("PAPERPILOT_WORKBENCH_ENABLED must be true/false or 1/0")
-    return value in {"true", "1"}
 
 
 def build_assets(static_folder: str) -> dict:
@@ -51,22 +44,23 @@ def build_assets(static_folder: str) -> dict:
     return {"script": asset(entry["file"]), "styles": css}
 
 
+def render_workspace():
+    from flask import current_app
+    try:
+        assets = build_assets(current_app.static_folder)
+    except (OSError, ValueError, KeyError, TypeError):
+        return render_template("workbench_unavailable.html"), 503
+    response = current_app.make_response(render_template("workbench.html", **assets))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 def register_workbench(app):
-    app.config.setdefault("PAPERPILOT_WORKBENCH_ENABLED", False)
+    from paperpilot.workspace_state import register_workspace_state
+    register_workspace_state(app)
 
     @app.get("/workbench")
     @app.get("/workbench/")
     def workbench():
-        if not app.config["PAPERPILOT_WORKBENCH_ENABLED"]:
-            abort(404)
-        if request.path.endswith("/"):
-            query = request.query_string.decode("utf-8", errors="replace")
-            target = "/workbench" + ("?" + query if query else "")
-            return redirect(target, code=308)
-        try:
-            assets = build_assets(app.static_folder)
-        except (OSError, ValueError, KeyError, TypeError):
-            return render_template("workbench_unavailable.html"), 503
-        response = app.make_response(render_template("workbench.html", **assets))
-        response.headers["Cache-Control"] = "no-store"
-        return response
+        query = request.query_string.decode("utf-8", errors="replace")
+        return redirect("/" + ("?" + query if query else ""), code=302)

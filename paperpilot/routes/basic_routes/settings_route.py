@@ -132,6 +132,7 @@ def register_settings_routes(
             # decode and save
             image_data = base64.b64decode(encoded)
             filename = f"avatar.{ext}"
+            os.makedirs(avatars_dir, mode=0o700, exist_ok=True)
             filepath = os.path.join(avatars_dir, filename)
 
             with open(filepath, "wb") as f:

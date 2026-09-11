@@ -18,7 +18,7 @@ test('cold direct entry loads persisted assets and isolates populated and empty 
     await expect(page.locator('.paper-row')).toHaveCount(count);
     if (count) {
       await page.goto(`http://127.0.0.3:7191/workbench?paper=${username === 'reader_one' ? 'a-1' : 'b-0'}`);
-      await expect(page.locator('.detail-title')).toBeVisible();
+      await expect(page.locator('.paper-details h2')).toBeVisible();
     }
     for (const width of [1440, 390]) for (const colorScheme of ['light', 'dark'] as const) {
       await page.setViewportSize({width, height: 900});

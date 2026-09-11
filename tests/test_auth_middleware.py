@@ -104,7 +104,7 @@ class TestAuthMiddleware(unittest.TestCase):
     def test_viewer_without_session_redirects(self):
         response = self.client.get("/viewer/example")
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers["Location"], "/")
+        self.assertEqual(response.headers["Location"], "/?paper=example&view=reader&document=original")
 
     def test_audit_log_does_not_include_cookie(self):
         captured = io.StringIO()

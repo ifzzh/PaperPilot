@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from paperpilot.database import connection
-from paperpilot.workbench import build_assets, parse_workbench_flag
+from paperpilot.workbench import build_assets
 from tests.workbench_support import make_workbench_fixture
 
 
@@ -30,17 +30,17 @@ def login(client, name='reader_one'):
     return result.json['csrf_token']
 
 
-def test_flag_and_closed_entry(fixture):
+@pytest.mark.parametrize('obsolete_flag', [False, True])
+def test_unified_entry_ignores_retired_flag(fixture, obsolete_flag):
     app, _, _ = fixture
-    assert parse_workbench_flag() is False
-    assert parse_workbench_flag('1') is True
-    with pytest.raises(ValueError):
-        parse_workbench_flag('yes-please')
-    app.config['PAPERPILOT_WORKBENCH_ENABLED'] = False
+    app.config['PAPERPILOT_WORKBENCH_ENABLED'] = obsolete_flag
     c = app.test_client()
-    assert c.get('/workbench').status_code == 404
-    assert c.get('/workbench/').status_code == 404
+    assert c.get('/workbench').location == '/'
+    assert c.get('/workbench/').location == '/'
+    assert c.get('/').status_code == 200
+    assert 'type="module"' in c.get('/').text
     assert '新版工作台' not in c.get('/').text
+    assert c.get('/api/papers/all').status_code == 401
 
 
 def test_auth_entry_manifest_and_logout(fixture):
@@ -48,7 +48,7 @@ def test_auth_entry_manifest_and_logout(fixture):
     c = app.test_client()
     assert c.get('/workbench').location == '/'
     csrf = login(c)
-    page = c.get('/workbench')
+    page = c.get('/')
     assert page.status_code == 200
     assert 'type="module"' in page.text
     assert '/static/workbench/main.js' in page.text
@@ -56,8 +56,8 @@ def test_auth_entry_manifest_and_logout(fixture):
     assert 'app.js' not in page.text
     assert page.headers['Cache-Control'] == 'no-store'
     assert "script-src 'self'" in page.headers['Content-Security-Policy']
-    assert c.get('/workbench/?paper=a-0').location == '/workbench?paper=a-0'
-    assert '新版工作台' in c.get('/').text
+    assert c.get('/workbench/?paper=a-0').location == '/?paper=a-0'
+    assert '新版工作台' not in c.get('/').text
     assert c.delete('/api/auth/session').status_code == 403
     assert c.delete('/api/auth/session', headers={'X-CSRF-Token': csrf}).status_code == 200
     assert c.get('/workbench').location == '/'
@@ -83,19 +83,20 @@ def test_real_list_detail_and_owner_isolation(fixture):
     assert a.get('/api/paper/a-0').json['has_chinese_version'] is True
     assert a.get('/api/paper/b-0').status_code == 404
     assert b.get('/api/paper/a-0').status_code == 404
-    assert a.get('/viewer/a-0').status_code == 200
+    assert a.get('/viewer/a-0').location == '/?paper=a-0&view=reader&document=original'
 
 
-def test_missing_or_escaping_assets_do_not_break_old_site(fixture):
+def test_missing_or_escaping_assets_return_safe_unavailable_page(fixture):
     app, _, _ = fixture
     c = app.test_client(); login(c)
     manifest = Path(app.static_folder) / 'workbench/.vite/manifest.json'
     manifest.write_text(json.dumps({'src/main.tsx': {'file': '../../outside.js'}}))
-    assert c.get('/workbench').status_code == 503
-    assert '返回旧版' in c.get('/workbench').text
+    assert c.get('/').status_code == 503
+    assert '重新加载' in c.get('/').text
+    assert '返回旧版' not in c.get('/').text
     manifest.unlink()
-    assert c.get('/workbench').status_code == 503
-    assert c.get('/').status_code == 200
+    assert c.get('/').status_code == 503
+    assert c.get('/api/papers/all').status_code == 200
 
 
 def test_manifest_includes_imported_css(tmp_path):

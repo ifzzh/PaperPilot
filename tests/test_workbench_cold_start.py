@@ -20,7 +20,8 @@ def test_direct_cold_workbench_and_owner_isolation(tmp_path, monkeypatch, first_
     # A restart discards memory only; persistent metadata, files and sessions survive.
     for restart in range(2):
         app_module.paper_store.reset()
-        assert a.get('/workbench?paper=a-1&view=reader').status_code in (200, 503)
+        assert a.get('/workbench?paper=a-1&view=reader').location == '/?paper=a-1&view=reader'
+        assert a.get('/?paper=a-1&view=reader').status_code in (200, 503)
         assert a.get(first_request).status_code == 200
         assert [p['id'] for p in a.get('/api/papers/all').json] == ['a-2', 'a-1', 'a-0']
         assert [p['id'] for p in b.get('/api/papers/all').json] == ['b-0']

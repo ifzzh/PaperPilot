@@ -18,7 +18,7 @@ import re
 import requests
 from flask import Flask, current_app, g, jsonify, make_response, redirect, render_template, request
 
-from paperpilot.workbench import register_workbench, parse_workbench_flag
+from paperpilot.workbench import register_workbench, render_workspace
 from paperpilot.core.base_paper import Paper
 from paperpilot.auth import (
     AuthConfig,
@@ -133,7 +133,8 @@ def _browser_security_headers() -> dict[str, str]:
             "form-action 'self'",
             "script-src 'self'",
             "script-src-attr 'none'",
-            "style-src 'self' 'unsafe-inline'",
+            "style-src 'self'",
+            "style-src-attr 'none'",
             "font-src 'self' data:",
             "img-src 'self' data: blob:",
             "connect-src 'self'",
@@ -184,6 +185,8 @@ def _rate_limit_response(bucket: str, identity: str, limit: int, window: int):
 
 def _sensitive_rate_policy():
     path = request.path
+    if request.endpoint in {"workspace_state", "reading_position", "api_record_read_time", "api_record_reading"} and request.method in {"POST", "PUT"}:
+        return "reading_state", 120, 60
     if path in {
         "/api/paper/analyze",
         "/api/paper/translate",
@@ -206,11 +209,7 @@ def _sensitive_rate_policy():
 def _require_auth_for_api():
     g.request_id = uuid.uuid4().hex
     protects_api = request.path.startswith("/api/")
-    protects_workbench = request.path in {"/workbench", "/workbench/"}
-    if protects_workbench and not current_app.config["PAPERPILOT_WORKBENCH_ENABLED"]:
-        return "", 404
-    protects_viewer = request.path.startswith("/viewer/") or protects_workbench
-    if not protects_api and not protects_viewer:
+    if not protects_api:
         return None
 
     if request.path in {"/healthz", "/readyz"} and request.method in {"GET", "HEAD"}:
@@ -236,8 +235,6 @@ def _require_auth_for_api():
     if failure is not None:
         if request.path == "/api/auth/session" and request.method == "GET":
             return jsonify({"authenticated": False})
-        if protects_viewer:
-            return redirect("/")
         return failure
 
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
@@ -250,8 +247,6 @@ def _require_auth_for_api():
         "/api/auth/session", "/api/auth/change-password"
     }:
         g.audit_reason = "password_change_required"
-        if protects_workbench:
-            return redirect("/")
         return jsonify({"error": "password_change_required"}), 403
 
     if request.path.startswith("/api/admin/") and identity.role != "admin":
@@ -618,7 +613,7 @@ _search_rebuild_pending = False
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_workspace()
 
 
 @app.route("/healthz", methods=["GET"])
@@ -1135,34 +1130,18 @@ def register_routes():
 
 @app.route("/viewer/<paper_id>")
 def pdf_viewer(paper_id):
-    """PDF reader page"""
-    use_chinese = request.args.get("chinese", "false").lower() == "true"
-    paper_title = None
-    paper = paper_store.get(paper_id)
-    if paper:
-        paper_title = paper.title or paper.filename or paper.original_filename
-    return render_template(
-        "pdf_viewer.html",
-        paper_id=paper_id,
-        use_chinese=use_chinese,
-        paper_title=paper_title,
-    )
+    from urllib.parse import urlencode
+    return redirect('/?' + urlencode({'paper': paper_id, 'view': 'reader', 'document': 'translated' if request.args.get('chinese') == 'true' else 'original'}))
 
 
 @app.route("/viewer/analysis/<paper_id>")
 def analysis_viewer(paper_id):
-    """AI interpretation Markdown full-screen view page"""
-    return render_template(
-        "analysis_viewer.html",
-        paper_id=paper_id,
-    )
+    from urllib.parse import urlencode
+    return redirect('/?' + urlencode({'paper': paper_id, 'view': 'analysis'}))
 
 
 def _initialize_application(papers_dir: str) -> None:
     global AUTH_CONFIG, AUTH_SERVICE, AGENTIC_CREDENTIAL_STORE, OUTBOUND_POLICY
-    app.config["PAPERPILOT_WORKBENCH_ENABLED"] = parse_workbench_flag(
-        os.getenv("PAPERPILOT_WORKBENCH_ENABLED", "false")
-    )
     try:
         AUTH_CONFIG = AuthConfig.from_environ()
     except AuthConfigurationError as exc:

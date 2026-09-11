@@ -51,13 +51,15 @@ class TestBrowserSecurityHeaders(unittest.TestCase):
             "frame-ancestors 'self'",
             "script-src 'self'",
             "script-src-attr 'none'",
-            "style-src 'self' 'unsafe-inline'",
+            "style-src 'self'",
+            "style-src-attr 'none'",
             "worker-src 'self' blob:",
             "connect-src 'self'",
         ):
             self.assertIn(directive, policy)
         for forbidden in (
             "unsafe-eval",
+            "unsafe-inline",
             "script-src 'self' 'unsafe-inline'",
             "cdnjs.cloudflare.com",
             "cdn.jsdelivr.net",

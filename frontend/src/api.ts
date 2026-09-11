@@ -10,8 +10,7 @@ export function errorText(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 404) return "这篇论文不存在或已无法访问。";
     if (error.status === 429) return "请求较多，请稍后重试。";
-    if (error.code === "csrf_failed")
-      return "安全令牌失效，请返回旧版重新登录。";
+    if (error.code === "csrf_failed") return "安全令牌失效，请重新登录。";
   }
   return "暂时无法加载，请检查连接后重试。";
 }
@@ -26,6 +25,7 @@ export async function request(
   signal?: AbortSignal,
   method = "GET",
   body?: unknown,
+  keepalive = false,
 ): Promise<unknown> {
   const headers = new Headers({ Accept: "application/json" });
   if (method !== "GET") {
@@ -40,7 +40,14 @@ export async function request(
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "same-origin",
     cache: "no-store",
+    keepalive,
   });
+  if (
+    response.status === 401 &&
+    !path.startsWith("/api/auth/") &&
+    typeof window !== "undefined"
+  )
+    window.dispatchEvent(new Event("paperpilot-session-expired"));
   let data: unknown;
   try {
     data = await response.json();
@@ -48,6 +55,11 @@ export async function request(
     throw new ApiError(response.status, "invalid_response");
   }
   const obj = data as Record<string, unknown> | null;
+  if (
+    obj?.error === "password_change_required" &&
+    typeof window !== "undefined"
+  )
+    window.dispatchEvent(new Event("paperpilot-session-expired"));
   if (!response.ok || obj?.success === false || obj?.error) {
     throw new ApiError(
       response.status,
@@ -56,7 +68,12 @@ export async function request(
   }
   return data;
 }
-export type User = { id: string; username: string };
+export type User = {
+  id: string;
+  username: string;
+  role?: string;
+  must_change_password?: boolean;
+};
 export type Paper = {
   id: string;
   title: string;
@@ -68,6 +85,14 @@ export type Paper = {
   translation: string;
   analysis: string;
   published: string;
+  arxiv_url?: string;
+  github?: string;
+  homepage?: string;
+  notes?: string;
+  affiliation?: string;
+  journal?: string;
+  has_analysis_result?: boolean;
+  category_id?: string;
 };
 function text(v: unknown): string {
   return typeof v === "string" ? v : "";
@@ -95,6 +120,14 @@ export function paperFrom(data: unknown): Paper {
     translation: text(p.translation_status),
     analysis: text(p.analysis_status),
     published: text(p.arxiv_published_date),
+    arxiv_url: text(p.arxiv_url),
+    github: text(p.github),
+    homepage: text(p.homepage),
+    notes: text(p.notes),
+    affiliation: text(p.affiliation),
+    journal: text(p.journal),
+    has_analysis_result: p.has_analysis_result === true,
+    category_id: text(p.category_id),
   };
 }
 export async function session(signal: AbortSignal): Promise<User | null> {

@@ -15,6 +15,24 @@ const reply = (body: unknown, status = 200) =>
     vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status })),
   );
 describe("API boundary", () => {
+  it("clears a lost session even when a proxy returns non-JSON", async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal("window", { dispatchEvent });
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response("<html>login</html>", { status: 401 })),
+    );
+    await expect(request("/api/papers/all")).rejects.toMatchObject({
+      status: 401,
+      code: "invalid_response",
+    });
+    expect(dispatchEvent).toHaveBeenCalledOnce();
+    expect(dispatchEvent.mock.calls[0][0].type).toBe(
+      "paperpilot-session-expired",
+    );
+  });
   it("does not retain server paths or arbitrary metadata", () => {
     const p = paperFrom({
       id: "x",

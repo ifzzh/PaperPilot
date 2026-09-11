@@ -63,7 +63,7 @@ def fake_openai():
         server.shutdown();server.server_close();thread.join(timeout=2)
 
 
-def install_reader_fixture(application, root, users, monkeypatch, origin):
+def install_reader_fixture(application, root, users, monkeypatch, origin, *, register_routes=True):
     for name in ('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy'):
         monkeypatch.delenv(name,raising=False)
     root=Path(root); (root/'papers').mkdir(exist_ok=True); store=app_module.paper_store
@@ -82,16 +82,19 @@ def install_reader_fixture(application, root, users, monkeypatch, origin):
     policy=LoopbackFixturePolicy(public_origins=[],private_origins=[],transfer_origins=[])
     common=dict(get_categories=lambda:{'children':[]},get_category_path=lambda *_:None,
                 get_papers_in_category=lambda *_:[],agentic_settings_file='unused',credential_store=credentials,outbound_policy=policy)
-    agent_chat_route.register_agent_chat_routes(application,**common)
-    agent_translate_route.register_agent_translate_routes(application,translation_tasks={},translation_tasks_lock=threading.Lock(),
-        save_paper_metadata=lambda *_:None,upload_folder=str(root/'papers'),**common)
+    monkeypatch.setattr(app_module, 'AGENTIC_CREDENTIAL_STORE', credentials)
+    monkeypatch.setattr(app_module, 'OUTBOUND_POLICY', policy)
+    if register_routes:
+        agent_chat_route.register_agent_chat_routes(application,**common)
+        agent_translate_route.register_agent_translate_routes(application,translation_tasks={},translation_tasks_lock=threading.Lock(),
+            save_paper_metadata=lambda *_:None,upload_folder=str(root/'papers'),**common)
     assets=Path(__file__).parent/'fixtures/workbench'
     with application.app_context():
         for user,prefix in zip(users,('a','b','c')):
             def seed():
                 credentials.set('interpret','synthetic-test-only')
                 SettingsDAO.save_setting('agentic_settings',{'llmConfigs':{'interpret':{'llmBaseUrl':origin+'/v1','llmModel':'fixture'}}})
-                for i in range(1 if prefix=='b' else 4):
+                for i in range(1 if prefix=='b' else 6):
                     paper=store.get(f'{prefix}-{i}')
                     if not paper and prefix=='c':
                         paper=Paper(id=f'c-{i}',title='合成阅读验证文献',authors='PaperPilot tests',has_chinese_version=i==0)
@@ -100,6 +103,7 @@ def install_reader_fixture(application, root, users, monkeypatch, origin):
                     if i==0: shutil.copyfile(assets/'original.pdf',target)
                     elif i==1: shutil.copyfile(assets/'encrypted.pdf',target)
                     elif i==2: target.write_bytes(b'not a PDF')
+                    elif i>=4: shutil.copyfile(assets/'translated.pdf',target)
                     paper.filename=target.name;paper.file_path=str(target)
                     PaperDAO.save_paper(paper.to_dict());store.upsert(paper,category_id='root',category_path=['Root'])
                     if i==0: shutil.copyfile(assets/'translated.pdf',paper_asset_paths(root/'papers',target).chinese_dual)

@@ -1,6 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { errorText, isSessionError, request } from "./api";
 import { postChat, readChatStream } from "./chat-stream";
+import { Markdown, Confirm } from "./ui";
+import {
+  MessageSquare,
+  X,
+  ArrowDown,
+  Send,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
+export type Excerpt = {
+  text: string;
+  page: number;
+  document: string;
+  title: string;
+};
 
 type Message = { role: "user" | "assistant"; content: string };
 type Session = { id: string; title: string };
@@ -18,14 +33,26 @@ function messagesFrom(value: unknown): Message[] {
 export function Chat({
   paperId,
   onExpired,
+  initialSession = "",
+  onSessionChange,
+  excerpt,
+  onClearExcerpt,
+  drafts,
 }: {
   paperId: string;
   onExpired: () => void;
+  initialSession?: string;
+  onSessionChange?: (id: string) => void;
+  excerpt?: Excerpt | null;
+  onClearExcerpt?: () => void;
+  drafts?: Map<string, string>;
 }) {
   const [sessions, setSessions] = useState<Session[]>([]),
-    [id, setId] = useState("");
+    [id, setId] = useState(initialSession);
   const [messages, setMessages] = useState<Message[]>([]),
-    [draft, setDraft] = useState("");
+    [draft, setDraft] = useState(
+      drafts?.get(paperId + "|" + initialSession) || "",
+    );
   const [pending, setPending] = useState(""),
     [notice, setNotice] = useState("正在加载聊天历史…");
   const [busy, setBusy] = useState(false),
@@ -34,6 +61,27 @@ export function Chat({
     controller = useRef<AbortController | null>(null);
   const stream = useRef<AbortController | null>(null),
     sending = useRef(false);
+  const messageHost = useRef<HTMLDivElement>(null),
+    follow = useRef(true),
+    scrollPositions = useRef(new Map<string, number>()),
+    restoreScroll = useRef<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    if (restoreScroll.current !== null && messageHost.current && messages.length) {
+      messageHost.current.scrollTop = restoreScroll.current;
+      restoreScroll.current = null;
+    } else if (follow.current && messageHost.current)
+      messageHost.current.scrollTop = messageHost.current.scrollHeight;
+    else setAway(true);
+  }, [messages, pending]);
+  useEffect(() => {
+    if (initialSession && initialSession !== id) void choose(initialSession);
+  }, [initialSession]);
+  function editDraft(value: string) {
+    setDraft(value);
+    drafts?.set(paperId + "|" + id, value);
+  }
   function begin() {
     controller.current?.abort();
     stream.current?.abort();
@@ -79,11 +127,15 @@ export function Chat({
     return messagesFrom(data.session.messages);
   }
   async function choose(sessionId: string) {
+    if(messageHost.current) scrollPositions.current.set(id,messageHost.current.scrollTop);
+    restoreScroll.current=scrollPositions.current.get(sessionId) ?? null;
+    follow.current=restoreScroll.current === null;
     const { c, seq } = begin();
     setId(sessionId);
     setMessages([]);
     setPending("");
-    setDraft("");
+    setDraft(drafts?.get(paperId + "|" + sessionId) || "");
+    onSessionChange?.(sessionId);
     setLoading(true);
     setNotice("");
     try {
@@ -129,12 +181,21 @@ export function Chat({
     setBusy(true);
     setNotice("");
     setPending("");
-    const userMessage: Message = { role: "user", content: draft.trim() };
+    const userMessage: Message = {
+      role: "user",
+      content:
+        (excerpt
+          ? `引用《${excerpt.title}》${excerpt.document === "translated" ? "译文" : "原文"}第 ${excerpt.page} 页：\n> ${excerpt.text.replace(/\n/g, "\n> ")}\n\n`
+          : "") + draft.trim(),
+    };
+    onClearExcerpt?.();
     const original = messages;
     let sessionId = id,
       answer = "",
       stopped = false;
-    setDraft("");
+    editDraft("");
+    follow.current = true;
+    setAway(false);
     setMessages([...original, userMessage]);
     const sc = new AbortController();
     stream.current = sc;
@@ -152,7 +213,10 @@ export function Chat({
         sc.signal,
         (next) => {
           sessionId = next;
-          if (valid(seq)) setId(next);
+          if (valid(seq)) {
+            setId(next);
+            onSessionChange?.(next);
+          }
         },
         (text) => {
           answer += text;
@@ -214,6 +278,15 @@ export function Chat({
   return (
     <aside className="chat-panel" aria-label="论文问答">
       <div className="chat-actions">
+        {id && (
+          <button
+            aria-label="删除当前会话"
+            disabled={busy || loading}
+            onClick={() => setDeleting(true)}
+          >
+            删除
+          </button>
+        )}
         <select
           aria-label="聊天会话"
           value={id}
@@ -226,26 +299,63 @@ export function Chat({
             </option>
           ))}
         </select>
-        <button onClick={() => void choose("")}>新会话</button>
+        <button
+          title="新会话"
+          aria-label="新会话"
+          onClick={() => void choose("")}
+        >
+          <Plus size={16} />
+        </button>
         <button disabled={busy || loading} onClick={() => void refresh()}>
           刷新历史
         </button>
       </div>
-      <div className="chat-messages">
+      <div
+        className="chat-messages"
+        ref={messageHost}
+        onScroll={() => {
+          const el = messageHost.current!;
+          follow.current =
+            el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          if (follow.current) setAway(false);
+        }}
+      >
         {messages.map((m, i) => (
           <div key={i} className={`message ${m.role}`}>
             <strong>{m.role === "user" ? "你" : "助手"}</strong>
-            <p>{m.content}</p>
+            <Markdown text={m.content} />
           </div>
         ))}
         {pending && (
           <div className="message assistant">
             <strong>{busy ? "正在接收" : "未确认保存的内容"}</strong>
-            <p>{pending}</p>
+            <Markdown text={pending} />
           </div>
         )}
-        {!messages.length && !pending && <p>围绕当前论文开始提问。</p>}
+        {!messages.length && !pending && (
+          <div className="empty-state">
+            <MessageSquare size={30} />
+            <h3>与论文对话</h3>
+            <p>询问方法、结果或局限，也可以选择 PDF 中的文字提问。</p>
+          </div>
+        )}
       </div>
+      {away && (
+        <button
+          className="follow-latest"
+          onClick={() => {
+            follow.current = true;
+            setAway(false);
+            messageHost.current?.scrollTo({
+              top: messageHost.current.scrollHeight,
+              behavior: "smooth",
+            });
+          }}
+        >
+          <ArrowDown size={14} />
+          回到最新
+        </button>
+      )}
       <p className="chat-notice" role="status">
         {notice}
       </p>
@@ -255,12 +365,40 @@ export function Chat({
           void send();
         }}
       >
+        {excerpt && (
+          <div className="excerpt-card">
+            <div>
+              <span>
+                引用 · {excerpt.document === "translated" ? "译文" : "原文"}第{" "}
+                {excerpt.page} 页
+              </span>
+              <button
+                type="button"
+                aria-label="移除引用"
+                onClick={onClearExcerpt}
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <p>{excerpt.text}</p>
+          </div>
+        )}
         <label htmlFor="question">你的问题</label>
         <textarea
           id="question"
           value={draft}
           disabled={busy || loading}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => editDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
+              e.preventDefault();
+              void send();
+            }
+          }}
           rows={3}
         />
         <div className="chat-actions">
@@ -280,6 +418,23 @@ export function Chat({
       <p className="footnote">
         停止接收或切换会话不会确认服务端取消。失败后请先核对历史。
       </p>
+      {deleting && (
+        <Confirm
+          title="删除当前会话"
+          detail="该会话的问答历史将被删除。"
+          onClose={() => setDeleting(false)}
+          onConfirm={async () => {
+            await request(
+              `/api/paper/chat/session?paper_id=${encodeURIComponent(paperId)}&session_id=${encodeURIComponent(id)}`,
+              undefined,
+              "DELETE",
+            );
+            drafts?.delete(paperId + "|" + id);
+            setSessions((v) => v.filter((s) => s.id !== id));
+            await choose("");
+          }}
+        />
+      )}
     </aside>
   );
 }

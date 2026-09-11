@@ -22,6 +22,9 @@ export default defineConfig({
           "scheduler",
           "vite",
           "pdfjs-dist",
+          "lucide-react",
+          "dompurify",
+          "marked",
         ];
         this.emitFile({
           type: "asset",
