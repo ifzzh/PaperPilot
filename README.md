@@ -157,7 +157,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v1.1.1 Web with the compatible v0.10.5 Translation Worker and v1.0.0 Document Worker. Component versions are tracked in `docker/release-components.json`; unchanged services keep their previously verified digest instead of being rebuilt for every PaperPilot release. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
+   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v1.1.2 Web with the compatible v0.10.5 Translation Worker and v1.0.0 Document Worker. Component versions are tracked in `docker/release-components.json`; unchanged services keep their previously verified digest instead of being rebuilt for every PaperPilot release. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -461,11 +461,11 @@ bounded directory diagnosis inside the isolated Worker; do not unpack it on the
 host/Web, strip files, or relax production validation for acceptance. The tool
 never starts AI interpretation or changes the production output-retention policy.
 
-### 1.1.1: Unified library and reading workspace
+### 1.1.2: Unified library and reading workspace
 
-The 1.1.0 candidate was held before deployment; 1.1.1 includes corrected Zotero destination/SSE handling and import task isolation.
+The 1.1.0 candidate was held before deployment; 1.1.1 was rolled back after stable PDF position acceptance. 1.1.2 corrects rendering anchors and retains the import contract and task isolation fixes.
 
-This version replaces the main interface, fixes PDF.js compatibility in Edge, adds continuous reading, thumbnails, paper tabs, separate original/translated positions and selection questions. Existing library, Daily, import, task and account operations remain in the same application. Only Web changes; Worker digests are reused. See [release notes](docs/releases/v1.1.1.md).
+This version replaces the main interface, fixes PDF.js compatibility in Edge, adds continuous reading, thumbnails, paper tabs, separate original/translated positions and selection questions. Existing library, Daily, import, task and account operations remain in the same application. Only Web changes; Worker digests are reused. See [release notes](docs/releases/v1.1.2.md).
 
 ### 1.0.1: Cold-start library correction
 
