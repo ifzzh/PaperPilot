@@ -1,6 +1,6 @@
 # PaperPilot 统一前端
 
-1.1.0 开发线将文献库、阅读、问答、Daily、任务、设置和登录放入同一个应用。正式入口为 `/`；`/workbench` 和历史 `/viewer` 地址只作兼容跳转。`PAPERPILOT_WORKBENCH_ENABLED` 已退役，不能用于产品版本切换。运维回退使用兼容组件镜像和配置。
+1.1.1 开发线将文献库、阅读、问答、Daily、任务、设置和登录放入同一个应用。正式入口为 `/`；`/workbench` 和历史 `/viewer` 地址只作兼容跳转。`PAPERPILOT_WORKBENCH_ENABLED` 已退役，不能用于产品版本切换。运维回退使用兼容组件镜像和配置。
 
 ## 开发
 
@@ -40,3 +40,5 @@ npx playwright test --config playwright.unified.config.ts
 ## 来源
 
 详见 [PaperQuay 组件接入与许可记录](../docs/development/paperquay-adaptation.md)。`DEPENDENCIES.json` 记录 npm lockfile 的版本、来源、完整性和许可证，构建同时输出许可证声明。本说明描述实现契约，发布状态与实际通过项以对应发布验收记录为准。
+
+导入进度使用既有 SSE 接口，和聊天原始文本流分别适配；导入任务由 owner 校验并由有界执行器继承身份。
