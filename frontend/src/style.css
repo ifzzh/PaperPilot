@@ -1484,6 +1484,7 @@ progress {
   background: var(--subtle);
 }
 .pdf-scroll {
+  overflow-anchor: none;
   flex: 1;
   min-height: 0;
   overflow: auto;

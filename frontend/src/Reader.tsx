@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import {
   getDocument,
   GlobalWorkerOptions,
@@ -41,6 +47,8 @@ function PdfPage({
   rotation,
   root,
   onReady,
+  onLayout,
+  estimatedSize,
   thumbnail = false,
 }: {
   doc: PDFDocumentProxy;
@@ -49,17 +57,22 @@ function PdfPage({
   rotation: number;
   root: RefObject<HTMLDivElement | null>;
   onReady?: (n: number) => void;
+  onLayout?: () => void;
+  estimatedSize: { width: number; height: number };
   thumbnail?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null),
     [visible, setVisible] = useState(false),
-    [height, setHeight] = useState(792 * scale),
+    [size, setSize] = useState(estimatedSize),
     [error, setError] = useState("");
-  useEffect(() => {
+  const height = (rotation % 180 ? size.width : size.height) * scale;
+  const width = (rotation % 180 ? size.height : size.width) * scale;
+  useLayoutEffect(() => {
     const h = host.current!;
     h.style.height = `${height}px`;
-    h.style.width = thumbnail ? "100%" : "fit-content";
-  }, [height, thumbnail]);
+    h.style.width = thumbnail ? "100%" : `${width}px`;
+    if (!thumbnail) onLayout?.();
+  }, [height, width, thumbnail]);
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => setVisible(entries[0].isIntersecting),
@@ -84,7 +97,8 @@ function PdfPage({
         scale,
         rotation: (pdfPage.rotate + rotation) % 360,
       });
-      setHeight(vp.height);
+      const natural = pdfPage.getViewport({ scale: 1 });
+      setSize({ width: natural.width, height: natural.height });
       const surface = document.createElement("div");
       surface.className = "pdf-page";
       surface.style.width = `${vp.width}px`;
@@ -381,7 +395,9 @@ export function Reader({
     size();
     return () => obs.disconnect();
   }, [doc, zoom, rotation, chat, thumbs]);
-  function jump(n: number, offset = 0) {
+  const layoutFrame = useRef(0),
+    settledFrame = useRef(0);
+  function positionDOM(n: number, offset: number) {
     const el = host.current?.querySelector<HTMLElement>(
       `.page-host[data-page="${n}"]`,
     );
@@ -391,16 +407,39 @@ export function Reader({
       host.current.getBoundingClientRect().top +
       offset * el.clientHeight -
       20;
-    setPage(n);
   }
-  useEffect(() => {
-    if (doc) {
-      const id = requestAnimationFrame(() =>
-        jump(restore.current?.page || page, restore.current?.offset || 0),
-      );
-      return () => cancelAnimationFrame(id);
-    }
-  }, [doc]);
+  // Keep one PDF-space anchor while placeholder sizes, zoom and rendering settle.
+  // Browser scroll anchoring must not compete with this correction.
+  function reflowPosition() {
+    const anchor = restore.current || point.current;
+    if (!anchor) return;
+    restore.current = anchor;
+    cancelAnimationFrame(layoutFrame.current);
+    cancelAnimationFrame(settledFrame.current);
+    layoutFrame.current = requestAnimationFrame(() => {
+      positionDOM(anchor.page, anchor.offset);
+      settledFrame.current = requestAnimationFrame(() => {
+        positionDOM(anchor.page, anchor.offset);
+        if (restore.current === anchor) restore.current = null;
+      });
+    });
+  }
+  function jump(n: number, offset = 0) {
+    if (!doc || !point.current || n < 1 || n > doc.numPages) return;
+    const next = { ...point.current, page: n, offset };
+    point.current = next;
+    restore.current = next;
+    setPage(n);
+    positionDOM(n, offset);
+    reflowPosition();
+  }
+  useLayoutEffect(() => {
+    if (doc) reflowPosition();
+    return () => {
+      cancelAnimationFrame(layoutFrame.current);
+      cancelAnimationFrame(settledFrame.current);
+    };
+  }, [doc, scale, rotation]);
   useEffect(() => {
     if (point.current)
       point.current = {
@@ -501,12 +540,8 @@ export function Reader({
       };
     }
   }
-  function pageReady(n: number) {
+  function pageReady(_n: number) {
     setStatus("");
-    if (restore.current?.page === n) {
-      jump(n, restore.current.offset);
-      restore.current = null;
-    }
   }
   const resized = useRef<(() => void) | null>(null);
   useEffect(() => () => resized.current?.(), []);
@@ -674,6 +709,7 @@ export function Reader({
                     scale={0.16}
                     rotation={0}
                     root={thumbRoot}
+                    estimatedSize={baseSize.current}
                     thumbnail
                   />
                   <span>{i + 1}</span>
@@ -719,6 +755,8 @@ export function Reader({
                   scale={scale}
                   rotation={rotation}
                   root={host}
+                  estimatedSize={baseSize.current}
+                  onLayout={reflowPosition}
                   onReady={pageReady}
                 />
               ))}
