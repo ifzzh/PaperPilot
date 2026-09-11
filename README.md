@@ -157,7 +157,7 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable d
    | `--host` | `0.0.0.0` | Server listening address |
    | `--port` | `7191` | Server listening port |
 
-   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v1.0.1 Web with the compatible v0.10.5 Translation Worker and v1.0.0 Document Worker. Component versions are tracked in `docker/release-components.json`; unchanged services keep their previously verified digest instead of being rebuilt for every PaperPilot release. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
+   Production containers use one Gunicorn `gthread` worker with eight threads. The maintained Compose file uses the v1.1.0 Web with the compatible v0.10.5 Translation Worker and v1.0.0 Document Worker. Component versions are tracked in `docker/release-components.json`; unchanged services keep their previously verified digest instead of being rebuilt for every PaperPilot release. The Web service binds only `127.0.0.1:7191`; Worker ports `7192` and `7193` are internal only. All three run as non-root users.
 
    ```bash
    install -d -m 2770 /mnt/raid1/projects/paperpilot/data/staging/translation
@@ -412,9 +412,9 @@ This project is licensed under the **CC BY-NC 4.0** License. See the [LICENSE](L
 Made with ❤️ by the PaperPilot Team
 </div>
 
-### Experimental workbench (opt-in)
+### Unified reading workspace
 
-The React workbench is disabled by default. See [frontend development and verification](frontend/README.md) for the static build, `PAPERPILOT_WORKBENCH_ENABLED`, isolated browser tests, and rollback to the existing UI. This does not change the current release or deployment.
+The main application combines the library, continuous PDF reader, conversation sidebar, Daily arXiv, tasks, settings and account flows. Historical workbench and reader URLs redirect into the same application. The experimental flag is retired; operational rollback uses pinned images and configuration. See [development and verification](frontend/README.md) and [PaperQuay adaptation decisions](docs/development/paperquay-adaptation.md).
 
 ### Isolated MinerU cloud acceptance
 
@@ -461,11 +461,15 @@ bounded directory diagnosis inside the isolated Worker; do not unpack it on the
 host/Web, strip files, or relax production validation for acceptance. The tool
 never starts AI interpretation or changes the production output-retention policy.
 
+### 1.1.0: Unified library and reading workspace
+
+This version replaces the main interface, fixes PDF.js compatibility in Edge, adds continuous reading, thumbnails, paper tabs, separate original/translated positions and selection questions. Existing library, Daily, import, task and account operations remain in the same application. Only Web changes; Worker digests are reused. See [release notes](docs/releases/v1.1.0.md).
+
 ### 1.0.1: Cold-start library correction
 
 Direct workbench access now loads the authenticated user's category and Reading List assets even when the process cache is empty or partial. v1.0.0 was rolled back after production acceptance exposed this regression. The patch publishes only Web; Translation 0.10.5 and Document 1.0.0 reuse verified digests in their independent `paperpilot-translation-worker` and `paperpilot-document-worker` repositories. No database migration or additional model calls are needed. See [patch release notes](docs/releases/v1.0.1.md).
 
-### 1.0.0: P0 experimental workbench
+### 1.0.0: P0 experimental workbench (historical; superseded by 1.1.0)
 
 This release delivers the authenticated React workbench, single-page self-hosted PDF.js reader, and existing single-paper chat protocol. The old homepage remains the default. Set `PAPERPILOT_WORKBENCH_ENABLED=true` to expose the experimental link; false restores the old entry experience. P1 (complete library) is planned for 1.1.0 and P2 (complete reading workspace/M1) for 1.2.0.
 
