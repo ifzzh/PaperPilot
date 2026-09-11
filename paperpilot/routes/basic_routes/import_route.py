@@ -13,7 +13,8 @@ import shutil
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull, ExecutorShuttingDown
+from paperpilot.security.identity import current_user_id
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
@@ -76,7 +77,7 @@ import_tasks_lock = threading.Lock()
 
 # Currently active import tasksID(Only one import task is allowed globally)
 current_import_task_id: Optional[str] = None
-_import_workers = ThreadPoolExecutor(max_workers=4, thread_name_prefix="paper-import")
+_import_workers = BoundedExecutor(max_workers=4, max_queue=4, thread_name_prefix="paper-import")
 
 
 def _extract_arxiv_id_from_url(url: str) -> Optional[str]:
@@ -878,6 +879,24 @@ def register_import_routes(
         except Exception as e:
             print(f"[Import DBLP] ❌ get BibTeX fail: {e}")
 
+    def _enqueue_import(function, task_id, *args):
+        global current_import_task_id
+        try:
+            _import_workers.submit(function, task_id, *args)
+            return True
+        except (QueueFull, ExecutorShuttingDown):
+            with import_tasks_lock:
+                import_tasks[task_id].update(status="error", message="import_queue_full")
+                if current_import_task_id == task_id:
+                    current_import_task_id = None
+            for action in (document_client.cancel, document_client.cleanup):
+                try:
+                    action(task_id)
+                except (DocumentWorkerRejected, DocumentWorkerUnavailable, OSError):
+                    pass
+            DocumentJobDAO.update(task_id, "failed", error="import_queue_full")
+            return False
+
     @app.route("/api/import/zotero", methods=["POST"])
     def api_import_zotero():
         """Queue Zotero RDF validation and parsing in the Document Worker."""
@@ -890,6 +909,8 @@ def register_import_routes(
         if not file.filename.lower().endswith(".rdf"):
             return jsonify({"success": False, "error": "Please upload .rdf format file"}), 400
         target_category_id = request.form.get("target_category_id", "").strip()
+        if target_category_id and not get_category_path(get_categories(), target_category_id):
+            return jsonify(success=False, error="category_not_found"), 404
         if not document_client.health():
             return jsonify({"success": False, "error": "document_worker_unavailable"}), 503
         if current_import_task_id:
@@ -899,7 +920,7 @@ def register_import_routes(
                     return jsonify({
                         "success": False,
                         "error": "There is an import task in progress",
-                        "task_id": current_import_task_id,
+                        "task_id": current_import_task_id if existing.get("owner_id") == current_user_id() else None,
                     }), 409
         task_id = str(uuid.uuid4())
         try:
@@ -922,6 +943,7 @@ def register_import_routes(
         current_import_task_id = task_id
         with import_tasks_lock:
             import_tasks[task_id] = {
+                "owner_id": current_user_id(),
                 "status": "validating", "progress": 0, "current": 0, "total": 0,
                 "original_total": 0, "already_imported_count": 0,
                 "success_count": 0, "failed_count": 0, "skipped_count": 0,
@@ -930,7 +952,8 @@ def register_import_routes(
                 "start_time": datetime.now().isoformat(),
                 "last_update": datetime.now().isoformat(), "cancelled": False,
             }
-        _import_workers.submit(_validate_rdf_then_import, task_id, target_category_id)
+        if not _enqueue_import(_validate_rdf_then_import, task_id, target_category_id):
+            return jsonify(success=False, error="import_queue_full"), 429
         return jsonify({
             "success": True, "task_id": task_id, "total_papers": 0,
             "message": "RDF queued for security validation",
@@ -990,6 +1013,8 @@ def register_import_routes(
 
         with import_tasks_lock:
             task = import_tasks.get(current_import_task_id)
+            if task and task.get("owner_id") != current_user_id():
+                return jsonify({"has_task": False})
             if not task:
                 current_import_task_id = None
                 return jsonify({"has_task": False})
@@ -1016,6 +1041,11 @@ def register_import_routes(
     @app.route("/api/import/zotero/progress/<task_id>")
     def api_import_progress(task_id):
         """Get import progress (SSE, read from task status)"""
+
+        with import_tasks_lock:
+            task = import_tasks.get(task_id)
+            if not task or task.get("owner_id") != current_user_id():
+                return jsonify(success=False, error="task_not_found"), 404
 
         def generate():
             last_status = None
@@ -1078,7 +1108,7 @@ def register_import_routes(
         cancel_document_job = False
         with import_tasks_lock:
             task = import_tasks.get(task_id)
-            if not task:
+            if not task or task.get("owner_id") != current_user_id():
                 return jsonify({"success": False, "error": "Task does not exist"}), 404
 
             # Check task status
@@ -1125,7 +1155,7 @@ def register_import_routes(
                     return jsonify({
                         "success": False,
                         "error": "There is an import task in progress",
-                        "task_id": current_import_task_id,
+                        "task_id": current_import_task_id if existing.get("owner_id") == current_user_id() else None,
                     }), 409
         task_id = str(uuid.uuid4())
         try:
@@ -1148,6 +1178,7 @@ def register_import_routes(
         current_import_task_id = task_id
         with import_tasks_lock:
             import_tasks[task_id] = {
+                "owner_id": current_user_id(),
                 "status": "validating",
                 "progress": 0,
                 "current": 0,
@@ -1162,7 +1193,8 @@ def register_import_routes(
                 "last_update": datetime.now().isoformat(),
                 "cancelled": False,
             }
-        _import_workers.submit(_validate_export_then_rebuild, task_id)
+        if not _enqueue_import(_validate_export_then_rebuild, task_id):
+            return jsonify(success=False, error="import_queue_full"), 429
         return jsonify({
             "success": True,
             "task_id": task_id,
