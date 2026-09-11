@@ -1,6 +1,6 @@
 services:
   paperpilot:
-    image: ifzzh520/paperpilot:1.1.2
+    image: ifzzh520/paperpilot:1.1.3
     container_name: paperpilot
     ports:
       - "127.0.0.1:7191:7191"
