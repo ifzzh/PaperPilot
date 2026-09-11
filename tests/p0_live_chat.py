@@ -13,9 +13,17 @@ from openai import OpenAI,DefaultHttpxClient
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--live',action='store_true');parser.add_argument('--evidence',type=Path,required=True)
+    parser.add_argument('--selection-sample',type=Path)
     args=parser.parse_args()
     if not args.live: print('offline: no model calls');return
     os.umask(0o077);args.evidence.mkdir(parents=True,exist_ok=True)
+    prompt='这是合成验收样例。请只回复：已收到合成样例。'
+    if args.selection_sample:
+        sample=json.loads(args.selection_sample.read_text())
+        assert sample['document'] in ('original','translated') and 1 <= sample['page'] <= 100000
+        assert 0 < len(sample['quote']) <= 8000 and len(sample['question']) <= 2000
+        variant='译文' if sample['document']=='translated' else '原文'
+        prompt=f"引用《{sample['title']}》{variant}第 {sample['page']} 页：\n> "+sample['quote'].replace('\n','\n> ')+ '\n\n'+sample['question']
     config=json.loads(sys.stdin.buffer.read(65537))
     policy=OutboundPolicy(public_origins=[config['origin']],private_origins=[],transfer_origins=[],proxy_fake_ip_networks=config.get('fake_ip_ranges',[]))
     policy.validate(config['base_url'],purpose='ai')
@@ -55,7 +63,7 @@ def main():
         patch.setattr(agent_chat_route,'create_openai_client',lambda *_:SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
         c=app.test_client();csrf=login(c)
         with (args.evidence/'attempt.json').open('x') as f:json.dump({'attempts':1,'model':config['model'],'max_completion_tokens':512,'max_retries':0},f);f.flush();os.fsync(f.fileno())
-        result=c.post('/api/paper/chat',json={'paper_id':'a-0','messages':[{'role':'user','content':'这是合成验收样例。请只回复：已收到合成样例。'}]},headers={'X-CSRF-Token':csrf})
+        result=c.post('/api/paper/chat',json={'paper_id':'a-0','messages':[{'role':'user','content':prompt}]},headers={'X-CSRF-Token':csrf})
         (args.evidence/'route-result.json').write_text(json.dumps({'status':result.status_code,'mimetype':result.mimetype,'requests':len(calls),'has_protocol_newline':'\n' in result.text}))
         header,answer=result.text.split('\n',1);sid=json.loads(header)['session_id']
         path=f'/api/paper/chat/session?paper_id=a-0&session_id={sid}'
