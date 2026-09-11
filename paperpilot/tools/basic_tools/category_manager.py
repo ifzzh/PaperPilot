@@ -46,48 +46,31 @@ def get_categories(categories_file: str) -> Dict[str, Any]:
                     return cats
             except:
                 pass
-        return EMPTY_CATEGORIES
+        return {"id": "root", "name": "Root", "children": []}
 
-    # Build tree
-    # 1. Create dict of nodes
-    nodes = {row['id']: dict(row) for row in rows}
-    # Initialize children list
+    from copy import deepcopy
+    from paperpilot.database.dao.settings_dao import SettingsDAO
+    nodes = {row['id']: dict(row, children=[]) for row in rows}
+    root = nodes.get('root', deepcopy(EMPTY_CATEGORIES))
+    preferences = SettingsDAO.get_setting('category_ui', {})
+    if not isinstance(preferences, dict):
+        preferences = {}
     for node in nodes.values():
-        node['children'] = []
-    
-    root = None
-    # 2. Link children
-    for node in nodes.values():
-        parent_id = node.get('parent_id')
-        if parent_id and parent_id in nodes:
-            nodes[parent_id]['children'].append(node)
-        elif node['id'] == 'root':
-            root = node
-            
-    return root if root else EMPTY_CATEGORIES
+        if node['id'] == 'root':
+            continue
+        parent = nodes.get(node.get('parent_id'), root)
+        parent['children'].append(node)
+        for field in ('pinned', 'color'):
+            value = preferences.get(node['id'], {}).get(field)
+            if value is not None:
+                node[field] = value
+    return root
 
 
 def save_categories(categories_file: str, categories: Dict[str, Any]) -> None:
-    # Update DB
-    # We clear and rebuild because identifying deletions is harder
-    CategoryDAO.clear_categories()
-    
-    def save_node(node, parent_id=None):
-        CategoryDAO.save_category(
-            id=node['id'], 
-            name=node['name'], 
-            parent_id=parent_id, 
-            display_name=node.get('display_name')
-        )
-        for child in node.get('children', []):
-            save_node(child, node['id'])
-
-    save_node(categories)
-    
-    # Optional: Keep file sync for safety/backup if needed, but user asked to move to DB.
-    # We can skip writing to file.
-    # with open(categories_file, "w", encoding="utf-8") as f:
-    #     json.dump(categories, f, ensure_ascii=False, indent=2)
+    # Logical root belongs to each owner, not the globally keyed categories table.
+    # Keep old IDs/asset directories; replace the tree and UI metadata atomically.
+    CategoryDAO.replace_tree(categories)
 
 
 def find_category_node(
