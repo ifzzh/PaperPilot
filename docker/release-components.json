@@ -1,7 +1,7 @@
 {
-  "release": "1.1.1",
+  "release": "1.1.2",
   "web": {
-    "tag": "1.1.1",
+    "tag": "1.1.2",
     "publish": true,
     "repository": "ifzzh520/paperpilot"
   },
