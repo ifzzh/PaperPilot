@@ -5,8 +5,8 @@ import {
   TextLayer,
   type PDFDocumentProxy,
   type RenderTask,
-} from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
+} from "pdfjs-dist/legacy/build/pdf.mjs";
+import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
 import "pdfjs-dist/web/pdf_viewer.css";
 import { Chat } from "./Chat";
 import type { Paper } from "./api";
