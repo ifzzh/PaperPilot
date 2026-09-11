@@ -67,6 +67,8 @@ if __name__ == "__main__":
             raise app_module.QueueFull('synthetic fixture disables outbound metadata')
         patch.setattr(app_module._daily_aux_executor,'submit',no_external_metadata)
         app_module.register_routes()
+        from paperpilot.routes.basic_routes import import_route
+        import_route.import_tasks['synthetic-import-completed']={'owner_id':third['id'],'status':'completed','progress':100,'current':3,'total':3,'success_count':3,'message':'合成导入完成'}
         with application.app_context():
             settings_path=Path(app_module.DAILY_ARXIV_SETTINGS_FILE)
             settings=json.loads(settings_path.read_text())

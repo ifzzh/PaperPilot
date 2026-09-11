@@ -50,7 +50,10 @@ export function ImportDialog({
         for (const file of files) {
           const data = new FormData();
           data.set("file", file);
-          data.set("category_id", target);
+          data.set(
+            kind === "zotero" ? "target_category_id" : "category_id",
+            target,
+          );
           const r = await upload(
             kind === "pdf"
               ? "/api/upload"
@@ -89,6 +92,7 @@ export function ImportDialog({
             onClick={() => {
               setKind(id);
               setFiles([]);
+              if (id === "zotero") setTarget("root");
             }}
             disabled={busy}
           >
@@ -146,15 +150,22 @@ export function ImportDialog({
             ))}
           </ul>
         )}
-        <Field label="存入">
-          <select value={target} onChange={(e) => setTarget(e.target.value)}>
-            <option value="reading_list_temp">Reading List</option>
-            <CategoryOptions tree={tree} />
-          </select>
-        </Field>
-        <p className="muted">
-          导入后可整理、阅读文献，并按需启动翻译或问答。
-        </p>
+        {kind !== "backup" && (
+          <Field label="存入">
+            <select value={target} onChange={(e) => setTarget(e.target.value)}>
+              {kind !== "zotero" && (
+                <option value="reading_list_temp">Reading List</option>
+              )}
+              <CategoryOptions tree={tree} />
+            </select>
+          </Field>
+        )}
+        {kind === "backup" && (
+          <p className="muted">
+            按备份中的分类结构恢复元数据；不会搬入备份中的服务器路径。
+          </p>
+        )}
+        <p className="muted">导入后可整理、阅读文献，并按需启动翻译或问答。</p>
         <Status error={error} />
         <footer>
           <button type="button" onClick={onClose} disabled={busy}>
@@ -175,6 +186,9 @@ const names: Record<string, string> = {
   queued: "排队中",
   pending: "等待中",
   running: "处理中",
+  validating: "正在校验",
+  starting: "准备导入",
+  cancelling: "正在取消",
   dispatching: "正在分配",
   completed: "已完成",
   failed: "失败",
@@ -327,13 +341,16 @@ function TaskDetails({
           ? "/api/export/status/" + id
           : kind === "upload"
             ? "/api/upload/" + id
-            : "/api/import/zotero/progress/" + id;
-  const state = useResource<any>(path, {}),
+            : null;
+  const jsonState = useResource<any>(path, {}),
+    importState = useImportProgress(kind === "import" ? id : null),
+    state = kind === "import" ? importState : jsonState,
     [error, setError] = useState("");
   useEffect(() => {
+    if (kind === "import") return;
     const t = setInterval(state.refresh, 2000);
     return () => clearInterval(t);
-  }, []);
+  }, [kind]);
   async function act(action: string) {
     try {
       if (kind === "translation")
@@ -371,6 +388,12 @@ function TaskDetails({
         max={100}
         value={typeof d.progress === "number" ? d.progress : 0}
       />
+      {kind === "import" && (
+        <p>
+          {names[d.status] || "等待导入进度"} · {Number(d.current) || 0}/
+          {Number(d.total) || 0}，已导入 {Number(d.success_count) || 0} 篇
+        </p>
+      )}
       <div className="task-log">
         {(d.logs || d.events || []).map((line: any, i: number) => (
           <p key={i}>
@@ -421,4 +444,54 @@ function TaskDetails({
       </div>
     </Modal>
   );
+}
+
+function useImportProgress(id: string | null) {
+  const [data, setData] = useState<any>({}),
+    [error, setError] = useState(""),
+    [loading, setLoading] = useState(false),
+    [revision, setRevision] = useState(0);
+  useEffect(() => {
+    setData({});
+    setError("");
+    if (!id) return;
+    setLoading(true);
+    const source = new EventSource("/api/import/zotero/progress/" + id, {
+      withCredentials: true,
+    });
+    let active = true;
+    source.onmessage = (event) => {
+      if (!active) return;
+      try {
+        if (event.data.length > 65536) throw Error();
+        const value = JSON.parse(event.data);
+        if (!value || typeof value.status !== "string") throw Error();
+        setData(value);
+        setLoading(false);
+        if (["completed", "error", "cancelled"].includes(value.status))
+          source.close();
+      } catch {
+        source.close();
+        setError("导入进度格式异常，请刷新重试。");
+        setLoading(false);
+      }
+    };
+    source.onerror = () => {
+      if (!active) return;
+      source.close();
+      setLoading(false);
+      setError("导入进度连接中断，请刷新重试。");
+      void api("/api/auth/session")
+        .then((s) => {
+          if (active && !s.authenticated)
+            window.dispatchEvent(new Event("paperpilot-session-expired"));
+        })
+        .catch(() => {});
+    };
+    return () => {
+      active = false;
+      source.close();
+    };
+  }, [id, revision]);
+  return { data, error, loading, refresh: () => setRevision((n) => n + 1) };
 }
