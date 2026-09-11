@@ -221,6 +221,7 @@ export function Tasks({
     ...(translations.data.tasks || []).map((t: any) => ({
       ...t,
       kind: "translation",
+      task_id: t.job_id,
     })),
     ...(analysis.data.tasks || []).map((t: any) => ({
       ...t,
@@ -233,7 +234,11 @@ export function Tasks({
           !(analysis.data.tasks || []).some((a: any) => a.task_id === t.id),
       )
       .map((t) => ({ ...t, task_id: t.id, status: "", title: t.label })),
-  ];
+  ].filter(
+    (t, index, all) =>
+      all.findIndex((v) => v.kind === t.kind && v.task_id === t.task_id) ===
+      index,
+  );
   return (
     <section className="utility-page">
       <header className="page-heading">
@@ -420,7 +425,7 @@ function TaskDetails({
             {status === "paused" && (
               <button onClick={() => act("resume")}>继续</button>
             )}
-            {["failed", "cancelled"].includes(status) && (
+            {status === "failed" && (
               <button onClick={() => act("retry")}>重试</button>
             )}
           </>

@@ -20,6 +20,8 @@ from paperpilot.document_worker.safety import DocumentLimits
 from paperpilot.routes.basic_routes import upload_from_pdf_route
 from paperpilot.routes.basic_routes import daily_arxiv_route
 from paperpilot.database.dao.paper_dao import PaperDAO
+from paperpilot.database.dao.translation_job_dao import TranslationJobDAO
+from paperpilot.security.identity import run_as_identity
 from paperpilot.database.dao.daily_arxiv_dao import DailyArxivDAO
 from paperpilot.security.identity import Identity, set_background_identity
 from paperpilot.database import connection
@@ -47,6 +49,13 @@ if __name__ == "__main__":
         patch.setattr(app_module, "DB_PATH", connection.DB_PATH)
         set_background_identity(Identity(first["id"], first["username"], first["role"]))
         install_reader_fixture(application, directory, (first, second, third), patch, origin, register_routes=False)
+        with application.app_context():
+            def seed_translation_history():
+                job_id='00000000-0000-4000-8000-000000000112'
+                TranslationJobDAO.create(job_id,'b-0')
+                TranslationJobDAO.update(job_id,'completed',progress=100)
+                TranslationJobDAO.append_event(job_id,kind='status',message='合成终态日志')
+            run_as_identity(Identity(second['id'],second['username'],second['role']),seed_translation_history)
         app_module.init_app(directory + "/papers")
         app_module.init_categories()
         # Browser flow validates Flask upload/promotion against a deterministic
