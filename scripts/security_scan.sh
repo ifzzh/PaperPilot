@@ -36,11 +36,17 @@ ensure_trivy() {
 scan_dependencies() {
     docker image inspect "$audit_image" >/dev/null
     local reports=()
+    local network_args=()
+    # Host-local development proxies need an explicit audit-only network.
+    # Runtime services and their outbound policy are unaffected.
+    if [[ -n ${PAPERPILOT_AUDIT_NETWORK:-} ]]; then
+        network_args=(--network "$PAPERPILOT_AUDIT_NETWORK")
+    fi
     local target
     for target in web test worker document; do
         local report="$output_dir/${target}-pip-audit.json"
         reports+=("$report")
-        docker run --rm \
+        docker run --rm "${network_args[@]}" \
             --volume "$repo_root:/src:ro" \
             --volume "$output_dir:/out" \
             --volume "$tool_dir/uv-cache:/uv-cache" \
