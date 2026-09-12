@@ -1,4 +1,4 @@
-from paperpilot.tools.basic_tools.daily_arxiv_profile import (
+from ipaper.tools.basic_tools.daily_arxiv_profile import (
     DEFAULT_RESEARCH_TOPICS,
     score_paper_topics,
     select_daily_candidates,

@@ -47,7 +47,7 @@ export async function request(
     !path.startsWith("/api/auth/") &&
     typeof window !== "undefined"
   )
-    window.dispatchEvent(new Event("paperpilot-session-expired"));
+    window.dispatchEvent(new Event("ipaper-session-expired"));
   let data: unknown;
   try {
     data = await response.json();
@@ -59,7 +59,7 @@ export async function request(
     obj?.error === "password_change_required" &&
     typeof window !== "undefined"
   )
-    window.dispatchEvent(new Event("paperpilot-session-expired"));
+    window.dispatchEvent(new Event("ipaper-session-expired"));
   if (!response.ok || obj?.success === false || obj?.error) {
     throw new ApiError(
       response.status,

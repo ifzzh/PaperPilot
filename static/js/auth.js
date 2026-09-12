@@ -11,8 +11,8 @@ function cookieValue(name) {
 }
 
 function patchFetchWithAuth() {
-    if (window.__paperpilotFetchAuthPatched) return;
-    window.__paperpilotFetchAuthPatched = true;
+    if (window.__ipaperFetchAuthPatched) return;
+    window.__ipaperFetchAuthPatched = true;
     const originalFetch = window.fetch.bind(window);
     window.fetch = (input, init = {}) => {
         try {
@@ -102,10 +102,10 @@ function showAuthMode(mode) {
 
 function applyAuthenticatedUser(user) {
     currentUser = user;
-    window.__PAPERPILOT_USER = user;
+    window.__IPAPER_USER = user;
     if (user.must_change_password) {
         showAuthMode('change');
-        setAuthError('临时密码必须先修改，之后才能使用 PaperPilot', '#7d4a9d');
+        setAuthError('临时密码必须先修改，之后才能使用 iPaper', '#7d4a9d');
         return;
     }
     hideLoginOverlay();
@@ -120,7 +120,7 @@ function ensureAppLoaded() {
     if (appLoaded || appLoading) return;
     appLoading = true;
     const script = document.createElement('script');
-    script.id = 'paperpilot-app-script';
+    script.id = 'ipaper-app-script';
     script.src = '/static/js/app.js?v=0.10.2';
     script.onload = () => { appLoaded = true; appLoading = false; };
     script.onerror = () => { appLoading = false; setAuthError('应用脚本加载失败'); };
@@ -228,7 +228,7 @@ async function handleAccountPasswordChange(event) {
             }),
         });
         currentUser = payload.user;
-        window.__PAPERPILOT_USER = payload.user;
+        window.__IPAPER_USER = payload.user;
         event.currentTarget.reset();
         status.style.color = '#2e7d32';
         status.textContent = '密码已修改，其他设备已退出登录';
@@ -317,7 +317,7 @@ function renderInvites(invites) {
     body.replaceChildren();
     invites.forEach(invite => {
         const row = document.createElement('tr');
-        appendCell(row, window.PaperPilotI18n?.formatDateTime(invite.expires_at * 1000) || ''); appendCell(row, invite.status);
+        appendCell(row, window.iPaperI18n?.formatDateTime(invite.expires_at * 1000) || ''); appendCell(row, invite.status);
         const actions = document.createElement('td');
         if (invite.status === 'active') actions.appendChild(actionButton('撤销', async () => {
             await jsonRequest(`/api/admin/invites/${encodeURIComponent(invite.id)}`, { method: 'DELETE' });

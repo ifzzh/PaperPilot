@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply PaperPilot's narrow, expiring policy to pip-audit JSON reports."""
+"""Apply iPaper's narrow, expiring policy to pip-audit JSON reports."""
 
 from __future__ import annotations
 

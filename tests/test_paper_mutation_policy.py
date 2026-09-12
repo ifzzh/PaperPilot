@@ -1,6 +1,6 @@
 import unittest
 
-from paperpilot.core.base_paper import Paper, PaperUpdateError
+from ipaper.core.base_paper import Paper, PaperUpdateError
 
 
 class TestPaperMutationPolicy(unittest.TestCase):

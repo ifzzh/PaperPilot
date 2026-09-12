@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 class WebTaskQueueContractTests(unittest.TestCase):
     def test_executor_rejects_work_beyond_running_and_queued_capacity(self):
-        from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
+        from ipaper.runtime.task_queue import BoundedExecutor, QueueFull
 
         release = threading.Event()
         started = threading.Event()
@@ -33,7 +33,7 @@ class WebTaskQueueContractTests(unittest.TestCase):
         executor.shutdown(wait=True, cancel_futures=True)
 
     def test_shutdown_rejects_new_work_and_cancels_queued_work(self):
-        from paperpilot.runtime.task_queue import BoundedExecutor, ExecutorShuttingDown
+        from ipaper.runtime.task_queue import BoundedExecutor, ExecutorShuttingDown
 
         release = threading.Event()
         executor = BoundedExecutor(max_workers=1, max_queue=1, thread_name_prefix="test")
@@ -55,8 +55,8 @@ class WebTaskQueueContractTests(unittest.TestCase):
     def test_export_returns_stable_429_when_queue_is_full(self):
         from flask import Flask
 
-        from paperpilot.routes.basic_routes import export_route
-        from paperpilot.runtime.task_queue import QueueFull
+        from ipaper.routes.basic_routes import export_route
+        from ipaper.runtime.task_queue import QueueFull
 
         class FullExecutor:
             def submit(self, *_args, **_kwargs):
@@ -76,10 +76,10 @@ class WebTaskQueueContractTests(unittest.TestCase):
 
     def test_request_routes_do_not_spawn_unbounded_threads(self):
         route_files = [
-            "paperpilot/routes/agent_routes/agent_summary_route.py",
-            "paperpilot/routes/basic_routes/export_route.py",
-            "paperpilot/routes/basic_routes/daily_arxiv_route.py",
-            "paperpilot/routes/basic_routes/settings_route.py",
+            "ipaper/routes/agent_routes/agent_summary_route.py",
+            "ipaper/routes/basic_routes/export_route.py",
+            "ipaper/routes/basic_routes/daily_arxiv_route.py",
+            "ipaper/routes/basic_routes/settings_route.py",
         ]
         for path in route_files:
             with self.subTest(path=path):
@@ -121,29 +121,29 @@ class ApplicationFactoryContractTests(unittest.TestCase):
         version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))[
             "project"
         ]["version"]
-        self.assertEqual(version, "1.1.3")
+        self.assertEqual(version, "1.1.4")
         lock = Path("uv.lock").read_text(encoding="utf-8")
-        self.assertIn('name = "paperpilot"\nversion = "1.1.3"', lock)
+        self.assertIn('name = "ipaper"\nversion = "1.1.4"', lock)
         matrix = json.loads(
             Path("docker/release-components.json").read_text(encoding="utf-8")
         )
         self.assertEqual(matrix["release"], version)
-        self.assertEqual(matrix["web"]["tag"], "1.1.3")
-        self.assertEqual(matrix["translation_worker"]["tag"], "0.10.5")
-        self.assertFalse(matrix["translation_worker"]["publish"])
+        self.assertEqual(matrix["web"]["tag"], "1.1.4")
+        self.assertEqual(matrix["translation_worker"]["tag"], "1.1.4")
+        self.assertTrue(matrix["translation_worker"]["publish"])
         self.assertEqual(
-            matrix["document_worker"]["tag"], "1.0.0"
+            matrix["document_worker"]["tag"], "1.1.4"
         )
-        self.assertFalse(matrix["document_worker"]["publish"])
+        self.assertTrue(matrix["document_worker"]["publish"])
         dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
-        self.assertIn("ARG APP_VERSION=1.1.3", dockerfile)
-        self.assertIn("ARG TRANSLATION_WORKER_VERSION=0.10.5", dockerfile)
-        self.assertIn("ARG DOCUMENT_WORKER_VERSION=1.0.0", dockerfile)
+        self.assertIn("ARG APP_VERSION=1.1.4", dockerfile)
+        self.assertIn("ARG TRANSLATION_WORKER_VERSION=1.1.4", dockerfile)
+        self.assertIn("ARG DOCUMENT_WORKER_VERSION=1.1.4", dockerfile)
         compose = Path("docker-compose.yaml").read_text(encoding="utf-8")
         repositories = {
-            "web": "ifzzh520/paperpilot",
-            "translation_worker": "ifzzh520/paperpilot-translation-worker",
-            "document_worker": "ifzzh520/paperpilot-document-worker",
+            "web": "ifzzh520/ipaper",
+            "translation_worker": "ifzzh520/ipaper-translation-worker",
+            "document_worker": "ifzzh520/ipaper-document-worker",
         }
         for component, repository in repositories.items():
             self.assertEqual(matrix[component]["repository"], repository)
@@ -155,14 +155,14 @@ class ApplicationFactoryContractTests(unittest.TestCase):
                     self.assertIn(f"{tag}@{digest}", compose)
 
     def test_master_preflight_validates_state_and_closes_sqlite_connection(self):
-        from paperpilot.runtime import preflight
+        from ipaper.runtime import preflight
 
         store = Mock()
         with tempfile.TemporaryDirectory() as temporary, patch.dict(
             "os.environ",
             {
-                "PAPERPILOT_PAPERS_DIR": str(Path(temporary) / "papers"),
-                "PAPERPILOT_SETTINGS_KEY_FILE": str(Path(temporary) / "settings.key"),
+                "IPAPER_PAPERS_DIR": str(Path(temporary) / "papers"),
+                "IPAPER_SETTINGS_KEY_FILE": str(Path(temporary) / "settings.key"),
             },
             clear=False,
         ), patch.object(preflight.AuthConfig, "from_environ"), patch.object(

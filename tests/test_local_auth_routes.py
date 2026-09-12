@@ -4,21 +4,21 @@ from pathlib import Path
 
 import app as app_module
 
-from paperpilot.auth import AuthConfig
-from paperpilot.database import connection
-from paperpilot.database.db_manager import init_db_schema
-from paperpilot.local_auth import LocalAuthService
+from ipaper.auth import AuthConfig
+from ipaper.database import connection
+from ipaper.database.db_manager import init_db_schema
+from ipaper.local_auth import LocalAuthService
 
 
 class TestLocalAuthRoutes(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.original_db = connection.DB_PATH
-        connection.DB_PATH = str(Path(self.temp.name) / "paperpilot.db")
+        connection.DB_PATH = str(Path(self.temp.name) / "ipaper.db")
         init_db_schema(connection.DB_PATH)
         app_module.app.config.update(TESTING=True)
         app_module.AUTH_CONFIG = AuthConfig.from_environ({
-            "PAPERPILOT_ENV": "production", "PAPERPILOT_AUTH_MODE": "local",
+            "IPAPER_ENV": "production", "IPAPER_AUTH_MODE": "local",
         })
         with app_module.app.app_context():
             service = LocalAuthService()

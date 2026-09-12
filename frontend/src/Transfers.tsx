@@ -126,7 +126,7 @@ export function ImportDialog({
                 ? "支持多个 PDF，依次导入"
                 : kind === "zotero"
                   ? "选择从 Zotero 导出的 RDF 文件"
-                  : "选择 PaperPilot 元数据 ZIP 备份"}
+                  : "选择 iPaper 元数据 ZIP 备份"}
             </span>
             <input
               type="file"
@@ -489,7 +489,7 @@ function useImportProgress(id: string | null) {
       void api("/api/auth/session")
         .then((s) => {
           if (active && !s.authenticated)
-            window.dispatchEvent(new Event("paperpilot-session-expired"));
+            window.dispatchEvent(new Event("ipaper-session-expired"));
         })
         .catch(() => {});
     };

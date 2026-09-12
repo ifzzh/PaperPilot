@@ -9,9 +9,9 @@ import uuid
 import pytest
 
 from scripts.verify_mineru_cloud import AuditFailure, Cloud, Probe, SAMPLE, SAMPLE_SHA
-from paperpilot.tools.basic_tools.mineru_api_client import finalize_mineru_output
-from paperpilot.document_worker.safety import DocumentLimitError
-from paperpilot.security.outbound import OutboundPolicy
+from ipaper.tools.basic_tools.mineru_api_client import finalize_mineru_output
+from ipaper.document_worker.safety import DocumentLimitError
+from ipaper.security.outbound import OutboundPolicy
 
 
 class FakeWorker:

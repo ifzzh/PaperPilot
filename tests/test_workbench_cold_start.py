@@ -1,10 +1,10 @@
 """Persistent assets, no PaperStore seeding and no legacy homepage request."""
 import pytest
 import app as app_module
-from paperpilot.database import connection
-from paperpilot.database.dao.paper_dao import PaperDAO
-from paperpilot.core.base_paper import Paper
-from paperpilot.security.identity import Identity, run_as_identity
+from ipaper.database import connection
+from ipaper.database.dao.paper_dao import PaperDAO
+from ipaper.core.base_paper import Paper
+from ipaper.security.identity import Identity, run_as_identity
 from tests.workbench_support import make_workbench_fixture
 from tests.test_workbench import login
 

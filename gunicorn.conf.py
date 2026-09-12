@@ -15,6 +15,6 @@ control_socket_disable = True
 
 def on_starting(server):
     """Refuse unsafe configuration before Gunicorn creates its listener."""
-    from paperpilot.runtime.preflight import preflight_environment
+    from ipaper.runtime.preflight import preflight_environment
 
     preflight_environment()

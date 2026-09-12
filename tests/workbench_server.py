@@ -12,7 +12,7 @@ if __name__ == '__main__':
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    with tempfile.TemporaryDirectory(prefix='paperpilot-workbench-') as directory, MonkeyPatch.context() as patch, fake_openai() as origin:
+    with tempfile.TemporaryDirectory(prefix='ipaper-workbench-') as directory, MonkeyPatch.context() as patch, fake_openai() as origin:
         application, first, second = make_workbench_fixture(directory, patch, count=1000)
         with application.app_context():
             import app as app_module

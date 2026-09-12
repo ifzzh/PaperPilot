@@ -5,11 +5,11 @@ from pathlib import Path
 
 from flask import Flask
 
-from paperpilot.routes.basic_routes.category_tree_route import (
+from ipaper.routes.basic_routes.category_tree_route import (
     register_category_routes,
 )
-from paperpilot.security.paths import category_directory
-from paperpilot.tools.basic_tools.category_manager import (
+from ipaper.security.paths import category_directory
+from ipaper.tools.basic_tools.category_manager import (
     find_category_node,
     get_category_path,
 )

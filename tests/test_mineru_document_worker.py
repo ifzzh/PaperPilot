@@ -6,8 +6,8 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
-from paperpilot.document_worker.safety import DocumentLimits, bounded_copy
-from paperpilot.tools.basic_tools.mineru_api_client import MinerUAPIClient
+from ipaper.document_worker.safety import DocumentLimits, bounded_copy
+from ipaper.tools.basic_tools.mineru_api_client import MinerUAPIClient
 
 
 class _Raw(io.BytesIO):
@@ -67,12 +67,12 @@ class MinerUDocumentWorkerTests(unittest.TestCase):
                 "secret", outbound_policy=object(), document_client=document_client
             )
             with patch(
-                "paperpilot.tools.basic_tools.mineru_api_client.guarded_request",
+                "ipaper.tools.basic_tools.mineru_api_client.guarded_request",
                 return_value=_Response(),
             ), patch(
-                "paperpilot.tools.basic_tools.mineru_api_client.DocumentJobDAO.create"
+                "ipaper.tools.basic_tools.mineru_api_client.DocumentJobDAO.create"
             ), patch(
-                "paperpilot.tools.basic_tools.mineru_api_client.DocumentJobDAO.update"
+                "ipaper.tools.basic_tools.mineru_api_client.DocumentJobDAO.update"
             ):
                 result = client.download_and_extract_result("https://example.test/result", str(output))
             self.assertEqual(result, str(output))

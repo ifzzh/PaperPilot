@@ -4,9 +4,9 @@ from pathlib import Path
 
 from flask import Flask
 
-from paperpilot.database import connection
-from paperpilot.database.db_manager import init_db_schema
-from paperpilot.local_auth import (
+from ipaper.database import connection
+from ipaper.database.db_manager import init_db_schema
+from ipaper.local_auth import (
     LocalAuthError,
     LocalAuthService,
     normalize_username,
@@ -18,7 +18,7 @@ class TestLocalAuth(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.original_path = connection.DB_PATH
-        connection.DB_PATH = str(Path(self.temp.name) / "paperpilot.db")
+        connection.DB_PATH = str(Path(self.temp.name) / "ipaper.db")
         init_db_schema(connection.DB_PATH)
         self.app = Flask(__name__)
         self.context = self.app.app_context()

@@ -6,15 +6,15 @@ from pathlib import Path
 
 from flask import Flask
 
-from paperpilot.core.base_paper import Paper
-from paperpilot.core.paper_store import PaperStore
-from paperpilot.database import connection
-from paperpilot.database.dao.paper_dao import PaperDAO
-from paperpilot.database.dao.settings_dao import SettingsDAO
-from paperpilot.database.db_manager import init_db_schema
-from paperpilot.security.agentic_credentials import AgenticCredentialStore
-from paperpilot.security.identity import Identity, reset_background_identity, set_background_identity
-from paperpilot.security.paths import category_directory
+from ipaper.core.base_paper import Paper
+from ipaper.core.paper_store import PaperStore
+from ipaper.database import connection
+from ipaper.database.dao.paper_dao import PaperDAO
+from ipaper.database.dao.settings_dao import SettingsDAO
+from ipaper.database.db_manager import init_db_schema
+from ipaper.security.agentic_credentials import AgenticCredentialStore
+from ipaper.security.identity import Identity, reset_background_identity, set_background_identity
+from ipaper.security.paths import category_directory
 
 
 class TestTenantIsolation(unittest.TestCase):
@@ -23,7 +23,7 @@ class TestTenantIsolation(unittest.TestCase):
         self.root = Path(self.temp.name) / "papers"
         self.root.mkdir()
         self.original_path = connection.DB_PATH
-        connection.DB_PATH = str(Path(self.temp.name) / "paperpilot.db")
+        connection.DB_PATH = str(Path(self.temp.name) / "ipaper.db")
         init_db_schema(connection.DB_PATH)
         self.app = Flask(__name__)
         self.context = self.app.app_context()

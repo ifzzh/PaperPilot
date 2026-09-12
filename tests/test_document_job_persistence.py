@@ -4,15 +4,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from paperpilot.database import connection
-from paperpilot.database.dao.document_job_dao import DocumentJobDAO
-from paperpilot.database.models import SCHEMA_SCRIPT
+from ipaper.database import connection
+from ipaper.database.dao.document_job_dao import DocumentJobDAO
+from ipaper.database.models import SCHEMA_SCRIPT
 
 
 class DocumentJobPersistenceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.db_path = str(Path(self.temp.name) / "paperpilot.db")
+        self.db_path = str(Path(self.temp.name) / "ipaper.db")
         sqlite3.connect(self.db_path).executescript(SCHEMA_SCRIPT).close()
         connection.close_db()
         self.path_patch = patch.object(connection, "DB_PATH", self.db_path)

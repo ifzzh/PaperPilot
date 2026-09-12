@@ -1,6 +1,6 @@
 (() => {
-  if (window.__paperpilotFetchAuthPatched) return;
-  window.__paperpilotFetchAuthPatched = true;
+  if (window.__ipaperFetchAuthPatched) return;
+  window.__ipaperFetchAuthPatched = true;
   const originalFetch = window.fetch.bind(window);
   const csrf = () => {
     const entry = document.cookie.split(';').map(value => value.trim())

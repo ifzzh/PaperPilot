@@ -6,8 +6,8 @@ from pytest import MonkeyPatch
 from tests.workbench_support import make_workbench_fixture
 from tests.workbench_reader_support import install_reader_fixture
 from tests.test_workbench import login
-from paperpilot.routes.agent_routes import agent_chat_route
-from paperpilot.security.outbound import OutboundPolicy
+from ipaper.routes.agent_routes import agent_chat_route
+from ipaper.security.outbound import OutboundPolicy
 from openai import OpenAI,DefaultHttpxClient
 
 

@@ -9,11 +9,11 @@ from unittest.mock import patch
 
 from flask import Flask
 
-from paperpilot.core.paper_store import PaperStore
-from paperpilot.database import connection
-from paperpilot.database.models import SCHEMA_SCRIPT
-from paperpilot.document_worker.safety import DocumentLimits, bounded_copy
-from paperpilot.routes.basic_routes.upload_from_pdf_route import register_upload_from_pdf_routes
+from ipaper.core.paper_store import PaperStore
+from ipaper.database import connection
+from ipaper.database.models import SCHEMA_SCRIPT
+from ipaper.document_worker.safety import DocumentLimits, bounded_copy
+from ipaper.routes.basic_routes.upload_from_pdf_route import register_upload_from_pdf_routes
 
 
 class ImmediateDocumentClient:
@@ -55,7 +55,7 @@ class DocumentUploadFlowTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.db = self.root / "paperpilot.db"
+        self.db = self.root / "ipaper.db"
         sqlite3.connect(self.db).executescript(SCHEMA_SCRIPT).close()
         connection.close_db()
         self.path_patch = patch.object(connection, "DB_PATH", str(self.db))

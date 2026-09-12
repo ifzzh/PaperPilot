@@ -1,21 +1,18 @@
 {
-  "release": "1.1.3",
+  "release": "1.1.4",
   "web": {
-    "tag": "1.1.3",
+    "tag": "1.1.4",
     "publish": true,
-    "repository": "ifzzh520/paperpilot",
-    "digest": "sha256:c0746062decd27b5701c34674dd7ef9e77ed7ff69ad14e8fd5be10026ee9ca0c"
+    "repository": "ifzzh520/ipaper"
   },
   "translation_worker": {
-    "tag": "0.10.5",
-    "digest": "sha256:a7b4a90f214d8628e40c4aa7b919bb6ecb178835e40a10303450634d6b4b609c",
-    "publish": false,
-    "repository": "ifzzh520/paperpilot-translation-worker"
+    "tag": "1.1.4",
+    "publish": true,
+    "repository": "ifzzh520/ipaper-translation-worker"
   },
   "document_worker": {
-    "tag": "1.0.0",
-    "publish": false,
-    "repository": "ifzzh520/paperpilot-document-worker",
-    "digest": "sha256:b2aa87d58c9bdff3b50f1e3323beab227e4237e5b88a4b42cecd83887df89c50"
+    "tag": "1.1.4",
+    "publish": true,
+    "repository": "ifzzh520/ipaper-document-worker"
   }
 }

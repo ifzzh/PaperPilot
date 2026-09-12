@@ -9,9 +9,9 @@ import unittest
 import uuid
 from pathlib import Path
 
-from paperpilot.document_worker.app import create_worker_app
-from paperpilot.document_worker.client import DocumentWorkerClient, DocumentWorkerRejected
-from paperpilot.document_worker.service import DocumentWorkerService
+from ipaper.document_worker.app import create_worker_app
+from ipaper.document_worker.client import DocumentWorkerClient, DocumentWorkerRejected
+from ipaper.document_worker.service import DocumentWorkerService
 
 
 TOKEN = "d" * 48

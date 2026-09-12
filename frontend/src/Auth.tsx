@@ -78,7 +78,7 @@ export function Auth({
     <div className="auth-page">
       <section className="auth-story">
         <div className="brand">
-          <span className="brand-mark">P</span>PaperPilot
+          <span className="brand-mark">P</span>iPaper
         </div>
         <div>
           <span className="eyebrow">阅读 · 理解 · 发现</span>
@@ -110,7 +110,7 @@ export function Auth({
           <p>
             {changing
               ? "首次登录需要更新密码。"
-              : "登录你的 PaperPilot 研究空间。"}
+              : "登录你的 iPaper 研究空间。"}
           </p>
           <form onSubmit={submit}>
             {!changing && mode !== "reset" && (

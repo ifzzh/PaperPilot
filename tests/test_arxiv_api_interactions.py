@@ -7,12 +7,12 @@ import pytest
 import requests
 from unittest.mock import MagicMock, patch
 
-from paperpilot.tools.basic_tools.arxiv_network import (
+from ipaper.tools.basic_tools.arxiv_network import (
     configure_arxiv_client,
     get_arxiv_requests_proxies,
 )
-from paperpilot.tools.basic_tools.arxiv_client import get_bibtex_enhanced
-from paperpilot.tools.basic_tools.upload_paper import (
+from ipaper.tools.basic_tools.arxiv_client import get_bibtex_enhanced
+from ipaper.tools.basic_tools.upload_paper import (
     fetch_paper_by_arxiv_id_fast,
     search_arxiv_by_title_and_author_fast,
     search_arxiv_by_title_only_fast,
@@ -128,10 +128,10 @@ class TestArxivApiMockedBehavior(unittest.TestCase):
     def test_fetch_paper_by_arxiv_id_fast_uses_arxiv_client(self):
         fake_client = FakeClient(make_paper())
         with patch(
-            "paperpilot.tools.basic_tools.upload_paper.arxiv.Client",
+            "ipaper.tools.basic_tools.upload_paper.arxiv.Client",
             return_value=fake_client,
         ), patch(
-            "paperpilot.tools.basic_tools.upload_paper.arxiv.Search",
+            "ipaper.tools.basic_tools.upload_paper.arxiv.Search",
             FakeSearch,
         ):
             result = fetch_paper_by_arxiv_id_fast("arXiv:2502.05383v1")
@@ -146,10 +146,10 @@ class TestArxivApiMockedBehavior(unittest.TestCase):
     def test_search_arxiv_by_title_and_author_fast_builds_query(self):
         fake_client = FakeClient(make_paper(entry_id="https://arxiv.org/abs/2502.05383v2"))
         with patch(
-            "paperpilot.tools.basic_tools.upload_paper.arxiv.Client",
+            "ipaper.tools.basic_tools.upload_paper.arxiv.Client",
             return_value=fake_client,
         ), patch(
-            "paperpilot.tools.basic_tools.upload_paper.arxiv.Search",
+            "ipaper.tools.basic_tools.upload_paper.arxiv.Search",
             FakeSearch,
         ):
             result = search_arxiv_by_title_and_author_fast("A: Better Title", "Alice")
@@ -164,10 +164,10 @@ class TestArxivApiMockedBehavior(unittest.TestCase):
     def test_search_arxiv_by_title_only_fast_builds_query(self):
         fake_client = FakeClient(make_paper(entry_id="https://arxiv.org/abs/2502.05383v3"))
         with patch(
-            "paperpilot.tools.basic_tools.upload_paper.arxiv.Client",
+            "ipaper.tools.basic_tools.upload_paper.arxiv.Client",
             return_value=fake_client,
         ), patch(
-            "paperpilot.tools.basic_tools.upload_paper.arxiv.Search",
+            "ipaper.tools.basic_tools.upload_paper.arxiv.Search",
             FakeSearch,
         ):
             result = search_arxiv_by_title_only_fast("My Title")
@@ -178,10 +178,10 @@ class TestArxivApiMockedBehavior(unittest.TestCase):
 
     def test_get_bibtex_enhanced_prefers_dblp_result(self):
         with patch(
-            "paperpilot.tools.basic_tools.arxiv_client.get_bibtex_from_dblp",
+            "ipaper.tools.basic_tools.arxiv_client.get_bibtex_from_dblp",
             return_value="@article{dblp}",
         ), patch(
-            "paperpilot.tools.basic_tools.arxiv_client.arxiv_urlopen",
+            "ipaper.tools.basic_tools.arxiv_client.arxiv_urlopen",
         ) as fake_arxiv_urlopen:
             result = get_bibtex_enhanced("A Paper", "Alice Bob", "2502.05383")
 
@@ -192,10 +192,10 @@ class TestArxivApiMockedBehavior(unittest.TestCase):
         response = MagicMock()
         response.__enter__.return_value.read.return_value = b"@article{arxiv}"
         with patch(
-            "paperpilot.tools.basic_tools.arxiv_client.get_bibtex_from_dblp",
+            "ipaper.tools.basic_tools.arxiv_client.get_bibtex_from_dblp",
             return_value=None,
         ), patch(
-            "paperpilot.tools.basic_tools.arxiv_client.arxiv_urlopen",
+            "ipaper.tools.basic_tools.arxiv_client.arxiv_urlopen",
             return_value=response,
         ):
             result = get_bibtex_enhanced("A Paper", "Alice Bob", "2502.05383")
@@ -206,10 +206,10 @@ class TestArxivApiMockedBehavior(unittest.TestCase):
         response = MagicMock()
         response.__enter__.return_value.read.return_value = b"Error: not found"
         with patch(
-            "paperpilot.tools.basic_tools.arxiv_client.get_bibtex_from_dblp",
+            "ipaper.tools.basic_tools.arxiv_client.get_bibtex_from_dblp",
             return_value=None,
         ), patch(
-            "paperpilot.tools.basic_tools.arxiv_client.arxiv_urlopen",
+            "ipaper.tools.basic_tools.arxiv_client.arxiv_urlopen",
             return_value=response,
         ):
             result = get_bibtex_enhanced("A Paper", "Alice Bob", "2502.05383")

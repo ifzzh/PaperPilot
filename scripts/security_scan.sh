@@ -3,9 +3,9 @@ set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 scan_mode=${1:-all}
-output_dir=${PAPERPILOT_SECURITY_OUTPUT_DIR:-/tmp/paperpilot-security}
-tool_dir=${PAPERPILOT_SECURITY_TOOL_DIR:-/tmp/paperpilot-security-tools}
-audit_image=${PAPERPILOT_AUDIT_IMAGE:-paperpilot:v0.8-test}
+output_dir=${IPAPER_SECURITY_OUTPUT_DIR:-/tmp/ipaper-security}
+tool_dir=${IPAPER_SECURITY_TOOL_DIR:-/tmp/ipaper-security-tools}
+audit_image=${IPAPER_AUDIT_IMAGE:-ipaper:v0.8-test}
 trivy_version=0.74.0
 trivy_sha256=2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
 
@@ -39,8 +39,8 @@ scan_dependencies() {
     local network_args=()
     # Host-local development proxies need an explicit audit-only network.
     # Runtime services and their outbound policy are unaffected.
-    if [[ -n ${PAPERPILOT_AUDIT_NETWORK:-} ]]; then
-        network_args=(--network "$PAPERPILOT_AUDIT_NETWORK")
+    if [[ -n ${IPAPER_AUDIT_NETWORK:-} ]]; then
+        network_args=(--network "$IPAPER_AUDIT_NETWORK")
     fi
     local target
     for target in web test worker document; do
@@ -99,9 +99,9 @@ scan_images() {
     local target image ignore_file
     for target in web worker document; do
         case "$target" in
-            web) image=${PAPERPILOT_WEB_IMAGE:-paperpilot:v0.8-web-smoke} ;;
-            worker) image=${PAPERPILOT_WORKER_IMAGE:-paperpilot:v0.8-worker-smoke} ;;
-            document) image=${PAPERPILOT_DOCUMENT_IMAGE:-paperpilot:v0.8-document-smoke} ;;
+            web) image=${IPAPER_WEB_IMAGE:-ipaper:v0.8-web-smoke} ;;
+            worker) image=${IPAPER_WORKER_IMAGE:-ipaper:v0.8-worker-smoke} ;;
+            document) image=${IPAPER_DOCUMENT_IMAGE:-ipaper:v0.8-document-smoke} ;;
         esac
         docker image inspect "$image" >/dev/null
         ignore_file="$output_dir/${target}-trivy-ignore.txt"

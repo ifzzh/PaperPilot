@@ -4,15 +4,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from paperpilot.database.db_manager import init_db_schema
-from paperpilot.migrations.v0103_daily_assets import apply, inspect, rollback
+from ipaper.database.db_manager import init_db_schema
+from ipaper.migrations.v0103_daily_assets import apply, inspect, rollback
 
 
 class DailyAssetMigrationTests(unittest.TestCase):
     def test_apply_requeues_without_replacing_database_and_rollback_restores(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            database = root / "paperpilot.db"
+            database = root / "ipaper.db"
             init_db_schema(str(database))
             with sqlite3.connect(database) as connection:
                 connection.execute(

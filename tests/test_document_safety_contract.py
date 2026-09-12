@@ -6,7 +6,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from paperpilot.document_worker.safety import (
+from ipaper.document_worker.safety import (
     DocumentLimitError,
     DocumentLimits,
     bounded_copy,
@@ -15,7 +15,7 @@ from paperpilot.document_worker.safety import (
     preflight_archive,
     validate_zotero_rdf,
 )
-from paperpilot.document_worker.runner import run
+from ipaper.document_worker.runner import run
 
 
 class DocumentSafetyContractTests(unittest.TestCase):

@@ -5,16 +5,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from paperpilot.database.models import SCHEMA_SCRIPT
-from paperpilot.security.agentic_credentials import AgenticCredentialStore
+from ipaper.database.models import SCHEMA_SCRIPT
+from ipaper.security.agentic_credentials import AgenticCredentialStore
 
-from paperpilot.security.credentials import (
+from ipaper.security.credentials import (
     CredentialDecryptionError,
     CredentialKeyError,
     SettingsCredentialCipher,
     generate_settings_key,
 )
-from paperpilot.security.outbound import (
+from ipaper.security.outbound import (
     OutboundPolicy,
     OutboundPolicyError,
     guarded_request,
@@ -61,7 +61,7 @@ class SettingsCredentialCipherTests(unittest.TestCase):
     def test_store_persists_only_ciphertext_and_clear_is_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            db_path = root / "paperpilot.db"
+            db_path = root / "ipaper.db"
             key_path = root / "settings.key"
             generate_settings_key(key_path)
             connection = sqlite3.connect(db_path)
@@ -70,7 +70,7 @@ class SettingsCredentialCipherTests(unittest.TestCase):
             connection = sqlite3.connect(db_path)
             connection.row_factory = sqlite3.Row
             with patch(
-                "paperpilot.database.dao.agentic_secret_dao.get_db",
+                "ipaper.database.dao.agentic_secret_dao.get_db",
                 return_value=connection,
             ):
                 store = AgenticCredentialStore.from_key_file(str(key_path))
@@ -103,7 +103,7 @@ class OutboundPolicyTests(unittest.TestCase):
             transfer_origins=set(),
         )
         resolver = self._resolve({"api.example.test": ["8.8.8.8"]})
-        with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
+        with patch("ipaper.security.outbound.socket.getaddrinfo", resolver):
             target = policy.validate("https://api.example.test/v1/chat", purpose="ai")
             self.assertEqual(target.origin, "https://api.example.test")
         with self.assertRaisesRegex(OutboundPolicyError, "origin_not_allowed"):
@@ -117,7 +117,7 @@ class OutboundPolicyTests(unittest.TestCase):
             proxy_fake_ip_networks={"198.18.0.0/15"},
         )
         resolver = self._resolve({"api.example.test": ["198.18.2.10"]})
-        with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
+        with patch("ipaper.security.outbound.socket.getaddrinfo", resolver):
             target = policy.validate("https://api.example.test/v1/chat", purpose="ai")
         self.assertEqual(target.addresses, ("198.18.2.10",))
 
@@ -135,13 +135,13 @@ class OutboundPolicyTests(unittest.TestCase):
             proxy_fake_ip_networks={"198.18.0.0/15"},
         )
         with patch(
-            "paperpilot.security.outbound.socket.getaddrinfo",
+            "ipaper.security.outbound.socket.getaddrinfo",
             self._resolve({"198.18.2.10": ["198.18.2.10"]}),
         ):
             with self.assertRaisesRegex(OutboundPolicyError, "private_address_forbidden"):
                 fake_ip_policy.validate("https://198.18.2.10/v1", purpose="ai")
         with patch(
-            "paperpilot.security.outbound.socket.getaddrinfo",
+            "ipaper.security.outbound.socket.getaddrinfo",
             self._resolve({"api.example.test": ["10.0.0.8"]}),
         ):
             with self.assertRaisesRegex(OutboundPolicyError, "private_address_forbidden"):
@@ -159,7 +159,7 @@ class OutboundPolicyTests(unittest.TestCase):
             private_origins={"http://mineru:8000"},
             transfer_origins=set(),
         )
-        with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
+        with patch("ipaper.security.outbound.socket.getaddrinfo", resolver):
             with self.assertRaisesRegex(OutboundPolicyError, "private_address_forbidden"):
                 denied.validate("https://mineru:8000/health", purpose="ai")
             self.assertEqual(
@@ -184,7 +184,7 @@ class OutboundPolicyTests(unittest.TestCase):
                 "multicast.test": ["224.0.0.1"],
             }
         )
-        with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
+        with patch("ipaper.security.outbound.socket.getaddrinfo", resolver):
             for url in (
                 "http://localhost:8000",
                 "http://metadata.test/latest/meta-data",
@@ -202,7 +202,7 @@ class OutboundPolicyTests(unittest.TestCase):
         resolver = self._resolve(
             {"api.example.test": ["8.8.8.8", "10.0.0.8"]}
         )
-        with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
+        with patch("ipaper.security.outbound.socket.getaddrinfo", resolver):
             cases = (
                 "https://user:pass@api.example.test/v1",
                 "https://api.example.test/v1#fragment",
@@ -221,7 +221,7 @@ class OutboundPolicyTests(unittest.TestCase):
             transfer_origins={"https://objects.example.test"},
         )
         resolver = self._resolve({"objects.example.test": ["1.1.1.1"]})
-        with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
+        with patch("ipaper.security.outbound.socket.getaddrinfo", resolver):
             self.assertEqual(
                 policy.validate("https://objects.example.test/result.zip", purpose="transfer").origin,
                 "https://objects.example.test",
@@ -238,7 +238,7 @@ class OutboundPolicyTests(unittest.TestCase):
         resolver = self._resolve({"api.example.test": ["8.8.8.8"]})
         response = type("Response", (), {"status_code": 302})()
         with (
-            patch("paperpilot.security.outbound.socket.getaddrinfo", resolver),
+            patch("ipaper.security.outbound.socket.getaddrinfo", resolver),
             patch("requests.request", return_value=response) as request_mock,
         ):
             with self.assertRaisesRegex(OutboundPolicyError, "outbound_redirect_blocked"):
@@ -257,7 +257,7 @@ class OutboundPolicyTests(unittest.TestCase):
                 [(2, 1, 6, "", ("10.0.0.8", 0))],
             ]
         )
-        with patch("paperpilot.security.outbound.socket.getaddrinfo", resolver):
+        with patch("ipaper.security.outbound.socket.getaddrinfo", resolver):
             policy.validate("https://api.example.test/v1", purpose="ai")
             with self.assertRaisesRegex(OutboundPolicyError, "private_address_forbidden"):
                 policy.validate("https://api.example.test/v1", purpose="ai")

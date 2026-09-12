@@ -7,10 +7,10 @@ from unittest.mock import patch
 
 from flask import Flask
 
-from paperpilot.database import connection
-from paperpilot.database.db_manager import init_db_schema
-from paperpilot.security.identity import Identity, reset_background_identity, set_background_identity
-from paperpilot.security.outbound import DynamicOutboundPolicy, OutboundPolicyError
+from ipaper.database import connection
+from ipaper.database.db_manager import init_db_schema
+from ipaper.security.identity import Identity, reset_background_identity, set_background_identity
+from ipaper.security.outbound import DynamicOutboundPolicy, OutboundPolicyError
 
 
 PUBLIC_DNS = [
@@ -25,7 +25,7 @@ class TestDynamicAiProviders(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.original_path = connection.DB_PATH
-        connection.DB_PATH = str(Path(self.temp.name) / "paperpilot.db")
+        connection.DB_PATH = str(Path(self.temp.name) / "ipaper.db")
         init_db_schema(connection.DB_PATH)
         self.app = Flask(__name__)
         self.context = self.app.app_context()
@@ -44,7 +44,7 @@ class TestDynamicAiProviders(unittest.TestCase):
     def _as(self, role):
         return set_background_identity(Identity(self.admin_id, role, role))
 
-    @patch("paperpilot.security.outbound.socket.getaddrinfo", return_value=PUBLIC_DNS)
+    @patch("ipaper.security.outbound.socket.getaddrinfo", return_value=PUBLIC_DNS)
     def test_admin_can_approve_path_url_and_it_is_immediately_allowed(self, _dns):
         token = self._as("admin")
         try:
@@ -60,7 +60,7 @@ class TestDynamicAiProviders(unittest.TestCase):
         finally:
             reset_background_identity(token)
 
-    @patch("paperpilot.security.outbound.socket.getaddrinfo", return_value=PUBLIC_DNS)
+    @patch("ipaper.security.outbound.socket.getaddrinfo", return_value=PUBLIC_DNS)
     def test_regular_user_cannot_approve_provider(self, _dns):
         token = self._as("user")
         try:
@@ -69,7 +69,7 @@ class TestDynamicAiProviders(unittest.TestCase):
         finally:
             reset_background_identity(token)
 
-    @patch("paperpilot.security.outbound.socket.getaddrinfo", return_value=PRIVATE_DNS)
+    @patch("ipaper.security.outbound.socket.getaddrinfo", return_value=PRIVATE_DNS)
     def test_admin_cannot_approve_loopback_or_private_destination(self, _dns):
         token = self._as("admin")
         try:

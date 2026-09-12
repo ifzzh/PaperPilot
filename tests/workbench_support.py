@@ -4,16 +4,16 @@ from pathlib import Path
 from flask import Flask
 
 import app as app_module
-from paperpilot.auth import AuthConfig
-from paperpilot.database import connection
-from paperpilot.database.db_manager import init_db_schema
-from paperpilot.database.dao.paper_dao import PaperDAO
-from paperpilot.core.base_paper import Paper
-from paperpilot.core.paper_store import PaperStore
-from paperpilot.local_auth import LocalAuthService
-from paperpilot.routes.basic_routes.paper_operation_route import register_paper_operation_routes
-from paperpilot.security.identity import Identity, run_as_identity
-from paperpilot.workbench import register_workbench
+from ipaper.auth import AuthConfig
+from ipaper.database import connection
+from ipaper.database.db_manager import init_db_schema
+from ipaper.database.dao.paper_dao import PaperDAO
+from ipaper.core.base_paper import Paper
+from ipaper.core.paper_store import PaperStore
+from ipaper.local_auth import LocalAuthService
+from ipaper.routes.basic_routes.paper_operation_route import register_paper_operation_routes
+from ipaper.security.identity import Identity, run_as_identity
+from ipaper.workbench import register_workbench
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,10 +21,10 @@ ROOT = Path(__file__).resolve().parents[1]
 def make_workbench_fixture(root, monkeypatch, count=3, *, cold=False):
     root = Path(root)
     (root / "papers").mkdir(exist_ok=True)
-    monkeypatch.setattr(connection, 'DB_PATH', str(root / 'paperpilot.db'))
+    monkeypatch.setattr(connection, 'DB_PATH', str(root / 'ipaper.db'))
     init_db_schema(connection.DB_PATH)
     application = Flask('workbench-test', static_folder=str(ROOT / 'static'), template_folder=str(ROOT / 'templates'))
-    application.config.update(TESTING=True, PAPERPILOT_WORKBENCH_ENABLED=True)
+    application.config.update(TESTING=True, IPAPER_WORKBENCH_ENABLED=True)
     register_workbench(application)
     application.before_request(app_module._require_auth_for_api)
     application.teardown_appcontext(connection.close_db)
@@ -46,8 +46,8 @@ def make_workbench_fixture(root, monkeypatch, count=3, *, cold=False):
     app_module._rate_limiter.clear()
     store = PaperStore()
     monkeypatch.setattr(app_module, 'paper_store', store)
-    from paperpilot.tools.basic_tools import paper_repository, category_manager
-    from paperpilot.security.paths import paper_path
+    from ipaper.tools.basic_tools import paper_repository, category_manager
+    from ipaper.security.paths import paper_path
     from functools import partial
     monkeypatch.setattr(paper_repository, 'paper_store', store)
     categories = {'id': 'root', 'name': 'Root', 'children': [

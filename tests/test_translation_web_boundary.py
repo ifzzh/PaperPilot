@@ -8,11 +8,11 @@ from unittest.mock import Mock, patch
 
 from flask import Flask
 
-from paperpilot.core.base_paper import Paper
-from paperpilot.core.paper_store import paper_store
-from paperpilot.database.dao.translation_job_dao import TranslationJobDAO
-from paperpilot.routes.agent_routes.agent_translate_route import register_agent_translate_routes
-from paperpilot.security.paths import category_directory, paper_asset_paths
+from ipaper.core.base_paper import Paper
+from ipaper.core.paper_store import paper_store
+from ipaper.database.dao.translation_job_dao import TranslationJobDAO
+from ipaper.routes.agent_routes.agent_translate_route import register_agent_translate_routes
+from ipaper.security.paths import category_directory, paper_asset_paths
 
 
 class TranslationWebBoundaryTests(unittest.TestCase):
@@ -29,7 +29,7 @@ class TranslationWebBoundaryTests(unittest.TestCase):
         app = Flask(__name__)
         with (
             patch(
-                "paperpilot.routes.agent_routes.agent_translate_route.TranslationWorkerClient",
+                "ipaper.routes.agent_routes.agent_translate_route.TranslationWorkerClient",
                 return_value=self.worker,
             ),
             patch.object(TranslationJobDAO, "list_active", return_value=[]),
@@ -84,11 +84,11 @@ class TranslationWebBoundaryTests(unittest.TestCase):
             patch.object(TranslationJobDAO, "has_active_for_paper", return_value=False),
             patch.object(TranslationJobDAO, "create"),
             patch(
-                "paperpilot.routes.agent_routes.agent_translate_route.SettingsDAO.get_setting",
+                "ipaper.routes.agent_routes.agent_translate_route.SettingsDAO.get_setting",
                 return_value=settings,
             ),
             patch(
-                "paperpilot.routes.agent_routes.agent_translate_route.test_llm_api",
+                "ipaper.routes.agent_routes.agent_translate_route.test_llm_api",
                 return_value=(True, None),
             ),
         ):

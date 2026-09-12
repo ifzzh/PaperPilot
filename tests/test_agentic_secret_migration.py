@@ -4,22 +4,22 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from paperpilot.database.models import SCHEMA_SCRIPT
-from paperpilot.migrations.agentic_secrets import (
+from ipaper.database.models import SCHEMA_SCRIPT
+from ipaper.migrations.agentic_secrets import (
     AgenticSecretMigrationError,
     apply_migration,
     inspect_database,
     rollback_migration,
     rotate_key,
 )
-from paperpilot.security.credentials import SettingsCredentialCipher, generate_settings_key
+from ipaper.security.credentials import SettingsCredentialCipher, generate_settings_key
 
 
 class AgenticSecretMigrationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.db = self.root / "paperpilot.db"
+        self.db = self.root / "ipaper.db"
         self.key = self.root / "settings.key"
         self.backups = self.root / "backups"
         generate_settings_key(self.key)

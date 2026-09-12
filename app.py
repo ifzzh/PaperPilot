@@ -1,3 +1,5 @@
+
+from ipaper.environment import getenv as brand_getenv
 import argparse
 import atexit
 import json
@@ -18,84 +20,84 @@ import re
 import requests
 from flask import Flask, current_app, g, jsonify, make_response, redirect, render_template, request
 
-from paperpilot.workbench import register_workbench, render_workspace
-from paperpilot.core.base_paper import Paper
-from paperpilot.auth import (
+from ipaper.workbench import register_workbench, render_workspace
+from ipaper.core.base_paper import Paper
+from ipaper.auth import (
     AuthConfig,
     AuthConfigurationError,
     FixedWindowRateLimiter,
 )
-from paperpilot.local_auth import LocalAuthError, LocalAuthService
-from paperpilot.security.identity import (
+from ipaper.local_auth import LocalAuthError, LocalAuthService
+from ipaper.security.identity import (
     DEVELOPMENT_USER_ID,
     Identity,
     current_user_id,
     set_background_identity,
 )
-from paperpilot.security.paths import UserScopedPath, paper_directory
-from paperpilot.security.agentic_credentials import AgenticCredentialStore
-from paperpilot.security.credentials import CredentialError
-from paperpilot.security.outbound import DynamicOutboundPolicy, OutboundPolicyError
-from paperpilot.migrations.agentic_secrets import (
+from ipaper.security.paths import UserScopedPath, paper_directory
+from ipaper.security.agentic_credentials import AgenticCredentialStore
+from ipaper.security.credentials import CredentialError
+from ipaper.security.outbound import DynamicOutboundPolicy, OutboundPolicyError
+from ipaper.migrations.agentic_secrets import (
     AgenticSecretMigrationError,
     assert_no_plaintext_credentials,
 )
-from paperpilot.migrations.tenant_storage import (
+from ipaper.migrations.tenant_storage import (
     TenantMigrationError,
     assert_tenant_migrated,
 )
-from paperpilot.core.paper_store import paper_store
-from paperpilot.core.search_index import TenantSearchIndex
-from paperpilot.database.connection import DB_PATH
-from paperpilot.database.connection import init_db as register_db_teardown
-from paperpilot.database.dao.settings_dao import SettingsDAO
-from paperpilot.document_worker.client import DocumentWorkerClient
-from paperpilot.runtime.task_queue import BoundedExecutor, QueueFull
-from paperpilot.tools.basic_tools.daily_arxiv_assets import DailyAssetCoordinator
-from paperpilot.tools.agent_tools.translation_worker_client import TranslationWorkerClient
-from paperpilot.database.db_manager import init_db_schema
-from paperpilot.routes.agent_routes.agent_summary_route import (
+from ipaper.core.paper_store import paper_store
+from ipaper.core.search_index import TenantSearchIndex
+from ipaper.database.connection import DB_PATH
+from ipaper.database.connection import init_db as register_db_teardown
+from ipaper.database.dao.settings_dao import SettingsDAO
+from ipaper.document_worker.client import DocumentWorkerClient
+from ipaper.runtime.task_queue import BoundedExecutor, QueueFull
+from ipaper.tools.basic_tools.daily_arxiv_assets import DailyAssetCoordinator
+from ipaper.tools.agent_tools.translation_worker_client import TranslationWorkerClient
+from ipaper.database.db_manager import init_db_schema
+from ipaper.routes.agent_routes.agent_summary_route import (
     register_agent_summary_routes,
 )
-from paperpilot.routes.agent_routes.agent_chat_route import (
+from ipaper.routes.agent_routes.agent_chat_route import (
     register_agent_chat_routes,
 )
-from paperpilot.routes.agent_routes.agent_translate_route import (
+from ipaper.routes.agent_routes.agent_translate_route import (
     register_agent_translate_routes,
 )
-from paperpilot.routes.basic_routes.category_tree_route import register_category_routes
-from paperpilot.routes.basic_routes.daily_arxiv_route import register_daily_arxiv_routes
-from paperpilot.routes.basic_routes.export_route import register_export_routes
-from paperpilot.routes.basic_routes.import_route import register_import_routes
-from paperpilot.routes.basic_routes.institution_mapping_route import (
+from ipaper.routes.basic_routes.category_tree_route import register_category_routes
+from ipaper.routes.basic_routes.daily_arxiv_route import register_daily_arxiv_routes
+from ipaper.routes.basic_routes.export_route import register_export_routes
+from ipaper.routes.basic_routes.import_route import register_import_routes
+from ipaper.routes.basic_routes.institution_mapping_route import (
     register_institution_mapping_routes,
 )
-from paperpilot.routes.basic_routes.paper_operation_route import (
+from ipaper.routes.basic_routes.paper_operation_route import (
     register_paper_operation_routes,
 )
-from paperpilot.routes.basic_routes.search_route import register_search_routes
-from paperpilot.routes.basic_routes.settings_route import register_settings_routes
-from paperpilot.routes.basic_routes.update_from_url_route import (
+from ipaper.routes.basic_routes.search_route import register_search_routes
+from ipaper.routes.basic_routes.settings_route import register_settings_routes
+from ipaper.routes.basic_routes.update_from_url_route import (
     register_update_from_url_routes,
 )
-from paperpilot.routes.basic_routes.upload_from_pdf_route import (
+from ipaper.routes.basic_routes.upload_from_pdf_route import (
     register_upload_from_pdf_routes,
 )
-from paperpilot.tools.basic_tools import category_manager, paper_repository
-from paperpilot.tools.basic_tools.daily_arxiv import (
+from ipaper.tools.basic_tools import category_manager, paper_repository
+from ipaper.tools.basic_tools.daily_arxiv import (
     DEFAULT_MAX_DAILY_PAPERS,
     DEFAULT_MAX_NEW_PAPERS_PER_CATEGORY_PER_FETCH,
     DEFAULT_REPLACEMENT_CANDIDATE_LIMIT,
 )
-from paperpilot.tools.basic_tools.daily_arxiv_quality import get_default_quality_config
-from paperpilot.tools.basic_tools.daily_arxiv_profile import DEFAULT_RESEARCH_TOPICS
+from ipaper.tools.basic_tools.daily_arxiv_quality import get_default_quality_config
+from ipaper.tools.basic_tools.daily_arxiv_profile import DEFAULT_RESEARCH_TOPICS
 
-parser = argparse.ArgumentParser(description="PaperPilot")
+parser = argparse.ArgumentParser(description="iPaper")
 parser.add_argument(
     "--papers-dir",
     type=str,
     default="./papers",
-    help="PaperPilot papers directory path (default: ./papers)",
+    help="iPaper papers directory path (default: ./papers)",
 )
 parser.add_argument(
     "--host",
@@ -110,7 +112,7 @@ parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 
 app = Flask(__name__)
 register_workbench(app)
-app.config["PAPERPILOT_START_BACKGROUND_TASKS"] = True
+app.config["IPAPER_START_BACKGROUND_TASKS"] = True
 register_db_teardown(app)
 app.config["MAX_CONTENT_LENGTH"] = 210 * 1024 * 1024
 
@@ -569,7 +571,7 @@ def init_app(papers_dir=None):
         paper_repository.get_papers_in_category, UPLOAD_FOLDER
     )
 
-    print("PaperPilot managed storage initialized")
+    print("iPaper managed storage initialized")
     print("Settings storage initialized")
 
 
@@ -632,7 +634,7 @@ def readyz():
         with sqlite3.connect(DB_PATH, timeout=3) as connection:
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(
-                "CREATE TABLE __paperpilot_readiness_probe (probe INTEGER)"
+                "CREATE TABLE __ipaper_readiness_probe (probe INTEGER)"
             )
             connection.rollback()
         components["database"] = "ok"
@@ -890,7 +892,7 @@ def register_routes():
     )
 
     # First register Daily arXiv routes, get manager instance
-    from paperpilot.tools.basic_tools.daily_arxiv import get_manager
+    from ipaper.tools.basic_tools.daily_arxiv import get_manager
 
     daily_arxiv_manager = get_manager(TEMP_PAPERS_DIR, DAILY_ARXIV_SETTINGS_FILE)
     _daily_arxiv_manager = daily_arxiv_manager
@@ -1177,8 +1179,8 @@ def _initialize_application(papers_dir: str) -> None:
     # tenant storage layout exist.
     init_app(papers_dir=papers_dir)
 
-    settings_key_file = os.getenv(
-        "PAPERPILOT_SETTINGS_KEY_FILE", "/run/secrets/paperpilot_settings_key"
+    settings_key_file = brand_getenv(
+        "IPAPER_SETTINGS_KEY_FILE", "/run/secrets/ipaper_settings_key"
     ).strip()
     try:
         assert_no_plaintext_credentials(DB_PATH)
@@ -1303,8 +1305,8 @@ def shutdown_application() -> None:
 def create_app(papers_dir: Optional[str] = None) -> Flask:
     """Create the process-local application exactly once."""
     global _application_initialized, _application_papers_dir, _shutdown_registered
-    selected_papers_dir = papers_dir or os.getenv(
-        "PAPERPILOT_PAPERS_DIR", "./papers"
+    selected_papers_dir = papers_dir or brand_getenv(
+        "IPAPER_PAPERS_DIR", "./papers"
     )
     selected_papers_dir = os.path.abspath(selected_papers_dir)
     with _application_lock:

@@ -1,6 +1,6 @@
 import unittest
 
-from paperpilot.auth import FixedWindowRateLimiter
+from ipaper.auth import FixedWindowRateLimiter
 
 
 class TestFixedWindowRateLimiter(unittest.TestCase):

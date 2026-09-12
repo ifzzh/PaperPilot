@@ -2,12 +2,12 @@ import json
 import os
 import sqlite3
 
-from paperpilot.database.db_manager import init_db_schema
-from paperpilot.migrations.v010_workflows import apply, inspect, rollback
+from ipaper.database.db_manager import init_db_schema
+from ipaper.migrations.v010_workflows import apply, inspect, rollback
 
 
 def test_v010_migration_updates_profile_preserves_jobs_and_rolls_back(tmp_path):
-    database = tmp_path / "paperpilot.db"
+    database = tmp_path / "ipaper.db"
     settings = tmp_path / "daily_arxiv_settings.json"
     backups = tmp_path / "backups"
     init_db_schema(str(database))

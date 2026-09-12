@@ -1,8 +1,8 @@
 import pytest
 from tests.workbench_support import make_workbench_fixture
 from tests.test_workbench import login
-from paperpilot.database.connection import get_db
-from paperpilot.security.identity import Identity, set_background_identity, reset_background_identity
+from ipaper.database.connection import get_db
+from ipaper.security.identity import Identity, set_background_identity, reset_background_identity
 from contextlib import contextmanager
 import sqlite3
 
@@ -11,7 +11,7 @@ def run_as_identity(identity):
     token=set_background_identity(identity)
     try: yield
     finally: reset_background_identity(token)
-from paperpilot.tools.basic_tools.category_manager import save_categories, get_categories
+from ipaper.tools.basic_tools.category_manager import save_categories, get_categories
 
 
 def test_two_virtual_category_roots_and_transaction_rollback(tmp_path, monkeypatch):

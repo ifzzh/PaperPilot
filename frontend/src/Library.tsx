@@ -205,7 +205,7 @@ export function Library({
         />
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">PAPERPILOT</span>
+            <span className="eyebrow">IPAPER</span>
             <h2>我的文献库</h2>
           </div>
           <button

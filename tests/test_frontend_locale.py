@@ -29,10 +29,10 @@ def test_chinese_catalog_preserves_product_terms_and_uses_ymd():
 
 def test_login_and_onboarding_ship_with_chinese_copy():
     source = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
-    assert "Welcome to PaperPilot Paper Reading" not in source
+    assert "Welcome to iPaper Paper Reading" not in source
     assert "Select AI Output Language" not in source
     assert "Configure AI features" not in source
-    assert "欢迎使用 PaperPilot 智能论文阅读" in source
+    assert "欢迎使用 iPaper 智能论文阅读" in source
     assert "选择 AI 输出语言" in source
 
 

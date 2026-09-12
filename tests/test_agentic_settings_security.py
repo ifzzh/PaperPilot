@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 from flask import Flask
 
-from paperpilot.routes.basic_routes.settings_route import register_settings_routes
+from ipaper.routes.basic_routes.settings_route import register_settings_routes
 
 
 class FakeCredentialStore:
@@ -39,11 +39,11 @@ class AgenticSettingsSecurityTests(unittest.TestCase):
         app = Flask(__name__)
         app.config["TESTING"] = True
         self.dao_get = patch(
-            "paperpilot.routes.basic_routes.settings_route.SettingsDAO.get_setting",
+            "ipaper.routes.basic_routes.settings_route.SettingsDAO.get_setting",
             side_effect=lambda _key, _default=None: self.settings,
         )
         self.dao_save = patch(
-            "paperpilot.routes.basic_routes.settings_route.SettingsDAO.save_setting",
+            "ipaper.routes.basic_routes.settings_route.SettingsDAO.save_setting",
             side_effect=self._save,
         )
         self.dao_get.start()

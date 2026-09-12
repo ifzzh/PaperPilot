@@ -1,10 +1,10 @@
-# PaperQuay 与 PaperPilot 统一界面的接入记录
+# PaperQuay 与 iPaper 统一界面的接入记录
 
 参照固定为 [WangQrkkk/PaperQuay](https://github.com/WangQrkkk/PaperQuay/tree/1d65fdbfe0eb7ef33c57cf8b9d87b6afdb5f06bf)，版本 0.1.25，提交 `1d65fdbfe0eb7ef33c57cf8b9d87b6afdb5f06bf`。本地参照目录被 Git 忽略，不进入 Docker 上下文。
 
 ## 复用判断
 
-已阅读上游 LICENSE、主题、文献库、标签、ReaderWorkspace、PdfViewer、AssistantSidebar 和 PDF 文件源适配；对照 `docs/assets/main.png`、`agent.png`。上游为 AGPL-3.0-only。PaperPilot 根 LICENSE 为 CC BY-NC 4.0，Python classifier 仍标为 MIT；classifier 不能替代授权文本。
+已阅读上游 LICENSE、主题、文献库、标签、ReaderWorkspace、PdfViewer、AssistantSidebar 和 PDF 文件源适配；对照 `docs/assets/main.png`、`agent.png`。上游为 AGPL-3.0-only。iPaper 根 LICENSE 为 CC BY-NC 4.0，Python classifier 仍标为 MIT；classifier 不能替代授权文本。
 
 直接搬入上游 React 组件会形成需要核查的组合代码。上游 AGPL 第 5、10、13 节涉及整体许可、不得增加限制和网络使用的源码提供；现有 [CC BY-NC 第 2 节](https://creativecommons.org/licenses/by-nc/4.0/legalcode.en)则限制为非商业使用。未发现覆盖双方相关权利人的额外授权，不能通过分目录或只修改一个许可证声明就确认该组合可以发布。因此本次没有复制上游组件源码、CSS、图标或截图进发行包，也没有修改项目许可证。以下采用独立代码重现其布局、信息组织与操作流程；这是一项具体的复用决策，不是对现有项目所有许可问题的法律结论。将来直接代码复用仍须另行明确授权路径。
 
@@ -21,7 +21,7 @@
 | `PdfViewer.tsx`、PDF document source | 独立 PDF.js 按可见范围渲染与生命周期；复用官方 PDF.js 包 | matching legacy display/worker 修复 Edge 139；资源自托管，保留严格脚本 CSP |
 | `AssistantSidebar.tsx`、聊天呈现 | `Chat.tsx`，历史/多会话、流式回答、引用卡片、选择文字后确认发送 | 保留首行会话 JSON + 原始文本流；服务端模型配置；停止接收不等于服务端取消 |
 | 桌面文件选择、IPC、设置 | `Transfers.tsx`、`Settings.tsx`，浏览器文件选择/拖放、现有 HTTP API | 不暴露主机路径、密钥、Electron IPC 或未实现工具入口 |
-| 桌面无对应的多用户登录与 Daily | `Auth.tsx`、`Daily.tsx`、`DiscoverySettings.tsx`，沿用同一设计体系 | 保留现有 PaperPilot 身份、Daily、机构配置与用户资产 |
+| 桌面无对应的多用户登录与 Daily | `Auth.tsx`、`Daily.tsx`、`DiscoverySettings.tsx`，沿用同一设计体系 | 保留现有 iPaper 身份、Daily、机构配置与用户资产 |
 
 上表是源码接入记录。视觉、交互和正式部署是否通过，必须以本次验收记录为准，不能以组件名或截图数量代替。
 

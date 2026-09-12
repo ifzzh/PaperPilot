@@ -1,6 +1,6 @@
-# PaperPilot 统一前端
+# iPaper 统一前端
 
-1.1.3 开发线将文献库、阅读、问答、Daily、任务、设置和登录放入同一个应用。正式入口为 `/`；`/workbench` 和历史 `/viewer` 地址只作兼容跳转。`PAPERPILOT_WORKBENCH_ENABLED` 已退役，不能用于产品版本切换。运维回退使用兼容组件镜像和配置。
+1.1.3 开发线将文献库、阅读、问答、Daily、任务、设置和登录放入同一个应用。正式入口为 `/`；`/workbench` 和历史 `/viewer` 地址只作兼容跳转。`IPAPER_WORKBENCH_ENABLED` 已退役，不能用于产品版本切换。运维回退使用兼容组件镜像和配置。
 
 ## 开发
 

@@ -1,6 +1,6 @@
-const paperPilotSecurity = window.PaperPilotSecurity;
+const paperPilotSecurity = window.iPaperSecurity;
 if (!paperPilotSecurity) {
-    throw new Error('PaperPilot content security helpers failed to load');
+    throw new Error('iPaper content security helpers failed to load');
 }
 
 // Global state
@@ -334,10 +334,10 @@ function expandToCategoryPath(targetCategoryId) {
 }
 
 async function bootstrapApp() {
-    if (window.__PAPERPILOT_APP_BOOTSTRAPPED) {
+    if (window.__IPAPER_APP_BOOTSTRAPPED) {
         return;
     }
-    window.__PAPERPILOT_APP_BOOTSTRAPPED = true;
+    window.__IPAPER_APP_BOOTSTRAPPED = true;
 
     try {
         // Determine whether you need to load a directory tree (sidebar visible or restore category view)
@@ -2820,7 +2820,7 @@ function showLoading(show) {
 
 // show message（Support custom duration）
 function showMessage(message, type = 'info', duration = 3000) {
-    message = window.PaperPilotI18n?.t(message) || message;
+    message = window.iPaperI18n?.t(message) || message;
     // Create message element
     const messageDiv = document.createElement('div');
     messageDiv.className = `message message-${type}`;
@@ -11030,7 +11030,7 @@ function renderDailyArxivCategoryRatioStatus() {
     const ratios = getDailyArxivCategoryRatios();
     if (!ratios || Object.keys(ratios).length === 0) {
         container.className = 'daily-arxiv-category-ratio-status';
-        container.textContent = 'No custom ratios configured. PaperPilot will keep using the automatic weighted split.';
+        container.textContent = 'No custom ratios configured. iPaper will keep using the automatic weighted split.';
         return;
     }
 

@@ -6,14 +6,14 @@ import unittest
 import uuid
 from pathlib import Path
 
-from paperpilot.migrations.tenant_storage import (
+from ipaper.migrations.tenant_storage import (
     TenantMigrationError,
     apply,
     assert_tenant_migrated,
     inspect,
     rollback,
 )
-from paperpilot.security.credentials import SettingsCredentialCipher
+from ipaper.security.credentials import SettingsCredentialCipher
 
 
 LEGACY_SCHEMA = """
@@ -38,7 +38,7 @@ class TestTenantStorageMigration(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.base = Path(self.temp.name)
-        self.db = self.base / "paperpilot.db"
+        self.db = self.base / "ipaper.db"
         self.root = self.base / "papers"
         self.root.mkdir()
         self.backups = self.base / "backups"

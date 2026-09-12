@@ -5,9 +5,9 @@ from contextlib import redirect_stdout
 import app as app_module
 from flask import g, jsonify
 
-from paperpilot.auth import AuthConfig
-from paperpilot.local_auth import LocalAuthError
-from paperpilot.security.identity import Identity
+from ipaper.auth import AuthConfig
+from ipaper.local_auth import LocalAuthError
+from ipaper.security.identity import Identity
 
 
 if "test_auth_protected" not in app_module.app.view_functions:
@@ -45,7 +45,7 @@ class TestAuthMiddleware(unittest.TestCase):
     def setUp(self):
         app_module.app.config.update(TESTING=True)
         app_module.AUTH_CONFIG = AuthConfig.from_environ(
-            {"PAPERPILOT_ENV": "production", "PAPERPILOT_AUTH_MODE": "local"}
+            {"IPAPER_ENV": "production", "IPAPER_AUTH_MODE": "local"}
         )
         app_module.AUTH_SERVICE = FakeAuthService()
         app_module._rate_limiter.clear()
@@ -117,7 +117,7 @@ class TestAuthMiddleware(unittest.TestCase):
 
     def test_explicit_development_mode_sets_synthetic_admin(self):
         app_module.AUTH_CONFIG = AuthConfig.from_environ(
-            {"PAPERPILOT_ENV": "development", "PAPERPILOT_AUTH_MODE": "disabled"}
+            {"IPAPER_ENV": "development", "IPAPER_AUTH_MODE": "disabled"}
         )
         response = self.client.get("/api/test-auth-protected")
         self.assertEqual(response.status_code, 200)

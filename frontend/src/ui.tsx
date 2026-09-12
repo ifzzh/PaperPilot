@@ -23,7 +23,7 @@ export async function upload(
     headers: csrfHeaders(),
   });
   if (r.status === 401)
-    window.dispatchEvent(new Event("paperpilot-session-expired"));
+    window.dispatchEvent(new Event("ipaper-session-expired"));
   let data: any;
   try {
     data = await r.json();

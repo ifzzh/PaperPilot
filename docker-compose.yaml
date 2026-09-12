@@ -1,54 +1,55 @@
+name: ipaper
 services:
-  paperpilot:
-    image: ifzzh520/paperpilot:1.1.3
-    container_name: paperpilot
+  ipaper:
+    image: ifzzh520/ipaper:1.1.4
+    container_name: ipaper
     ports:
       - "127.0.0.1:7191:7191"
     env_file:
-      - /mnt/raid1/projects/paperpilot/deploy/.env
+      - /mnt/raid1/projects/ipaper/deploy/.env
     environment:
-      PAPERPILOT_ENV: ${PAPERPILOT_ENV:-production}
-      PAPERPILOT_AUTH_MODE: ${PAPERPILOT_AUTH_MODE:-local}
-      PAPERPILOT_COOKIE_SECURE: ${PAPERPILOT_COOKIE_SECURE:-true}
-      PAPERPILOT_PAPERS_DIR: /data/papers
-      PAPERPILOT_TRANSLATION_WORKER_URL: http://paperpilot-translation-worker:7192
-      PAPERPILOT_TRANSLATION_JOBS_ROOT: /work/jobs
-      PAPERPILOT_WORKER_TOKEN_FILE: /run/secrets/paperpilot_worker_token
-      PAPERPILOT_SETTINGS_KEY_FILE: /run/secrets/paperpilot_settings_key
-      PAPERPILOT_DOCUMENT_WORKER_URL: http://paperpilot-document-worker:7193
-      PAPERPILOT_DOCUMENT_JOBS_ROOT: /work/document-jobs
-      PAPERPILOT_DOCUMENT_WORKER_TOKEN_FILE: /run/secrets/paperpilot_document_worker_token
-      PAPERPILOT_MAX_PDF_BYTES: 104857600
-      PAPERPILOT_MAX_ARCHIVE_BYTES: 209715200
-      PAPERPILOT_MAX_ARCHIVE_EXPANDED_BYTES: 2147483648
-      PAPERPILOT_MAX_ARCHIVE_ENTRIES: 2000
-      PAPERPILOT_MAX_IMPORT_PAPERS: 500
-      PAPERPILOT_AI_ALLOWED_ORIGINS: ${PAPERPILOT_AI_ALLOWED_ORIGINS:-}
-      PAPERPILOT_AI_PRIVATE_ALLOWED_ORIGINS: ${PAPERPILOT_AI_PRIVATE_ALLOWED_ORIGINS:-}
-      PAPERPILOT_AI_PROXY_FAKE_IP_RANGES: ${PAPERPILOT_AI_PROXY_FAKE_IP_RANGES:-}
-      PAPERPILOT_MINERU_TRANSFER_ALLOWED_ORIGINS: ${PAPERPILOT_MINERU_TRANSFER_ALLOWED_ORIGINS:-}
+      IPAPER_ENV: ${IPAPER_ENV:-production}
+      IPAPER_AUTH_MODE: ${IPAPER_AUTH_MODE:-local}
+      IPAPER_COOKIE_SECURE: ${IPAPER_COOKIE_SECURE:-true}
+      IPAPER_PAPERS_DIR: /data/papers
+      IPAPER_TRANSLATION_WORKER_URL: http://ipaper-translation-worker:7192
+      IPAPER_TRANSLATION_JOBS_ROOT: /work/jobs
+      IPAPER_WORKER_TOKEN_FILE: /run/secrets/ipaper_worker_token
+      IPAPER_SETTINGS_KEY_FILE: /run/secrets/ipaper_settings_key
+      IPAPER_DOCUMENT_WORKER_URL: http://ipaper-document-worker:7193
+      IPAPER_DOCUMENT_JOBS_ROOT: /work/document-jobs
+      IPAPER_DOCUMENT_WORKER_TOKEN_FILE: /run/secrets/ipaper_document_worker_token
+      IPAPER_MAX_PDF_BYTES: 104857600
+      IPAPER_MAX_ARCHIVE_BYTES: 209715200
+      IPAPER_MAX_ARCHIVE_EXPANDED_BYTES: 2147483648
+      IPAPER_MAX_ARCHIVE_ENTRIES: 2000
+      IPAPER_MAX_IMPORT_PAPERS: 500
+      IPAPER_AI_ALLOWED_ORIGINS: ${IPAPER_AI_ALLOWED_ORIGINS:-}
+      IPAPER_AI_PRIVATE_ALLOWED_ORIGINS: ${IPAPER_AI_PRIVATE_ALLOWED_ORIGINS:-}
+      IPAPER_AI_PROXY_FAKE_IP_RANGES: ${IPAPER_AI_PROXY_FAKE_IP_RANGES:-}
+      IPAPER_MINERU_TRANSFER_ALLOWED_ORIGINS: ${IPAPER_MINERU_TRANSFER_ALLOWED_ORIGINS:-}
     volumes:
-      - /mnt/raid1/projects/paperpilot/deploy/.env:/app/.env:ro
-      - /srv/ifserver-fast/paperpilot/runtime/db:/app/db
-      - /mnt/raid1/projects/paperpilot/data/papers:/data/papers
-      - /mnt/raid1/projects/paperpilot/data/staging/translation:/work/jobs
+      - /mnt/raid1/projects/ipaper/deploy/.env:/app/.env:ro
+      - /srv/ifserver-fast/ipaper/runtime/db:/app/db
+      - /mnt/raid1/projects/ipaper/data/papers:/data/papers
+      - /mnt/raid1/projects/ipaper/data/staging/translation:/work/jobs
       - document_jobs:/work/document-jobs
     secrets:
-      - paperpilot_worker_token
-      - source: paperpilot_settings_key
-        target: paperpilot_settings_key
+      - ipaper_worker_token
+      - source: ipaper_settings_key
+        target: ipaper_settings_key
         uid: "10001"
         gid: "1001"
         mode: 0440
-      - source: paperpilot_document_worker_token
-        target: paperpilot_document_worker_token
+      - source: ipaper_document_worker_token
+        target: ipaper_document_worker_token
         uid: "10001"
         gid: "1001"
         mode: 0440
     depends_on:
-      paperpilot-translation-worker:
+      ipaper-translation-worker:
         condition: service_healthy
-      paperpilot-document-worker:
+      ipaper-document-worker:
         condition: service_healthy
     networks:
       - default
@@ -66,16 +67,16 @@ services:
     stop_grace_period: 35s
     restart: unless-stopped
 
-  paperpilot-translation-worker:
-    image: ifzzh520/paperpilot-translation-worker:0.10.5@sha256:a7b4a90f214d8628e40c4aa7b919bb6ecb178835e40a10303450634d6b4b609c
-    container_name: paperpilot-translation-worker
+  ipaper-translation-worker:
+    image: ifzzh520/ipaper-translation-worker:1.1.4
+    container_name: ipaper-translation-worker
     environment:
-      PAPERPILOT_WORKER_JOBS_ROOT: /work/jobs
-      PAPERPILOT_WORKER_TOKEN_FILE: /run/secrets/paperpilot_worker_token
+      IPAPER_WORKER_JOBS_ROOT: /work/jobs
+      IPAPER_WORKER_TOKEN_FILE: /run/secrets/ipaper_worker_token
     volumes:
-      - /mnt/raid1/projects/paperpilot/data/staging/translation:/work/jobs
+      - /mnt/raid1/projects/ipaper/data/staging/translation:/work/jobs
     secrets:
-      - paperpilot_worker_token
+      - ipaper_worker_token
     expose:
       - "7192"
     read_only: true
@@ -91,23 +92,23 @@ services:
     stop_grace_period: 15s
     restart: unless-stopped
 
-  paperpilot-document-worker:
+  ipaper-document-worker:
     # Development release selection; production versions are pinned independently.
-    image: ifzzh520/paperpilot-document-worker:1.0.0@sha256:b2aa87d58c9bdff3b50f1e3323beab227e4237e5b88a4b42cecd83887df89c50
-    container_name: paperpilot-document-worker
+    image: ifzzh520/ipaper-document-worker:1.1.4
+    container_name: ipaper-document-worker
     environment:
-      PAPERPILOT_DOCUMENT_JOBS_ROOT: /work/document-jobs
-      PAPERPILOT_DOCUMENT_WORKER_TOKEN_FILE: /run/secrets/paperpilot_document_worker_token
-      PAPERPILOT_MAX_PDF_BYTES: 104857600
-      PAPERPILOT_MAX_ARCHIVE_BYTES: 209715200
-      PAPERPILOT_MAX_ARCHIVE_EXPANDED_BYTES: 2147483648
-      PAPERPILOT_MAX_ARCHIVE_ENTRIES: 2000
-      PAPERPILOT_MAX_IMPORT_PAPERS: 500
+      IPAPER_DOCUMENT_JOBS_ROOT: /work/document-jobs
+      IPAPER_DOCUMENT_WORKER_TOKEN_FILE: /run/secrets/ipaper_document_worker_token
+      IPAPER_MAX_PDF_BYTES: 104857600
+      IPAPER_MAX_ARCHIVE_BYTES: 209715200
+      IPAPER_MAX_ARCHIVE_EXPANDED_BYTES: 2147483648
+      IPAPER_MAX_ARCHIVE_ENTRIES: 2000
+      IPAPER_MAX_IMPORT_PAPERS: 500
     volumes:
       - document_jobs:/work/document-jobs
     secrets:
-      - source: paperpilot_document_worker_token
-        target: paperpilot_document_worker_token
+      - source: ipaper_document_worker_token
+        target: ipaper_document_worker_token
         uid: "10003"
         gid: "1001"
         mode: 0440
@@ -129,12 +130,12 @@ services:
     restart: unless-stopped
 
 secrets:
-  paperpilot_worker_token:
-    file: /mnt/raid1/projects/paperpilot/deploy/paperpilot-worker.token
-  paperpilot_settings_key:
-    file: /mnt/raid1/projects/paperpilot/deploy/paperpilot-settings.key
-  paperpilot_document_worker_token:
-    file: /mnt/raid1/projects/paperpilot/deploy/paperpilot-document-worker.token
+  ipaper_worker_token:
+    file: /mnt/raid1/projects/ipaper/deploy/ipaper-worker.token
+  ipaper_settings_key:
+    file: /mnt/raid1/projects/ipaper/deploy/ipaper-settings.key
+  ipaper_document_worker_token:
+    file: /mnt/raid1/projects/ipaper/deploy/ipaper-document-worker.token
 
 volumes:
   document_jobs:

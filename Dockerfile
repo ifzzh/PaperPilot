@@ -47,7 +47,7 @@ COPY Dockerfile gunicorn.conf.py ./
 COPY docker-compose.yaml ./
 COPY docker/release-components.json ./docker/release-components.json
 COPY app.py ./
-COPY paperpilot ./paperpilot
+COPY ipaper ./ipaper
 COPY static ./static
 COPY --from=frontend-build /build/static/workbench ./static/workbench
 COPY templates ./templates
@@ -76,7 +76,7 @@ RUN apt-get -o Acquire::http::Proxy="false" -o Acquire::https::Proxy="false" upd
 
 FROM runtime-base AS translation-worker
 
-ARG TRANSLATION_WORKER_VERSION=0.10.5
+ARG TRANSLATION_WORKER_VERSION=1.1.4
 ARG VCS_REF=unknown
 
 ENV HOME=/tmp \
@@ -85,27 +85,27 @@ ENV HOME=/tmp \
 
 WORKDIR /app
 COPY --from=worker-dependencies /opt/venv /opt/venv
-COPY paperpilot /app/paperpilot
+COPY ipaper /app/ipaper
 
-RUN groupadd --gid 1001 paperpilot \
- && useradd --uid 10002 --gid 1001 --no-create-home --home-dir /app --shell /usr/sbin/nologin paperpilot-worker \
+RUN groupadd --gid 1001 ipaper \
+ && useradd --uid 10002 --gid 1001 --no-create-home --home-dir /app --shell /usr/sbin/nologin ipaper-worker \
  && mkdir -p /work/jobs \
  && chown 10002:1001 /work/jobs
 
-LABEL org.opencontainers.image.title="PaperPilot Translation Worker" \
+LABEL org.opencontainers.image.title="iPaper Translation Worker" \
       org.opencontainers.image.version="${TRANSLATION_WORKER_VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.source="https://github.com/ifzzh/PaperPilot"
+      org.opencontainers.image.source="https://github.com/ifzzh/iPaper"
 
 USER 10002:1001
 EXPOSE 7192
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=30s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7192/healthz', timeout=4).read()"
-CMD ["python", "-m", "paperpilot.translation_worker"]
+CMD ["python", "-m", "ipaper.translation_worker"]
 
 FROM runtime-base AS document-worker
 
-ARG DOCUMENT_WORKER_VERSION=1.0.0
+ARG DOCUMENT_WORKER_VERSION=1.1.4
 ARG VCS_REF=unknown
 
 ENV HOME=/tmp \
@@ -113,27 +113,27 @@ ENV HOME=/tmp \
 
 WORKDIR /app
 COPY --from=document-dependencies /opt/venv /opt/venv
-COPY paperpilot /app/paperpilot
+COPY ipaper /app/ipaper
 
-RUN groupadd --gid 1001 paperpilot \
- && useradd --uid 10003 --gid 1001 --no-create-home --home-dir /app --shell /usr/sbin/nologin paperpilot-document \
+RUN groupadd --gid 1001 ipaper \
+ && useradd --uid 10003 --gid 1001 --no-create-home --home-dir /app --shell /usr/sbin/nologin ipaper-document \
  && mkdir -p /work/document-jobs \
  && chown 10003:1001 /work/document-jobs
 
-LABEL org.opencontainers.image.title="PaperPilot Document Worker" \
+LABEL org.opencontainers.image.title="iPaper Document Worker" \
       org.opencontainers.image.version="${DOCUMENT_WORKER_VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.source="https://github.com/ifzzh/PaperPilot"
+      org.opencontainers.image.source="https://github.com/ifzzh/iPaper"
 
 USER 10003:1001
 EXPOSE 7193
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7193/healthz', timeout=4).read()"
-CMD ["python", "-m", "paperpilot.document_worker"]
+CMD ["python", "-m", "ipaper.document_worker"]
 
 FROM runtime-base AS runtime
 
-ARG APP_VERSION=1.1.3
+ARG APP_VERSION=1.1.4
 ARG VCS_REF=unknown
 ARG ARXIV_PROXY=
 ARG ARXIV_API_PROXY=
@@ -150,20 +150,20 @@ COPY --from=web-dependencies /opt/venv /opt/venv
 COPY app.py /app/app.py
 COPY wsgi.py /app/wsgi.py
 COPY gunicorn.conf.py /app/gunicorn.conf.py
-COPY paperpilot /app/paperpilot
+COPY ipaper /app/ipaper
 COPY static /app/static
 COPY --from=frontend-build /build/static/workbench /app/static/workbench
 COPY templates /app/templates
 
-RUN groupadd --gid 1001 paperpilot \
- && useradd --uid 10001 --gid 1001 --no-create-home --home-dir /app --shell /usr/sbin/nologin paperpilot \
+RUN groupadd --gid 1001 ipaper \
+ && useradd --uid 10001 --gid 1001 --no-create-home --home-dir /app --shell /usr/sbin/nologin ipaper \
  && mkdir -p /app/db /data/papers /work/jobs /work/document-jobs \
  && chown -R 10001:1001 /app /data/papers /work/jobs /work/document-jobs
 
-LABEL org.opencontainers.image.title="PaperPilot" \
+LABEL org.opencontainers.image.title="iPaper" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.source="https://github.com/ifzzh/PaperPilot"
+      org.opencontainers.image.source="https://github.com/ifzzh/iPaper"
 
 USER 10001:1001
 EXPOSE 7191

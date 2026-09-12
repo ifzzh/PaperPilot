@@ -1,6 +1,6 @@
 import pytest
 
-from paperpilot.security.identity import (
+from ipaper.security.identity import (
     DEVELOPMENT_USER_ID,
     Identity,
     reset_background_identity,

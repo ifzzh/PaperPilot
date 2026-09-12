@@ -13,8 +13,8 @@ import uuid
 from pathlib import Path
 from unittest.mock import Mock, call, patch
 
-from paperpilot.translation_worker.app import create_worker_app
-from paperpilot.translation_worker.service import (
+from ipaper.translation_worker.app import create_worker_app
+from ipaper.translation_worker.service import (
     TranslationWorkerService,
     WorkerLimits,
     redact_text,
@@ -167,7 +167,7 @@ class WorkerContractTests(unittest.TestCase):
         }
         service._consume_output_line(
             state,
-            'PAPERPILOT_EVENT\t{"type":"progress_update","stage":"translate","overall_progress":37.5,"stage_progress":50,"stage_current":2,"stage_total":4}\n',
+            'IPAPER_EVENT\t{"type":"progress_update","stage":"translate","overall_progress":37.5,"stage_progress":50,"stage_current":2,"stage_total":4}\n',
             (),
         )
         self.assertEqual(state["progress"], 37)
@@ -239,7 +239,7 @@ class WorkerContractTests(unittest.TestCase):
         process.returncode = 0
         state = {"job_id": job_id, "logs": [], "cancel": threading.Event()}
 
-        with patch("paperpilot.translation_worker.service.subprocess.Popen", return_value=process) as popen:
+        with patch("ipaper.translation_worker.service.subprocess.Popen", return_value=process) as popen:
             service._execute_babeldoc(job_id, "fake-model", "https://fake.invalid/v1", "secret", state)
 
         kwargs = popen.call_args.kwargs
@@ -257,7 +257,7 @@ class WorkerContractTests(unittest.TestCase):
         process.returncode = 23
         state = {"job_id": job_id, "logs": [], "cancel": threading.Event()}
 
-        with patch("paperpilot.translation_worker.service.subprocess.Popen", return_value=process):
+        with patch("ipaper.translation_worker.service.subprocess.Popen", return_value=process):
             with self.assertRaisesRegex(RuntimeError, "^babeldoc_failed$"):
                 service._execute_babeldoc(
                     job_id, "fake-model", "https://fake.invalid/v1", "secret", state

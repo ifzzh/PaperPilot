@@ -6,8 +6,8 @@ from datetime import datetime
 from unittest.mock import patch
 
 
-from paperpilot.database.dao.paper_dao import PaperDAO
-from paperpilot.tools.basic_tools.daily_arxiv import (
+from ipaper.database.dao.paper_dao import PaperDAO
+from ipaper.tools.basic_tools.daily_arxiv import (
     DailyArxivManager,
     DEFAULT_MAX_NEW_PAPERS_PER_CATEGORY_PER_FETCH,
     DEFAULT_REPLACEMENT_CANDIDATE_LIMIT,
@@ -287,7 +287,7 @@ class TestDailyArxivKeywordFilter(unittest.TestCase):
                 patch.object(PaperDAO, "get_daily_papers", return_value=[]),
                 patch.object(PaperDAO, "get_paper_by_arxiv_id", return_value=None),
                 patch(
-                    "paperpilot.tools.basic_tools.daily_arxiv.get_arxiv_announce_date",
+                    "ipaper.tools.basic_tools.daily_arxiv.get_arxiv_announce_date",
                     return_value=datetime(2026, 1, 2),
                 ),
             ):
@@ -394,11 +394,11 @@ class TestDailyArxivKeywordFilter(unittest.TestCase):
                 patch.object(PaperDAO, "get_daily_papers", return_value=[]),
                 patch.object(PaperDAO, "get_paper_by_arxiv_id", return_value=None),
                 patch(
-                    "paperpilot.tools.basic_tools.daily_arxiv.get_arxiv_announce_date",
+                    "ipaper.tools.basic_tools.daily_arxiv.get_arxiv_announce_date",
                     return_value=datetime(2026, 4, 2),
                 ),
                 patch(
-                    "paperpilot.tools.basic_tools.daily_arxiv.extract_summary_and_keywords_with_llm",
+                    "ipaper.tools.basic_tools.daily_arxiv.extract_summary_and_keywords_with_llm",
                     return_value={"summary": "summary", "keywords": []},
                 ),
             ):
@@ -482,7 +482,7 @@ class TestDailyArxivKeywordFilter(unittest.TestCase):
                 patch.object(PaperDAO, "get_daily_papers", side_effect=lambda _date: saved),
                 patch.object(PaperDAO, "get_paper_by_arxiv_id", return_value=None),
                 patch(
-                    "paperpilot.tools.basic_tools.daily_arxiv.get_arxiv_announce_date",
+                    "ipaper.tools.basic_tools.daily_arxiv.get_arxiv_announce_date",
                     return_value=datetime(2026, 2, 2),
                 ),
             ):
@@ -581,11 +581,11 @@ class TestDailyArxivKeywordFilter(unittest.TestCase):
                 patch.object(PaperDAO, "get_paper_by_arxiv_id", return_value=None),
                 patch.object(PaperDAO, "delete_paper", side_effect=lambda paper_id: deleted.append(paper_id)),
                 patch(
-                    "paperpilot.tools.basic_tools.daily_arxiv.get_arxiv_announce_date",
+                    "ipaper.tools.basic_tools.daily_arxiv.get_arxiv_announce_date",
                     return_value=datetime(2026, 3, 2),
                 ),
                 patch(
-                    "paperpilot.tools.basic_tools.daily_arxiv.select_daily_arxiv_replacement_with_llm",
+                    "ipaper.tools.basic_tools.daily_arxiv.select_daily_arxiv_replacement_with_llm",
                     return_value={
                         "accept": True,
                         "replace_arxiv_id": "2603.00000",

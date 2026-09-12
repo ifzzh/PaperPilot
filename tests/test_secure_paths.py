@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from paperpilot.security.paths import (
+from ipaper.security.paths import (
     PathSecurityError,
     category_directory,
     category_storage_id,

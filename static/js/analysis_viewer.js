@@ -41,7 +41,7 @@
                     return preserved[Number(idx)];
                 });
                 const el = document.getElementById('md');
-                PaperPilotSecurity.setSanitizedMarkdown(el, html, { paperId });
+                iPaperSecurity.setSanitizedMarkdown(el, html, { paperId });
                 if (typeof hljs !== 'undefined') {
                     document.querySelectorAll('pre code').forEach((block) => hljs.highlightElement(block));
                 }

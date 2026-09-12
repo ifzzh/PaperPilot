@@ -6,8 +6,8 @@ import unittest
 import uuid
 from pathlib import Path
 
-from paperpilot.security.paths import PathSecurityError
-from paperpilot.tools.agent_tools.translation_worker_client import TranslationWorkerClient
+from ipaper.security.paths import PathSecurityError
+from ipaper.tools.agent_tools.translation_worker_client import TranslationWorkerClient
 
 
 class TranslationWorkerClientStorageTests(unittest.TestCase):

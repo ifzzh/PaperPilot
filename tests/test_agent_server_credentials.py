@@ -4,8 +4,8 @@ from unittest.mock import Mock
 
 from flask import Flask
 
-from paperpilot.routes.agent_routes.agent_chat_route import register_agent_chat_routes
-from paperpilot.routes.agent_routes.agent_summary_route import register_agent_summary_routes
+from ipaper.routes.agent_routes.agent_chat_route import register_agent_chat_routes
+from ipaper.routes.agent_routes.agent_summary_route import register_agent_summary_routes
 
 
 class AgentServerCredentialTests(unittest.TestCase):

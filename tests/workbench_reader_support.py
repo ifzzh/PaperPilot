@@ -7,16 +7,16 @@ import shutil
 import threading
 import time
 
-from paperpilot.database.dao.paper_dao import PaperDAO
-from paperpilot.core.base_paper import Paper
-from paperpilot.database.dao.settings_dao import SettingsDAO
-from paperpilot.security.identity import Identity, run_as_identity
-from paperpilot.security.paths import paper_path, paper_asset_paths
-from paperpilot.security.credentials import generate_settings_key
-from paperpilot.security.agentic_credentials import AgenticCredentialStore
-from paperpilot.security.outbound import OutboundPolicy, ValidatedTarget, OutboundPolicyError
-from paperpilot.routes.agent_routes import agent_chat_route, agent_translate_route
-from paperpilot.tools.basic_tools.chat_history_manager import ChatHistoryManager
+from ipaper.database.dao.paper_dao import PaperDAO
+from ipaper.core.base_paper import Paper
+from ipaper.database.dao.settings_dao import SettingsDAO
+from ipaper.security.identity import Identity, run_as_identity
+from ipaper.security.paths import paper_path, paper_asset_paths
+from ipaper.security.credentials import generate_settings_key
+from ipaper.security.agentic_credentials import AgenticCredentialStore
+from ipaper.security.outbound import OutboundPolicy, ValidatedTarget, OutboundPolicyError
+from ipaper.routes.agent_routes import agent_chat_route, agent_translate_route
+from ipaper.tools.basic_tools.chat_history_manager import ChatHistoryManager
 import app as app_module
 
 
@@ -67,7 +67,7 @@ def install_reader_fixture(application, root, users, monkeypatch, origin, *, reg
     for name in ('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy'):
         monkeypatch.delenv(name,raising=False)
     root=Path(root); (root/'papers').mkdir(exist_ok=True); store=app_module.paper_store
-    application.config['PAPERPILOT_START_BACKGROUND_TASKS']=False
+    application.config['IPAPER_START_BACKGROUND_TASKS']=False
     monkeypatch.setattr(agent_chat_route,'paper_store',store)
     monkeypatch.setattr(agent_chat_route,'chat_history_manager',ChatHistoryManager(store))
     monkeypatch.setattr(agent_translate_route,'paper_store',store)
@@ -97,7 +97,7 @@ def install_reader_fixture(application, root, users, monkeypatch, origin, *, reg
                 for i in range(1 if prefix=='b' else 6):
                     paper=store.get(f'{prefix}-{i}')
                     if not paper and prefix=='c':
-                        paper=Paper(id=f'c-{i}',title='合成阅读验证文献',authors='PaperPilot tests',has_chinese_version=i==0)
+                        paper=Paper(id=f'c-{i}',title='合成阅读验证文献',authors='iPaper tests',has_chinese_version=i==0)
                     if not paper: continue
                     target=paper_path(root/'papers','root',f'{prefix}-{i}.pdf',create_parent=True)
                     if i==0: shutil.copyfile(assets/'original.pdf',target)

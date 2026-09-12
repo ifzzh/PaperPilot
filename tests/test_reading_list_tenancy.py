@@ -5,14 +5,14 @@ from pathlib import Path
 
 from flask import Flask
 
-from paperpilot.core.paper_store import paper_store
-from paperpilot.database import connection
-from paperpilot.database.db_manager import init_db_schema
-from paperpilot.routes.basic_routes.paper_operation_route import (
+from ipaper.core.paper_store import paper_store
+from ipaper.database import connection
+from ipaper.database.db_manager import init_db_schema
+from ipaper.routes.basic_routes.paper_operation_route import (
     register_paper_operation_routes,
 )
-from paperpilot.security.identity import Identity, reset_background_identity, set_background_identity
-from paperpilot.security.paths import paper_directory
+from ipaper.security.identity import Identity, reset_background_identity, set_background_identity
+from ipaper.security.paths import paper_directory
 
 
 class TestReadingListTenancy(unittest.TestCase):
@@ -21,7 +21,7 @@ class TestReadingListTenancy(unittest.TestCase):
         self.root = Path(self.temp.name) / "papers"
         self.root.mkdir()
         self.original_db = connection.DB_PATH
-        connection.DB_PATH = str(Path(self.temp.name) / "paperpilot.db")
+        connection.DB_PATH = str(Path(self.temp.name) / "ipaper.db")
         init_db_schema(connection.DB_PATH)
         self.user_id = str(uuid.uuid4())
         self.identity_token = set_background_identity(

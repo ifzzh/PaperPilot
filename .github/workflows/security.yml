@@ -19,7 +19,7 @@ jobs:
       # The test target depends on frontend-build: npm ci, typecheck, tests,
       # production assets and npm audit are mandatory before Python tests.
       - name: Build locked frontend and test environment
-        run: docker build --target test --tag paperpilot:v0.8-test .
+        run: docker build --target test --tag ipaper:v0.8-test .
 
       - name: Audit frontend lock against current advisories
         run: >-
@@ -33,15 +33,15 @@ jobs:
 
       - name: Build final images
         run: |
-          docker build --target runtime --tag paperpilot:ci-web .
-          docker build --target translation-worker --tag paperpilot:ci-worker .
-          docker build --target document-worker --tag paperpilot:ci-document .
+          docker build --target runtime --tag ipaper:ci-web .
+          docker build --target translation-worker --tag ipaper:ci-worker .
+          docker build --target document-worker --tag ipaper:ci-document .
 
       - name: Run source and image gates
         env:
-          PAPERPILOT_WEB_IMAGE: paperpilot:ci-web
-          PAPERPILOT_WORKER_IMAGE: paperpilot:ci-worker
-          PAPERPILOT_DOCUMENT_IMAGE: paperpilot:ci-document
+          IPAPER_WEB_IMAGE: ipaper:ci-web
+          IPAPER_WORKER_IMAGE: ipaper:ci-worker
+          IPAPER_DOCUMENT_IMAGE: ipaper:ci-document
         run: |
           ./scripts/security_scan.sh filesystem
           ./scripts/security_scan.sh images
@@ -50,7 +50,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: paperpilot-security-${{ github.sha }}
-          path: /tmp/paperpilot-security
+          name: ipaper-security-${{ github.sha }}
+          path: /tmp/ipaper-security
           if-no-files-found: error
           retention-days: 30

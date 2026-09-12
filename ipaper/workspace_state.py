@@ -1,0 +1,136 @@
+"""Owner-scoped UI state. No asset paths, content or credentials are persisted."""
+import json
+import math
+import sqlite3
+from flask import jsonify, request
+from ipaper.database.connection import get_db
+from ipaper.database.dao.paper_dao import PaperDAO
+from ipaper.security.identity import current_user_id
+
+
+def _read(key, default):
+    row = get_db().execute('SELECT value FROM user_settings_v2 WHERE owner_id=? AND key=?',
+                           (current_user_id(), key)).fetchone()
+    if not row:
+        return default
+    try:
+        return json.loads(row['value'])
+    except (ValueError, TypeError):
+        return default
+
+
+def _write(key, value):
+    db = get_db()
+    try:
+        db.execute('INSERT INTO user_settings_v2(owner_id,key,value) VALUES(?,?,?) ON CONFLICT(owner_id,key) DO UPDATE SET value=excluded.value',
+                   (current_user_id(), key, json.dumps(value, ensure_ascii=False)))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+def _number(value, minimum, maximum):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and minimum <= value <= maximum
+
+
+def register_workspace_state(app):
+    def body():
+        request.max_content_length = 65536
+        if request.content_length and request.content_length > 65536:
+            raise ValueError()
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            raise ValueError()
+        return data
+
+    @app.route('/api/workspace/state', methods=['GET', 'PUT'])
+    def workspace_state():
+        try:
+            if request.method == 'GET':
+                data = _read('workspace_v1', {})
+                data['tabs'] = [p for p in data.get('tabs', []) if PaperDAO.get_paper(p)]
+                if 'tabDocuments' in data:
+                    data['tabDocuments'] = {k:v for k,v in data['tabDocuments'].items() if k in data['tabs']}
+                if data.get('activePaper') not in data['tabs']:
+                    data['activePaper'] = None
+                return jsonify(data)
+            data = body()
+            if set(data) - {'tabs', 'activePaper', 'theme', 'categoryWidth', 'detailWidth', 'chatWidth', 'thumbnailOpen', 'taskRefs', 'tabDocuments'}:
+                raise ValueError()
+            tabs = data.get('tabs', [])
+            if not isinstance(tabs, list) or len(tabs) > 20 or any(not isinstance(p, str) or len(p) > 200 for p in tabs) or len(set(tabs)) != len(tabs):
+                raise ValueError()
+            if any(not PaperDAO.get_paper(p) for p in tabs):
+                return jsonify(error='paper_not_found'), 404
+            documents = data.get('tabDocuments', {})
+            if not isinstance(documents, dict) or any(k not in tabs or v not in ('original', 'translated') for k, v in documents.items()):
+                raise ValueError()
+            if data.get('activePaper') is not None and data['activePaper'] not in tabs:
+                raise ValueError()
+            if 'theme' in data and data['theme'] not in ('light', 'dark', 'system'):
+                raise ValueError()
+            for key, low, high in [('categoryWidth', 180, 420), ('detailWidth', 280, 560), ('chatWidth', 300, 640)]:
+                if key in data and not _number(data[key], low, high):
+                    raise ValueError()
+            if 'thumbnailOpen' in data and not isinstance(data['thumbnailOpen'], bool):
+                raise ValueError()
+            tasks = data.get('taskRefs', [])
+            if not isinstance(tasks, list) or len(tasks) > 50:
+                raise ValueError()
+            for task in tasks:
+                if not isinstance(task, dict) or set(task) != {'id', 'kind', 'label'} or task['kind'] not in ('upload', 'import', 'export', 'analysis') or any(not isinstance(task[k], str) or len(task[k]) > 250 for k in ('id', 'label')):
+                    raise ValueError()
+            _write('workspace_v1', data)
+            return jsonify(data)
+        except ValueError:
+            return jsonify(error='invalid_workspace_state'), 400
+        except sqlite3.Error:
+            return jsonify(error='state_save_failed'), 503
+
+    @app.route('/api/paper/<paper_id>/reading-position', methods=['GET', 'PUT'])
+    def reading_position(paper_id):
+        if not PaperDAO.get_paper(paper_id):
+            return jsonify(error='paper_not_found'), 404
+        key = 'reading_position_v1:' + paper_id
+        try:
+            if request.method == 'GET':
+                return jsonify(_read(key, {}))
+            data = body()
+            if set(data) - {'document', 'page', 'offset', 'zoom', 'rotation', 'fingerprint', 'sessionId'}:
+                raise ValueError()
+            document = data.get('document')
+            if document not in ('original', 'translated'):
+                raise ValueError()
+            if not _number(data.get('page'), 1, 100000) or int(data['page']) != data['page']:
+                raise ValueError()
+            if not _number(data.get('offset'), 0, 1) or not _number(data.get('rotation'), 0, 270) or data.get('rotation') not in (0, 90, 180, 270):
+                raise ValueError()
+            zoom = data.get('zoom')
+            if not ((isinstance(zoom, str) and zoom in ('width', 'page')) or _number(zoom, .25, 4)):
+                raise ValueError()
+            if not isinstance(data.get('fingerprint'), str) or not 1 <= len(data['fingerprint']) <= 128:
+                raise ValueError()
+            if 'sessionId' in data:
+                sid = data['sessionId']
+                if sid is not None:
+                    if not isinstance(sid, str) or not 1 <= len(sid) <= 200:
+                        raise ValueError()
+                    row = get_db().execute('SELECT 1 FROM chats WHERE owner_id=? AND paper_id=? AND session_id=?', (current_user_id(), paper_id, sid)).fetchone()
+                    if not row:
+                        raise ValueError()
+            # Read-modify-write is serialized, preserving the other document variant.
+            db = get_db()
+            try:
+                db.execute('BEGIN IMMEDIATE')
+                positions = _read(key, {})
+                positions[document] = data
+                _write(key, positions)
+            except Exception:
+                db.rollback()
+                raise
+            return jsonify(data)
+        except (ValueError, TypeError):
+            return jsonify(error='invalid_reading_position'), 400
+        except sqlite3.Error:
+            return jsonify(error='state_save_failed'), 503

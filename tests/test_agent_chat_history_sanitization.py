@@ -1,6 +1,6 @@
 import unittest
 
-from paperpilot.routes.agent_routes.agent_chat_route import (
+from ipaper.routes.agent_routes.agent_chat_route import (
     ThinkTagStreamFilter,
     normalize_chat_messages,
     strip_think_blocks,

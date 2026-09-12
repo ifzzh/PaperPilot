@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from paperpilot.database import connection
-from paperpilot.workbench import build_assets
+from ipaper.database import connection
+from ipaper.workbench import build_assets
 from tests.workbench_support import make_workbench_fixture
 
 
@@ -33,7 +33,7 @@ def login(client, name='reader_one'):
 @pytest.mark.parametrize('obsolete_flag', [False, True])
 def test_unified_entry_ignores_retired_flag(fixture, obsolete_flag):
     app, _, _ = fixture
-    app.config['PAPERPILOT_WORKBENCH_ENABLED'] = obsolete_flag
+    app.config['IPAPER_WORKBENCH_ENABLED'] = obsolete_flag
     c = app.test_client()
     assert c.get('/workbench').location == '/'
     assert c.get('/workbench/').location == '/'

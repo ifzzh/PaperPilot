@@ -3,14 +3,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from paperpilot.database.db_manager import init_db_schema
-from paperpilot.tools.basic_tools.daily_arxiv_assets import AssetResult, DailyAssetCoordinator
+from ipaper.database.db_manager import init_db_schema
+from ipaper.tools.basic_tools.daily_arxiv_assets import AssetResult, DailyAssetCoordinator
 
 
 class DailyAssetCoordinatorTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.db = Path(self.temp.name) / "paperpilot.db"
+        self.db = Path(self.temp.name) / "ipaper.db"
         init_db_schema(str(self.db))
 
     def tearDown(self):

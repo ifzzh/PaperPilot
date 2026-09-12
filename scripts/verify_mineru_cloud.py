@@ -22,14 +22,14 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import requests
-from paperpilot.document_worker.client import DocumentWorkerClient
-from paperpilot.document_worker.safety import DocumentLimits, bounded_copy
-from paperpilot.database import connection
-from paperpilot.database.db_manager import init_db_schema
-from paperpilot.database.dao.document_job_dao import DocumentJobDAO
-from paperpilot.security.identity import Identity, run_as_identity
-from paperpilot.security.outbound import OutboundPolicy, guarded_request
-from paperpilot.tools.basic_tools.mineru_api_client import MinerUAPIClient, finalize_mineru_output
+from ipaper.document_worker.client import DocumentWorkerClient
+from ipaper.document_worker.safety import DocumentLimits, bounded_copy
+from ipaper.database import connection
+from ipaper.database.db_manager import init_db_schema
+from ipaper.database.dao.document_job_dao import DocumentJobDAO
+from ipaper.security.identity import Identity, run_as_identity
+from ipaper.security.outbound import OutboundPolicy, guarded_request
+from ipaper.tools.basic_tools.mineru_api_client import MinerUAPIClient, finalize_mineru_output
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / 'tests/fixtures/workbench/translated.pdf'

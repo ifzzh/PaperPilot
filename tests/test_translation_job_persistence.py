@@ -6,15 +6,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from paperpilot.database import connection
-from paperpilot.database.dao.translation_job_dao import TranslationJobDAO
-from paperpilot.database.models import SCHEMA_SCRIPT
+from ipaper.database import connection
+from ipaper.database.dao.translation_job_dao import TranslationJobDAO
+from ipaper.database.models import SCHEMA_SCRIPT
 
 
 class TranslationJobPersistenceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.db_path = str(Path(self.temp.name) / "paperpilot.db")
+        self.db_path = str(Path(self.temp.name) / "ipaper.db")
         db = sqlite3.connect(self.db_path)
         db.executescript(SCHEMA_SCRIPT)
         db.execute("INSERT INTO papers (id, title) VALUES ('paper-1', 'Test')")
@@ -62,7 +62,7 @@ class TranslationJobPersistenceTests(unittest.TestCase):
     def test_jobs_and_events_are_tenant_scoped(self):
         TranslationJobDAO.create("owned", "paper-1", config_fingerprint="abc")
         self.assertEqual(TranslationJobDAO.get("owned")["config_fingerprint"], "abc")
-        with patch("paperpilot.database.dao.translation_job_dao.current_user_id", return_value="other"):
+        with patch("ipaper.database.dao.translation_job_dao.current_user_id", return_value="other"):
             self.assertIsNone(TranslationJobDAO.get("owned"))
             self.assertEqual(TranslationJobDAO.list_events(), [])
 

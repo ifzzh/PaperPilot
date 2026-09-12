@@ -2,7 +2,7 @@ import unittest
 
 import app as app_module
 
-from paperpilot.auth import AuthConfig
+from ipaper.auth import AuthConfig
 
 
 class TestBrowserSecurityHeaders(unittest.TestCase):
@@ -10,8 +10,8 @@ class TestBrowserSecurityHeaders(unittest.TestCase):
         app_module.app.config.update(TESTING=True)
         app_module.AUTH_CONFIG = AuthConfig.from_environ(
             {
-                "PAPERPILOT_ENV": "production",
-                "PAPERPILOT_AUTH_MODE": "local",
+                "IPAPER_ENV": "production",
+                "IPAPER_AUTH_MODE": "local",
             }
         )
         self.client = app_module.app.test_client()

@@ -25,9 +25,9 @@ def main():
     root=Path(__file__).resolve().parents[1]
     component=json.loads((root/'docker/release-components.json').read_text())['document_worker']
     image=component['repository']+'@'+component['digest']
-    ident='paperpilot-p1-'+uuid.uuid4().hex[:10]
+    ident='ipaper-p1-'+uuid.uuid4().hex[:10]
     opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with tempfile.TemporaryDirectory(prefix='paperpilot-unified-document-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='ipaper-unified-document-') as temporary:
         directory=Path(temporary);jobs=directory/'jobs';jobs.mkdir(mode=0o2770);jobs.chmod(0o2770)
         token=directory/'token';token.write_text(secrets.token_urlsafe(48));token.chmod(0o440)
         network_created=False
@@ -40,7 +40,7 @@ def main():
                 '--cpus','2','--memory','3g','--pids-limit','128',
                 '--tmpfs','/tmp:size=256m,mode=1777',
                 '-v',str(jobs)+':/work/document-jobs',
-                '-v',str(token)+':/run/secrets/paperpilot_document_worker_token:ro',
+                '-v',str(token)+':/run/secrets/ipaper_document_worker_token:ro',
                 image,stdout=subprocess.DEVNULL)
             inspect=json.loads(subprocess.check_output(['docker','inspect',ident]))[0]
             worker_url='http://'+inspect['NetworkSettings']['Networks'][ident]['IPAddress']+':7193'
@@ -56,15 +56,15 @@ def main():
                 print(subprocess.check_output(['docker','inspect','--format','{{json .State}}',ident],text=True))
                 raise RuntimeError('isolated worker did not become healthy: '+last_error)
             inspect=json.loads(subprocess.check_output(['docker','inspect',ident]))[0]
-            assert {m['Destination'] for m in inspect['Mounts']}=={'/work/document-jobs','/run/secrets/paperpilot_document_worker_token'}
+            assert {m['Destination'] for m in inspect['Mounts']}=={'/work/document-jobs','/run/secrets/ipaper_document_worker_token'}
             network=json.loads(subprocess.check_output(['docker','network','inspect',ident]))[0]
             assert network['Internal'] is True
             run('docker','exec',ident,'python','-c',
                 'import socket\ntry:\n socket.create_connection(("1.1.1.1",443),1)\nexcept OSError:\n pass\nelse:\n raise SystemExit("unexpected public egress")')
-            environment={**os.environ,'PYTHON_DOTENV_DISABLED':'1','PAPERPILOT_BROWSER_REAL_WORKER':'1',
-                'PAPERPILOT_DOCUMENT_WORKER_URL':worker_url,
-                'PAPERPILOT_DOCUMENT_JOBS_ROOT':str(jobs),
-                'PAPERPILOT_DOCUMENT_WORKER_TOKEN_FILE':str(token)}
+            environment={**os.environ,'PYTHON_DOTENV_DISABLED':'1','IPAPER_BROWSER_REAL_WORKER':'1',
+                'IPAPER_DOCUMENT_WORKER_URL':worker_url,
+                'IPAPER_DOCUMENT_JOBS_ROOT':str(jobs),
+                'IPAPER_DOCUMENT_WORKER_TOKEN_FILE':str(token)}
             run('npx','playwright','test','--config','playwright.unified.config.ts','upload.spec.ts',cwd=root/'frontend',env=environment)
             assert not list(jobs.iterdir()),'completed upload staging was not cleaned'
             print(json.dumps({'worker':image,'http_upload_and_read':'passed','staging_cleanup':'passed','public_egress':'blocked','production_asset_mounts':False}))

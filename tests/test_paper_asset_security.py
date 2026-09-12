@@ -5,13 +5,13 @@ from unittest.mock import Mock
 
 from flask import Flask
 
-from paperpilot.core.base_paper import Paper
-from paperpilot.core.paper_store import PaperStore
-from paperpilot.routes.basic_routes.paper_operation_route import (
+from ipaper.core.base_paper import Paper
+from ipaper.core.paper_store import PaperStore
+from ipaper.routes.basic_routes.paper_operation_route import (
     register_paper_operation_routes,
 )
-from paperpilot.security.paths import category_directory, paper_asset_paths
-from paperpilot.tools.basic_tools.paper_repository import delete_paper_files
+from ipaper.security.paths import category_directory, paper_asset_paths
+from ipaper.tools.basic_tools.paper_repository import delete_paper_files
 
 
 class TestPaperAssetSecurity(unittest.TestCase):

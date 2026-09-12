@@ -4,14 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from paperpilot.migrations.category_storage import (
+from ipaper.migrations.category_storage import (
     MigrationError,
     apply_migration,
     assert_storage_migrated,
     build_plan,
     rollback_migration,
 )
-from paperpilot.security.paths import category_directory
+from ipaper.security.paths import category_directory
 
 
 class TestCategoryStorageMigration(unittest.TestCase):
@@ -20,7 +20,7 @@ class TestCategoryStorageMigration(unittest.TestCase):
         base = Path(self.tempdir.name)
         self.root = base / "papers"
         self.root.mkdir()
-        self.db = base / "paperpilot.db"
+        self.db = base / "ipaper.db"
         self.backups = base / "backups"
         with sqlite3.connect(self.db) as connection:
             connection.executescript(

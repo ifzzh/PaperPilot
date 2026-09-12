@@ -30,7 +30,7 @@ describe("API boundary", () => {
     });
     expect(dispatchEvent).toHaveBeenCalledOnce();
     expect(dispatchEvent.mock.calls[0][0].type).toBe(
-      "paperpilot-session-expired",
+      "ipaper-session-expired",
     );
   });
   it("does not retain server paths or arbitrary metadata", () => {

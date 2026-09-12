@@ -3,7 +3,7 @@
     if (typeof module === 'object' && module.exports) {
         module.exports = api;
     }
-    root.PaperPilotSecurity = api;
+    root.iPaperSecurity = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
     'use strict';
 
@@ -39,7 +39,7 @@
     }
 
     function baseOrigin(baseUrl) {
-        const fallback = 'http://paperpilot.invalid';
+        const fallback = 'http://ipaper.invalid';
         const candidate = baseUrl
             || (root.location && root.location.origin)
             || fallback;

@@ -2,8 +2,8 @@ import io
 from tests.workbench_support import make_workbench_fixture
 from tests.test_workbench import login
 import app as app_module
-from paperpilot.routes.basic_routes import import_route
-from paperpilot.runtime.task_queue import QueueFull
+from ipaper.routes.basic_routes import import_route
+from ipaper.runtime.task_queue import QueueFull
 
 class Client:
     def __init__(self):self.cancelled=[];self.cleaned=[]
@@ -47,7 +47,7 @@ def test_full_import_queue_reports_failure_and_cleans_worker(tmp_path,monkeypatc
 
 def test_import_executor_propagates_submitter_identity():
     import uuid
-    from paperpilot.security.identity import Identity, current_user_id, run_as_identity
+    from ipaper.security.identity import Identity, current_user_id, run_as_identity
     owner=Identity(str(uuid.uuid4()),'submitter','user')
     future=run_as_identity(owner,lambda:import_route._import_workers.submit(current_user_id))
     assert future.result(timeout=5)==owner.user_id

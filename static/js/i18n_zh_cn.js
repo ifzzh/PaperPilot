@@ -2,9 +2,9 @@
     'use strict';
 
     const messages = new Map(Object.entries({
-        'PaperPilot - Agentic Paper Reading': 'PaperPilot - 智能论文阅读',
-        'Welcome to PaperPilot Paper Reading': '欢迎使用 PaperPilot 智能论文阅读',
-        'AI Interpretation - PaperPilot': 'AI 解读 - PaperPilot', 'PDF Viewer': 'PDF 阅读器',
+        'iPaper - Agentic Paper Reading': 'iPaper - 智能论文阅读',
+        'Welcome to iPaper Paper Reading': '欢迎使用 iPaper 智能论文阅读',
+        'AI Interpretation - iPaper': 'AI 解读 - iPaper', 'PDF Viewer': 'PDF 阅读器',
         'Paper': '论文', 'My Library': '我的论文库', 'Paper Info': '论文信息',
         'Select a category to view PDFs': '选择分类以查看 PDF',
         'Select a category on the left to view PDF files': '请在左侧选择分类以查看 PDF 文件',
@@ -73,7 +73,7 @@
         'Refresh metadata': '刷新元数据', 'AI iranslate': 'AI 翻译',
         'AI interpret': 'AI 解读', 'Delete paper': '删除论文',
         'Processing...': '处理中…', 'Add institution mapping': '添加机构映射',
-        'Welcome to PaperPilot': '欢迎使用 PaperPilot',
+        'Welcome to iPaper': '欢迎使用 iPaper',
         'Select AI Output Language': '选择 AI 输出语言', "Don't show again": '不再显示',
         'Log In': '登录', 'Log Out': '退出登录', 'Password': '密码',
         'Back to Home': '返回首页', 'Settings': '设置', 'Refresh': '刷新',
@@ -151,7 +151,7 @@
         observer.observe(document.body, { childList: true, subtree: true });
     }
 
-    window.PaperPilotI18n = { locale: 'zh-CN', t, translateStatic, formatDate, formatDateTime };
+    window.iPaperI18n = { locale: 'zh-CN', t, translateStatic, formatDate, formatDateTime };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
     else start();
 })();

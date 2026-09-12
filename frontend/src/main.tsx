@@ -164,12 +164,12 @@ function App() {
       focus = () => {
         if (!logoutBlocked.current) void check();
       };
-    window.addEventListener("paperpilot-session-expired", expired);
+    window.addEventListener("ipaper-session-expired", expired);
     window.addEventListener("focus", focus);
     const pop = () => setLocation(route());
     window.addEventListener("popstate", pop);
     if ("BroadcastChannel" in window) {
-      channel.current = new BroadcastChannel("paperpilot-auth");
+      channel.current = new BroadcastChannel("ipaper-auth");
       channel.current.onmessage = () => {
         logoutBlocked.current = true;
         clear();
@@ -179,7 +179,7 @@ function App() {
     return () => {
       controller.current?.abort();
       channel.current?.close();
-      window.removeEventListener("paperpilot-session-expired", expired);
+      window.removeEventListener("ipaper-session-expired", expired);
       window.removeEventListener("focus", focus);
       window.removeEventListener("popstate", pop);
     };
@@ -369,7 +369,7 @@ function App() {
       <aside className="app-rail">
         <button
           className="brand-mark"
-          aria-label="PaperPilot 文献库"
+          aria-label="iPaper 文献库"
           onClick={() => navigate("library", "")}
         >
           P
@@ -405,7 +405,7 @@ function App() {
       <div className="app-main">
         <header className="app-header">
           <button className="brand" onClick={() => navigate("library", "")}>
-            PaperPilot
+            iPaper
           </button>
           <span className="header-subtitle">你的论文阅读与研究空间</span>
           <div className="header-actions">

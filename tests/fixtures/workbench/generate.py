@@ -15,7 +15,7 @@ pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
 for filename, pages in [('original.pdf', 100), ('translated.pdf', 2), ('encrypted.pdf', 1)]:
     c = canvas.Canvas(str(root / filename), pagesize=(595,842), pageCompression=0, invariant=True,
                       encrypt=StandardEncryption('synthetic-password') if filename=='encrypted.pdf' else None)
-    c.setTitle('PaperPilot synthetic reader fixture - not a research paper')
+    c.setTitle('iPaper synthetic reader fixture - not a research paper')
     for number in range(1,pages+1):
         c.setPageRotation(90 if number==2 else 0)
         top = 530 if number == 2 else 770

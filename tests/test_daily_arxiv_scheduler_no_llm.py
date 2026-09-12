@@ -6,8 +6,8 @@ import unittest
 from unittest.mock import patch
 
 
-from paperpilot.tools.basic_tools.daily_arxiv import DailyArxivManager
-from paperpilot.security.identity import (
+from ipaper.tools.basic_tools.daily_arxiv import DailyArxivManager
+from ipaper.security.identity import (
     Identity,
     current_user_id,
     reset_background_identity,
@@ -84,7 +84,7 @@ class TestDailyArxivSchedulerNoLLM(unittest.TestCase):
 
             manager.fetch_papers = fake_fetch_papers
 
-            with patch("paperpilot.tools.basic_tools.daily_arxiv.time.sleep", lambda _: None):
+            with patch("ipaper.tools.basic_tools.daily_arxiv.time.sleep", lambda _: None):
                 manager._do_scheduled_fetch()
 
             self.assertTrue(called)
