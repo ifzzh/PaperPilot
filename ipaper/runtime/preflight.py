@@ -17,6 +17,7 @@ from ipaper.migrations.agentic_secrets import assert_no_plaintext_credentials
 from ipaper.migrations.tenant_storage import assert_tenant_migrated
 from ipaper.security.agentic_credentials import AgenticCredentialStore
 from ipaper.security.outbound import DynamicOutboundPolicy
+from ipaper.processing.profiles import StructuredCredentialCipher
 
 
 def preflight_environment() -> None:
@@ -41,6 +42,7 @@ def preflight_environment() -> None:
         assert_no_plaintext_credentials(DB_PATH)
         credential_store = AgenticCredentialStore.from_key_file(key_file)
         credential_store.validate_all()
+        StructuredCredentialCipher.from_file(key_file).validate_all(DB_PATH)
         DynamicOutboundPolicy.from_environ(os.environ)
         assert_tenant_migrated(str(papers_root), DB_PATH)
     finally:

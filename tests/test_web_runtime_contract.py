@@ -174,6 +174,8 @@ class ApplicationFactoryContractTests(unittest.TestCase):
             "from_key_file",
             return_value=store,
         ), patch.object(
+            preflight.StructuredCredentialCipher, "from_file"
+        ) as structured_cipher, patch.object(
             preflight.DynamicOutboundPolicy, "from_environ"
         ), patch.object(
             preflight.LocalAuthService, "has_active_admin", return_value=True
@@ -186,6 +188,7 @@ class ApplicationFactoryContractTests(unittest.TestCase):
 
         init_schema.assert_called_once_with(preflight.DB_PATH)
         store.validate_all.assert_called_once_with()
+        structured_cipher.return_value.validate_all.assert_called_once_with(preflight.DB_PATH)
         storage_check.assert_called_once()
         close_db.assert_called_once_with()
 

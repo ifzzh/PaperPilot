@@ -16,6 +16,7 @@ class ProcessingService:
     def __init__(self, db_path, papers_root, key_file, credentials, policy):
         self.db_path, self.papers_root = db_path, papers_root
         self.cipher = StructuredCredentialCipher.from_file(key_file)
+        self.cipher.validate_all(db_path)
         self.credentials, self.policy = credentials, policy
         self.stop = threading.Event()
         self.wake = threading.Event()

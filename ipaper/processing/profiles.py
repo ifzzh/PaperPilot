@@ -14,6 +14,14 @@ class StructuredCredentialCipher(SettingsCredentialCipher):
     def _aad(owner):
         return ("ipaper:structured-translation-secret:v1:" + identifier(owner)).encode("ascii")
 
+    def validate_all(self, database):
+        """Check the separate purpose before binding, without changing old tables."""
+        import sqlite3
+        from pathlib import Path
+        with sqlite3.connect(Path(database).resolve().as_uri()+"?mode=ro",uri=True) as db:
+            for owner,envelope in db.execute("SELECT owner_id,secret_envelope FROM processing_profiles WHERE secret_envelope IS NOT NULL"):
+                self.open(owner,envelope)
+
     def seal(self, owner, plaintext):
         if not isinstance(plaintext, str) or not 0 < len(plaintext) <= 16384:
             raise ProcessingError("invalid_model_key")

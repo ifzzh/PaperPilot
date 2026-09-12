@@ -125,3 +125,14 @@ def test_frozen_layout_reference_survives_legacy_alias_registration(store,tmp_pa
     assert store.document(doc)['file_ref']==original_ref
     source.write_bytes(b'%PDF-overwritten-alias')
     assert (store.papers_root/original_ref).read_bytes()==b'%PDF-synthetic-layout'
+
+
+def test_structured_only_credentials_are_validated_before_startup(store):
+    cipher=StructuredCredentialCipher(b'c'*32)
+    StructuredProfiles(store,cipher).save('model','https://example.test/v1',key='synthetic-only')
+    cipher.validate_all(store.db_path)
+    with pytest.raises(CredentialDecryptionError,match='structured_credential_decryption_failed'):
+        StructuredCredentialCipher(b'd'*32).validate_all(store.db_path)
+    with store.connection(write=True) as db:
+        db.execute("UPDATE processing_profiles SET secret_envelope='tampered'")
+    with pytest.raises(CredentialDecryptionError):cipher.validate_all(store.db_path)
