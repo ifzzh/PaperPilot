@@ -26,7 +26,7 @@ const Settings = lazy(() =>
 );
 const Daily = lazy(() => import("./Daily").then((m) => ({ default: m.Daily })));
 const Reader = lazy(() =>
-  import("./Reader").then((m) => ({ default: m.Reader })),
+  import("./StructuredReader").then((m) => ({ default: m.Reader })),
 );
 type View = "library" | "reader" | "daily" | "settings" | "tasks" | "analysis";
 const route = () => {
@@ -253,6 +253,7 @@ function App() {
           : null,
         theme,
         taskRefs,
+        readerResults: Object.fromEntries(Object.entries(preferences.current.readerResults || {}).filter(([id]) => tabs.includes(id))),
         tabDocuments: Object.fromEntries(
           Object.entries(preferences.current.tabDocuments || {}).filter(
             ([id]) => tabs.includes(id),

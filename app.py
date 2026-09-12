@@ -1012,6 +1012,18 @@ def register_routes():
         asset_coordinator=_daily_asset_coordinator,
     )
 
+    from ipaper.processing.service import ProcessingService
+    from ipaper.processing.routes import register_processing_routes
+    processing_service = ProcessingService(
+        DB_PATH, UPLOAD_FOLDER,
+        brand_getenv("IPAPER_SETTINGS_KEY_FILE", "/run/secrets/ipaper_settings_key"),
+        AGENTIC_CREDENTIAL_STORE, OUTBOUND_POLICY,
+    )
+    register_processing_routes(app, processing_service)
+    processing_service.initialize_ifzzh()
+    if app.config.get("IPAPER_START_BACKGROUND_TASKS", False):
+        processing_service.start()
+
     register_settings_routes(
         app,
         user_settings_file=USER_SETTINGS_FILE,
@@ -1270,6 +1282,9 @@ def _initialize_application(papers_dir: str) -> None:
 
     # Paper data is now directly stored in the JSON file next to the PDF file
 def shutdown_application() -> None:
+    processing_service = app.extensions.get("processing")
+    if processing_service:
+        processing_service.shutdown()
     """Stop process-owned schedulers before the WSGI worker exits."""
     if _daily_arxiv_manager is not None and getattr(
         _daily_arxiv_manager, "_scheduler_running", False

@@ -13,7 +13,7 @@ iPaper continues development from PaperPilot and is adapting PaperQuay's reading
 
 **Discover with Daily arXiv → collect papers → read and translate → ask questions → organize research.**
 
-Existing services provide library management, BabelDOC translation, MinerU parsing and analysis, single-paper chat, Daily arXiv and local accounts. The unified library, continuous PDF reader, reading positions and sidebar chat are available; notes, library-operation agents, cross-paper retrieval, review writing and graphs are staged development work.
+Existing services provide library management, BabelDOC translation, MinerU parsing and analysis, single-paper chat, Daily arXiv and local accounts. The unified library, continuous PDF reader, reading positions and sidebar chat are available. The 1.2.0 source adds dual translation results and verified source navigation; notes, library-operation agents, cross-paper retrieval, review writing and graphs are staged development work.
 
 A version number or screen on the development branch does not establish release availability. Consult the target [Release](https://github.com/ifzzh/iPaper/releases) for shipped capabilities, known issues and verification. Planned features below are not presented as complete.
 
@@ -23,8 +23,8 @@ A version number or screen on the development branch does not establish release 
 | --- | --- | --- |
 | Discovery | Daily arXiv, research topics, filtering, candidates and PDF asset processing | Discovery workflow refinements |
 | Library | PaperQuay-inspired category/list/detail workspace; upload, search, favorites, Reading List and Zotero RDF import | Library-operation agents |
-| Reading | Continuous PDFs, thumbnails, tabs, independent reading positions, selection questions and sidebar history/chat | Linked notes and source navigation |
-| Translation | BabelDOC layout-preserving translation with progress, recovery and retries | Coexisting PDF and structured translation results |
+| Reading | Continuous PDFs, thumbnails, tabs, independent reading positions, selection questions, verified source links and sidebar history/chat | Linked notes and annotations |
+| Translation | BabelDOC mono/dual PDFs and independently stored structured bilingual blocks; bounded tasks, cache reuse and block retries | Further language and layout refinements |
 | Accounts and data | Local accounts, user-scoped data, server-side model settings and persistent tasks | Preserve existing papers, settings and chat history |
 | Research | Papers and analysis results | Notes, library-operation agents, RAG, reviews and graphs |
 
@@ -32,14 +32,16 @@ The current product has one primary interface, with no requirement to choose bet
 
 ## Two translation workflows
 
-BabelDOC remains part of iPaper. The structured workflow used by PaperQuay is being added alongside it.
+The 1.2.0 source implements both workflows in the same reader; the published Release determines deployment availability. [Implementation and limitations](docs/development/dual-translation.md).
 
 | Workflow | Process and result | Intended use |
 | --- | --- | --- |
 | **Layout translation · BabelDOC** | Produces translated or bilingual PDFs while aiming to preserve the original layout | Continuous reading, downloads and printing |
-| **Structured translation · MinerU + an LLM** (in development) | MinerU extracts text, equations and tables; a model translates the resulting blocks | Paragraph comparison, source navigation, block retries and questions |
+| **Structured translation · MinerU + an LLM** | MinerU extracts text, equations and tables; a model translates the resulting blocks | Paragraph comparison, source navigation, block retries and questions |
 
-MinerU is the parser, not the translation engine. Both results should be stored independently for the same paper. The reader should switch between the original PDF, existing translated PDFs and structured text without automatically starting a paid translation task. Missing results require an explicit generation action.
+MinerU is the parser, not the translation engine. Both results are stored independently for the same paper. The reader switches between the original PDF, existing translated PDFs and structured text without automatically starting a paid translation task. Missing results require an explicit generation action.
+
+The structure parser handles PDF segments of at most 200 pages, within the documented document and storage limits. Only validated coordinate schemas produce region highlights; other results use page references or explicitly unavailable navigation. Existing PDFs are never automatically translated again. Structured translation has its own server-side model configuration, visible scope and request budget. New data uses additive tables and immutable artifacts; [back up both](docs/operations/structured-backup.md) before upgrading.
 
 ## Self-hosting
 
@@ -71,7 +73,7 @@ Core dependencies include [BabelDOC](https://github.com/funstory-ai/BabelDOC), [
 
 ## What's next
 
-- Structured translation, source navigation, annotations and linked notes.
+- Annotations and linked notes.
 - Library-operation agents with inspectable plans and results.
 - Retrieval across papers and notes, review writing and knowledge graphs.
 

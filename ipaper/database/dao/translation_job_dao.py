@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import json
 from datetime import datetime, timedelta, timezone
 
 from ..connection import get_db
@@ -17,21 +18,29 @@ def _now() -> str:
 
 class TranslationJobDAO:
     @staticmethod
-    def create(job_id: str, paper_id: str, *, config_fingerprint: str | None = None) -> None:
+    def create(job_id: str, paper_id: str, *, config_fingerprint: str | None = None,
+               output_mode: str = "dual", config_snapshot: dict | None = None) -> None:
+        if output_mode not in {"mono", "dual"}:
+            raise ValueError("invalid_output_mode")
         now = _now()
         db = get_db()
-        db.execute(
-            """INSERT INTO translation_jobs
-               (job_id,owner_id,paper_id,status,progress,created_at,updated_at,
-                heartbeat_at,queue_order,config_fingerprint,recoverable_until)
-               VALUES (?,? ,?,'queued',0,?,?,?,?,?,?)""",
-            (
-                job_id, current_user_id(), paper_id, now, now, now, time.time_ns(),
-                config_fingerprint,
-                (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
-            ),
-        )
-        db.commit()
+        # One transaction includes the mode and provenance; a crash must never
+        # turn a requested monolingual job into the default bilingual job.
+        try:
+            columns = "job_id,owner_id,paper_id,status,progress,created_at,updated_at,heartbeat_at,queue_order,config_fingerprint,recoverable_until"
+            values = [job_id,current_user_id(),paper_id,"queued",0,now,now,now,time.time_ns(),config_fingerprint,
+                      (datetime.now(timezone.utc)+timedelta(days=7)).isoformat()]
+            if output_mode != "dual":
+                columns += ",output_mode"
+                values.append(output_mode)
+            db.execute(f"INSERT INTO translation_jobs ({columns}) VALUES ({','.join('?' for _ in values)})", values)
+            if config_snapshot is not None:
+                db.execute("INSERT INTO processing_layout_jobs VALUES (?,?,?,NULL)",
+                           (job_id,current_user_id(),json.dumps(config_snapshot,ensure_ascii=False,sort_keys=True)))
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
         TranslationJobDAO.append_event(job_id, kind="status", message="queued")
 
     @staticmethod

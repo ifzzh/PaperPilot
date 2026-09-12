@@ -28,3 +28,18 @@
 ## 发行依赖
 
 实际依赖版本及来源见 `frontend/DEPENDENCIES.json`，完整性来自 npm lockfile。React、React DOM、Scheduler、Vite 使用 MIT；PDF.js 使用 Apache-2.0；Lucide React 使用 ISC；Marked 使用 MIT；DOMPurify 为 MPL-2.0 OR Apache-2.0（本次按 Apache-2.0 路径使用）。运行依赖原始许可证随 `THIRD_PARTY_NOTICES.txt` 自托管；字体/CMap 的上游声明随发行资源保留。没有将 PaperQuay 当作上述独立 npm 包的授权来源。
+
+
+## 1.2.0 双翻译与来源交互
+
+仍固定上述提交；未复制 AGPL 源码，未改变许可判断。新运行依赖 KaTeX 0.18.7 为 MIT，自托管声明随前端产物保留。以下是本次独立实现的具体映射，发布验收另行记录：
+
+| 上游参考 | iPaper 实现 | 必要适配 |
+|---|---|---|
+| `features/blocks/BlockViewer.tsx`、`blockViewerContent` | `StructuredReader.tsx`、`MathFormula.tsx`、`structured.css` | 原文/译文/双语按块排列、来源操作、可变高度窗口化和表格/公式；游标 API 代替桌面整份 JSON/路径 |
+| `features/reader/ReaderWorkspace.tsx` | 现有 Reader 外层内容选择与可折叠原文对照 | 同源授权文档版本；不假设 BabelDOC 与原 PDF 的页码对应 |
+| `readerTranslation.ts`、`useDocumentTranslation.ts` | `processing/translation.py`、`pipeline.py`、`Processing.tsx` | 增量结果与重译交互；模型在服务端执行，持久预算/幂等/取消，浏览器没有密钥或直接出站请求 |
+| `readerTranslationCache.ts` | `processing/store.py` 的索引、哈希和不可变译文版本 | 上游本地缓存路径改为 owner、源文件、解析版本和配置指纹；原子发布与过期检测代替覆盖单一 JSON |
+| 块选择与引用跳转 | `processing/sources.py`、`Chat.tsx` | 源文字范围在服务端核实；只有本次上下文映射允许产生回答引用，历史保持可追溯 |
+
+公式使用原生 MathML；没有引入上游笔记、Agent、Electron IPC 或桌面文件权限。具体模型和坐标约束见 [双翻译契约](dual-translation.md)。

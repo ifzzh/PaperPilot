@@ -1,3 +1,4 @@
+import { StructuredSettings } from "./Processing";
 import {
   QualitySettings,
   Institutions,
@@ -178,9 +179,10 @@ export function Settings({
             <p className="muted">
               密钥只写入服务端。输入留空保留现有密钥，不会在浏览器回显。
             </p>
+            <StructuredSettings/>
             {Object.entries({
               interpret: "论文问答与分析",
-              translate: "全文翻译",
+              translate: "BabelDOC 版式翻译",
               dailyArxiv: "Daily arXiv 筛选与摘要",
             }).map(([scene, label]) => (
               <section className="settings-card" key={scene}>

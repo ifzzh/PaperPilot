@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import sys
+from pathlib import Path
 
 
 EVENT_PREFIX = "IPAPER_EVENT\t"
@@ -39,11 +40,31 @@ def _progress_handler(_config, show_log: bool = False):
     return contextlib.nullcontext(), handle
 
 
+def normalize_result_name(directory: Path, mode: str) -> Path:
+    """Map only the pinned BabelDOC no-watermark output to our fixed contract."""
+    if mode not in {"mono","dual"}:
+        raise ValueError("invalid_output_mode")
+    generated=directory/f"input.no_watermark.zh.{mode}.pdf"
+    canonical=directory/f"input.zh.{mode}.pdf"
+    if generated.is_symlink() or canonical.is_symlink():
+        raise ValueError("unsafe_translation_output")
+    if generated.exists():
+        if not generated.is_file() or canonical.exists():
+            raise ValueError("ambiguous_translation_output")
+        generated.rename(canonical)
+    if not canonical.is_file():
+        raise ValueError("translation_output_missing")
+    return canonical
+
+
 def main() -> int:
     request = json.loads(sys.stdin.readline())
     model = str(request["model"])
     base_url = str(request["base_url"])
     api_key = str(request["api_key"])
+    output_mode = request.get("output_mode", "dual")
+    if output_mode not in {"mono", "dual"}:
+        raise ValueError("invalid_output_mode")
     os.environ.setdefault("XDG_CACHE_HOME", os.path.abspath("cache"))
 
     from babeldoc import main as babeldoc_main
@@ -70,8 +91,10 @@ def main() -> int:
         "--report-interval", "0.5",
         "--watermark-output-mode", "no_watermark",
     ]
+    sys.argv.append("--no-dual" if output_mode == "mono" else "--no-mono")
     high_level.init()
     asyncio.run(babeldoc_main.main())
+    normalize_result_name(Path.cwd(),output_mode)
     return 0
 
 

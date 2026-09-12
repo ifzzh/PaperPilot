@@ -4,12 +4,14 @@ import {
   useRef,
   useState,
   type RefObject,
+  type ReactNode,
 } from "react";
 import {
   getDocument,
   GlobalWorkerOptions,
   TextLayer,
   type PDFDocumentProxy,
+  type PDFPageProxy,
   type RenderTask,
 } from "pdfjs-dist/legacy/build/pdf.mjs";
 import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
@@ -50,6 +52,7 @@ function PdfPage({
   onLayout,
   estimatedSize,
   thumbnail = false,
+  sourceRegions = [],
 }: {
   doc: PDFDocumentProxy;
   number: number;
@@ -60,6 +63,7 @@ function PdfPage({
   onLayout?: () => void;
   estimatedSize: { width: number; height: number };
   thumbnail?: boolean;
+  sourceRegions?: number[][];
 }) {
   const host = useRef<HTMLDivElement>(null),
     [visible, setVisible] = useState(false),
@@ -87,7 +91,7 @@ function PdfPage({
       render: RenderTask | undefined,
       text: TextLayer | undefined,
       canvas: HTMLCanvasElement | undefined;
-    let pdfPage: any;
+    let pdfPage: PDFPageProxy | undefined;
     const el = host.current!;
     setError("");
     void (async () => {
@@ -138,11 +142,23 @@ function PdfPage({
         await text.render();
         if (!active) return;
       }
+      for (const rectangle of sourceRegions) {
+        const coords = [...vp.convertToViewportPoint(rectangle[0], rectangle[1]), ...vp.convertToViewportPoint(rectangle[2], rectangle[3])];
+        const highlight = document.createElement("div");
+        highlight.className = "pdf-source-highlight";
+        highlight.setAttribute("aria-label", "引用来源区域");
+        highlight.style.left = Math.min(coords[0], coords[2]) + "px";
+        highlight.style.top = Math.min(coords[1], coords[3]) + "px";
+        highlight.style.width = Math.abs(coords[2] - coords[0]) + "px";
+        highlight.style.height = Math.abs(coords[3] - coords[1]) + "px";
+        surface.append(highlight);
+      }
       surface.dataset.rendered = "true";
       onReady?.(number);
     })().catch((e) => {
       if (active && e?.name !== "RenderingCancelledException") {
-        setError("此页渲染失败，点击页码重新加载。");
+        console.error("PDF page render failed", {name:e?.name,page:number});
+        setError("此页渲染失败，请重新打开文档。");
         el.replaceChildren();
       }
     });
@@ -158,7 +174,7 @@ function PdfPage({
           pdfPage?.cleanup();
         });
     };
-  }, [doc, number, scale, rotation, visible]);
+  }, [doc, number, scale, rotation, visible, JSON.stringify(sourceRegions)]);
   return (
     <div
       className={"page-host " + (thumbnail ? "thumbnail-page" : "")}
@@ -170,7 +186,7 @@ function PdfPage({
     </div>
   );
 }
-export function Reader({
+export function PdfReader({
   preferences,
   onPreferences,
   paper,
@@ -179,6 +195,11 @@ export function Reader({
   onClose,
   onExpired,
   drafts,
+  toolbarContent,
+  sourceTarget,
+  fileDocumentId,
+  onSource,
+  embedded = false,
 }: {
   preferences: any;
   onPreferences: (v: Record<string, unknown>) => void;
@@ -188,6 +209,11 @@ export function Reader({
   onClose: () => void;
   onExpired: () => void;
   drafts?: Map<string, string>;
+  toolbarContent?: ReactNode;
+  embedded?: boolean;
+  fileDocumentId?: string;
+  sourceTarget?: { id: string; documentId: string; page?: number; regions: {page:number; rect:number[]}[] };
+  onSource?: (id: string) => void;
 }) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null),
     [page, setPage] = useState(1),
@@ -195,10 +221,10 @@ export function Reader({
     [rotation, setRotation] = useState(0),
     [thumbs, setThumbs] = useState(
       () =>
-        !matchMedia("(max-width:640px)").matches &&
+        !embedded && !matchMedia("(max-width:640px)").matches &&
         preferences.thumbnailOpen !== false,
     ),
-    [chat, setChat] = useState(true),
+    [chat, setChat] = useState(!embedded),
     [mobileChat, setMobileChat] = useState(false),
     [status, setStatus] = useState("正在加载 PDF…"),
     [error, setError] = useState(""),
@@ -231,8 +257,8 @@ export function Reader({
       );
   }, [preferences.chatWidth]);
   const variant = translated ? "translated" : "original",
-    url = `/api/paper/${encodeURIComponent(paper.id)}/${translated ? "chinese/" : ""}file`,
-    positionUrl = `/api/paper/${encodeURIComponent(paper.id)}/reading-position`;
+    url = (fileDocumentId || sourceTarget?.documentId) ? `/api/documents/${encodeURIComponent(fileDocumentId || sourceTarget!.documentId)}/file` : `/api/paper/${encodeURIComponent(paper.id)}/${translated ? "chinese/" : ""}file`,
+    positionUrl = fileDocumentId ? `/api/documents/${encodeURIComponent(fileDocumentId)}/reading-position` : `/api/paper/${encodeURIComponent(paper.id)}/reading-position`;
   async function save(keepalive = false) {
     const p = point.current;
     if (
@@ -333,6 +359,10 @@ export function Reader({
             fingerprint: value.fingerprints[0] || "unknown",
           };
       if (saved && !valid) setNotice("文档已变化，已从第一页开始阅读。");
+      if (sourceTarget?.page && sourceTarget.page <= value.numPages) {
+        initial.page = sourceTarget.page;
+        initial.offset = 0;
+      }
       restore.current = initial;
       point.current = initial;
       setPage(initial.page);
@@ -424,6 +454,23 @@ export function Reader({
       });
     });
   }
+  useEffect(() => {
+    let active = true;
+    if (doc && sourceTarget?.page) {
+      void doc.getPage(sourceTarget.page).then(pdfPage => {
+        if (!active) return;
+        const region = sourceTarget.regions.find(r=>r.page===sourceTarget.page);
+        let offset=0;
+        if (region) {
+          const vp=pdfPage.getViewport({scale:1,rotation:(pdfPage.rotate+rotation)%360});
+          const a=vp.convertToViewportPoint(region.rect[0],region.rect[1]),b=vp.convertToViewportPoint(region.rect[2],region.rect[3]);
+          offset=Math.max(0,Math.min(.95,Math.min(a[1],b[1])/vp.height-.08));
+        }
+        jump(sourceTarget.page!,offset);
+      }).catch(()=>{});
+    }
+    return ()=>{active=false};
+  }, [doc, sourceTarget?.id]);
   function jump(n: number, offset = 0) {
     if (!doc || !point.current || n < 1 || n > doc.numPages) return;
     const next = { ...point.current, page: n, offset };
@@ -466,7 +513,7 @@ export function Reader({
   useEffect(() => {
     const t = setInterval(() => {
       if (
-        doc &&
+        doc && !embedded &&
         document.visibilityState === "visible" &&
         document.hasFocus() &&
         !(mobileChat && matchMedia("(max-width:640px)").matches)
@@ -483,7 +530,7 @@ export function Reader({
       }
     }, 30000);
     return () => clearInterval(t);
-  }, [doc, paper.id, mobileChat]);
+  }, [doc, paper.id, mobileChat, embedded]);
   useEffect(() => {
     const changed = () => {
       const s = window.getSelection();
@@ -574,7 +621,7 @@ export function Reader({
   return (
     <main
       className={
-        "reader-workspace " +
+        "reader-workspace " + (embedded ? "embedded-reader " : "") +
         (chat ? "with-chat " : "") +
         (thumbs ? "with-thumbnails " : "") +
         (mobileChat ? "mobile-chat" : "")
@@ -596,7 +643,7 @@ export function Reader({
         <span className="reader-document-title" title={paper.title}>
           {paper.title}
         </span>
-        <label>
+        {toolbarContent || <label>
           <span className="sr-only">文档版本</span>
           <select
             aria-label="文档版本"
@@ -611,7 +658,7 @@ export function Reader({
               <option value="translated">译文</option>
             )}
           </select>
-        </label>
+        </label>}
         <div className="toolbar-separator" />
         <button
           className="icon-button"
@@ -756,6 +803,7 @@ export function Reader({
                   rotation={rotation}
                   root={host}
                   estimatedSize={baseSize.current}
+                  sourceRegions={sourceTarget?.regions.filter(r => r.page === i + 1).map(r => r.rect)}
                   onLayout={reflowPosition}
                   onReady={pageReady}
                 />
@@ -767,8 +815,11 @@ export function Reader({
               <span>已选择 {selection.text.length} 字</span>
               <button
                 className="primary"
-                onClick={() => {
-                  setExcerpt(selection);
+                onClick={async () => {
+                  try {
+                    const verified = await api(`/api/paper/${encodeURIComponent(paper.id)}/pdf-sources`, "POST", {document:variant,documentId:fileDocumentId,page:selection.page,text:selection.text});
+                    setExcerpt({...selection,sourceId:verified.source.id});
+                  } catch (e) { setNotice("选区暂时无法核实到此 PDF 页面，请重新选择或稍后重试。"); return; }
                   setChat(true);
                   setMobileChat(matchMedia("(max-width:640px)").matches);
                   setSelection(null);
@@ -842,6 +893,7 @@ export function Reader({
                 key={paper.id}
                 paperId={paper.id}
                 onExpired={onExpired}
+                onSource={onSource}
                 initialSession={sessionId}
                 onSessionChange={(id) => {
                   setSessionId(id);

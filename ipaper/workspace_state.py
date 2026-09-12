@@ -56,7 +56,7 @@ def register_workspace_state(app):
                     data['activePaper'] = None
                 return jsonify(data)
             data = body()
-            if set(data) - {'tabs', 'activePaper', 'theme', 'categoryWidth', 'detailWidth', 'chatWidth', 'thumbnailOpen', 'taskRefs', 'tabDocuments'}:
+            if set(data) - {'tabs', 'activePaper', 'theme', 'categoryWidth', 'detailWidth', 'chatWidth', 'thumbnailOpen', 'taskRefs', 'tabDocuments', 'readerResults'}:
                 raise ValueError()
             tabs = data.get('tabs', [])
             if not isinstance(tabs, list) or len(tabs) > 20 or any(not isinstance(p, str) or len(p) > 200 for p in tabs) or len(set(tabs)) != len(tabs):
@@ -75,6 +75,30 @@ def register_workspace_state(app):
                     raise ValueError()
             if 'thumbnailOpen' in data and not isinstance(data['thumbnailOpen'], bool):
                 raise ValueError()
+            reader_results = data.get('readerResults', {})
+            if not isinstance(reader_results, dict) or len(reader_results) > 20:
+                raise ValueError()
+            for paper, value in reader_results.items():
+                if not isinstance(value, dict) or (set(value) - {'mode','resultId','structureResultId','layoutResultId'} or not {'mode','resultId'}.issubset(value)) or value['mode'] not in ('original','translated','structure'):
+                    raise ValueError()
+                if not PaperDAO.get_paper(paper):
+                    return jsonify(error='paper_not_found'), 404
+                for field in ('resultId','structureResultId','layoutResultId'):
+                    if not isinstance(value.get(field,''),str):
+                        raise ValueError()
+                    if not value.get(field):
+                        continue
+                    from ipaper.processing.store import ProcessingStore
+                    from ipaper.processing.common import ProcessingError
+                    from ipaper.database.connection import DB_PATH
+                    try:
+                        result = ProcessingStore(DB_PATH, '.', current_user_id()).result(value[field])
+                        if field == 'structureResultId' and result['kind'] not in ('structure','structured_translation') or field == 'layoutResultId' and result['kind'] not in ('babeldoc_mono','babeldoc_dual'):
+                            raise ValueError()
+                        if result['paper_id'] != paper:
+                            raise ValueError()
+                    except ProcessingError:
+                        raise ValueError()
             tasks = data.get('taskRefs', [])
             if not isinstance(tasks, list) or len(tasks) > 50:
                 raise ValueError()

@@ -1,0 +1,41 @@
+# 结构产物备份与功能版本回退
+
+1.2.0 的 SQLite 索引引用版本化正文、图片和译文文件。仅复制数据库不构成完整的新功能备份。现有论文树、配置和原主密钥同样需要保护；更换或丢失主密钥会使既有和独立模型凭据无法解密。
+
+## 日常备份
+
+在运行源码的 Python 环境执行：
+
+```sh
+python scripts/backup_processing.py \
+  --database /srv/ifserver-fast/ipaper/runtime/db/ipaper.db \
+  --papers-root /mnt/raid1/projects/ipaper/data/papers \
+  --destination /mnt/raid1/backups/ipaper/structured/UNIQUE_TIMESTAMP
+```
+
+目标必须尚不存在。程序创建 SQLite 一致性快照、检查完整性，再复制该快照引用的不可变产物，逐文件验证 SHA-256。备份 lease 防止同期清理；完成清单为 `manifest.json`。存在 `INCOMPLETE` 或缺少清单时不能恢复。目录 0700、文件 0600，不输出凭据。此命令不能替代原文、历史 PDF、配置与主密钥的常规备份。
+
+## 发布前完整备份
+
+先核对各用户的分析、翻译、Daily、导入和结构任务空闲，再优雅停止三个服务；禁止 `down -v`。使用 `scripts/prepare_release_backup.py` 指定实际 deployment/database/papers/destination/regctl 路径。它要求所有写入容器已停止，检查 Compose 与运行镜像匹配且固定 digest，以及 `deploy_document_jobs` external 卷绑定。
+
+备份包包含数据库和不可变产物快照、完整论文树及哈希清单、受限配置/密钥副本、组件摘要和独立回退程序。Registry 仍通过维护账号已有的 Docker 凭据流程认证；包中不保存 Registry token。回退工具及 Registry 工具都复制到持久备份目录，不能只留在 `/tmp`。
+
+## 功能版本回退
+
+本次基线为 iPaper 1.1.4，不运行品牌改名时期的迁移回退脚本，也不改回 PaperPilot 路径。
+
+```sh
+sudo -n python3 /PERSISTENT_BACKUP/rollback.py --backup /PERSISTENT_BACKUP
+sudo -n python3 /PERSISTENT_BACKUP/rollback.py --backup /PERSISTENT_BACKUP --apply
+```
+
+第一条只校验并显示摘要；第二条停止三个服务、恢复该备份记录的配置与固定镜像、检查健康/ready，并回退新 Web 仓库的 `latest` 到同一已验证摘要。不会删除新表、不可变产物、用户论文，也不会用备份覆盖当前数据库。切换期间不允许两套 Web 同时写库；正在处理的供应商请求不承诺取消或退费。
+
+恢复后实际核对原文、已有译文、账号和历史。再次升级会重新识别新表、来源、独立凭据和旧镜像期间新增的数据。旧版本不显示结构结果，不代表它们被删除。灾难恢复应在全新隔离目录恢复数据库、匹配的产物和原主密钥，先验证哈希及容器 UID/GID 权限，再安排正式切换；不能直接把旧快照覆盖到仍在写入的服务。
+
+## 受控验收产物提升
+
+`scripts/promote_processing_acceptance.py` 仅用于操作员把本轮隔离验收的已成功结果提升到匹配论文；不是面向用户的导入格式或公共 API。默认 dry-run，源和目标写入均须停止。它校验验收回执、owner/论文、原文 SHA、配置与凭据修订、所有产物哈希和目标配额，再以只新增事务登记解析、译文版本、已完成任务及已核验会话。已有用户、论文、设置和密钥表不复制、不覆盖；UUID 冲突直接拒绝。失败不留下可见结果。
+
+验收目录含实际论文和模型回答，只能放入受限私有存储；不上传到 Release。真实凭据仅由验收进程内存持有，产物提升不搬运任何密钥或凭据密文。

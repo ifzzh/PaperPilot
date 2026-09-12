@@ -16,14 +16,20 @@ from .safety import DocumentLimitError, DocumentLimits
 
 
 TERMINAL_STATES = frozenset({"completed", "failed", "cancelled"})
-JOB_KINDS = frozenset({"pdf_inspect", "metadata_zip", "mineru_zip", "zotero_rdf"})
+JOB_KINDS = frozenset({"pdf_inspect", "metadata_zip", "mineru_zip", "zotero_rdf", "pdf_split", "mineru_structure", "pdf_page_text"})
 INPUT_NAMES = {
+    "pdf_page_text": "input.pdf",
+    "pdf_split": "input.pdf",
+    "mineru_structure": "input.zip",
     "pdf_inspect": "input.pdf",
     "metadata_zip": "input.zip",
     "mineru_zip": "input.zip",
     "zotero_rdf": "input.rdf",
 }
 TIMEOUTS = {
+    "pdf_page_text": 90,
+    "pdf_split": 300,
+    "mineru_structure": 300,
     "pdf_inspect": 90,
     "metadata_zip": 300,
     "mineru_zip": 300,
@@ -137,12 +143,25 @@ class DocumentWorkerService:
             raise DocumentWorkerError("unsafe_input", 409)
         maximum = {
             "pdf_inspect": self.limits.max_pdf_bytes,
+            "pdf_split": self.limits.max_pdf_bytes,
+            "pdf_page_text": self.limits.max_pdf_bytes,
+            "mineru_structure": self.limits.max_archive_bytes,
             "metadata_zip": self.limits.max_archive_bytes,
             "mineru_zip": self.limits.max_archive_bytes,
             "zotero_rdf": self.limits.max_rdf_bytes,
         }[kind]
         if source.stat().st_size > maximum:
             raise DocumentWorkerError("upload_too_large", 413)
+        if kind == "pdf_page_text":
+            selection = work / "page.json"
+            if selection.is_symlink() or not selection.is_file() or selection.stat().st_size > 1024:
+                raise DocumentWorkerError("unsafe_input", 409)
+        if kind == "mineru_structure":
+            pdf = work / "source.pdf"
+            if pdf.is_symlink() or not pdf.is_file():
+                raise DocumentWorkerError("unsafe_input", 409)
+            if pdf.stat().st_size > self.limits.max_pdf_bytes:
+                raise DocumentWorkerError("upload_too_large", 413)
         with self._condition:
             active_count = sum(
                 state["status"] in {"queued", "running"} for state in self._jobs.values()
@@ -271,7 +290,7 @@ class DocumentWorkerService:
         _, _, output, _ = self._paths(job_id)
         if output.is_symlink() or not output.is_dir():
             raise RuntimeError("unsafe_worker_output")
-        required = "result.json" if kind in {"pdf_inspect", "zotero_rdf"} else "manifest.json"
+        required = "result.json" if kind in {"pdf_inspect", "zotero_rdf", "pdf_page_text"} else "manifest.json"
         result = output / required
         if result.is_symlink() or not result.is_file() or result.stat().st_size > 4 * 1024 * 1024:
             raise RuntimeError("unsafe_worker_output")

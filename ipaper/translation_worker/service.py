@@ -121,6 +121,7 @@ class TranslationWorkerService:
             "updated_at": state["updated_at"],
             "error": state.get("error"),
             "output": state.get("output"),
+            "output_mode": state.get("output_mode", "dual"),
         }
         temporary = status_path.with_suffix(".tmp")
         with temporary.open("w", encoding="utf-8") as handle:
@@ -149,13 +150,14 @@ class TranslationWorkerService:
     def submit(self, payload: object) -> dict:
         if not isinstance(payload, dict):
             raise WorkerRequestError("invalid_json")
-        allowed = {"job_id", "model", "base_url", "api_key"}
+        required = {"job_id", "model", "base_url", "api_key"}
+        allowed = required | {"output_mode"}
         unknown = sorted(set(payload) - allowed)
         if unknown:
             raise WorkerRequestError("unknown_fields:" + ",".join(unknown))
-        if set(payload) != allowed or not all(
+        if not required.issubset(payload) or not all(
             isinstance(payload.get(key), str) and payload[key].strip()
-            for key in allowed
+            for key in required
         ):
             raise WorkerRequestError("missing_required_fields")
         if (
@@ -165,6 +167,9 @@ class TranslationWorkerService:
         ):
             raise WorkerRequestError("field_too_large", 413)
 
+        output_mode = payload.get("output_mode", "dual")
+        if output_mode not in {"mono", "dual"}:
+            raise WorkerRequestError("invalid_output_mode")
         job_id = canonical_job_id(payload["job_id"])
         job, work, _ = self._paths(job_id)
         input_pdf = work / "input.pdf"
@@ -201,6 +206,7 @@ class TranslationWorkerService:
                 "cancel": threading.Event(),
                 "logs": [],
                 "requested_terminal": None,
+                "output_mode": output_mode,
             }
             self._jobs[job_id] = state
             self._write_status(job_id, state)
@@ -346,6 +352,7 @@ class TranslationWorkerService:
         assert process.stdin is not None
         process.stdin.write(json.dumps({
             "model": model, "base_url": base_url, "api_key": api_key,
+            "output_mode": state.get("output_mode", "dual"),
         }) + "\n")
         process.stdin.close()
         assert process.stdout is not None
@@ -397,7 +404,10 @@ class TranslationWorkerService:
 
     def _validate_output(self, job_id: str) -> Path:
         job, work, _ = self._paths(job_id)
-        output = work / "input.zh.dual.pdf"
+        mode = self._jobs.get(job_id, {}).get("output_mode", "dual")
+        if mode not in {"mono", "dual"}:
+            raise RuntimeError("invalid_output_mode")
+        output = work / ("input.zh." + mode + ".pdf")
         if output.is_symlink() or not output.is_file():
             raise RuntimeError("output_missing_or_unsafe")
         if output.stat().st_size > self.limits.max_output_bytes:
@@ -444,6 +454,7 @@ class TranslationWorkerService:
                 "updated_at": state.get("updated_at"),
                 "error": state.get("error"),
                 "output": state.get("output"),
+            "output_mode": state.get("output_mode", "dual"),
             }
 
     def _read_events(self, job_id: str, *, after: int = 0) -> list[dict]:

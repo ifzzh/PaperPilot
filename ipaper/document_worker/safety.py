@@ -396,7 +396,10 @@ def inspect_pdf(
             destination.mkdir(mode=0o700, parents=True, exist_ok=False)
             bounded_copy(io_bytes(thumbnail), destination / "thumbnail.jpg", limits.max_thumbnail_bytes)
             metadata = document.metadata or {}
+            from .structure import page_geometry, digest_file
             result = {
+                "sha256": digest_file(source),
+                "pages": page_geometry(document),
                 "page_count": page_count,
                 "first_page_text": (page.get_text() or "")[:65536],
                 "metadata": {

@@ -89,6 +89,21 @@ if __name__ == "__main__":
             shutil.copyfile(Path(__file__).parent/'fixtures/workbench/translated.pdf',pdf)
             paper={'id':'daily-synthetic','arxiv_id':'2609.99999','title':'Daily 合成验收：从发现到阅读','authors':'iPaper tests','abstract':'自制合成样例，不是生产论文。','is_daily':True,'daily_date':'2026-09-10','fetch_date':'2026-09-10','fetch_category':'cs.AI','subject':'cs.AI','categories':['cs.AI'],'file_path':str(pdf),'artifact_status':'ready'}
             PaperDAO.save_paper(paper);DailyArxivDAO.save_candidate(paper)
+        if os.getenv('IPAPER_BROWSER_REAL_WORKER') != '1':
+            # PDF selections now require actual page-text validation. The
+            # ordinary UI suite runs the real Worker runner locally on fixtures.
+            from tests.test_processing_pipeline import LocalDocument
+            processing=application.extensions['processing']
+            original_pipeline=processing.pipeline
+            (Path(directory)/'selection-worker').mkdir()
+            def local_processing_pipeline(owner=None):
+                pipeline=original_pipeline(owner)
+                pipeline.document=LocalDocument(jobs_root=Path(directory)/'selection-worker')
+                return pipeline
+            processing.pipeline=local_processing_pipeline
+        if os.getenv("IPAPER_BROWSER_STRUCTURED") == "1":
+            from tests.dual_translation_support import install
+            install(application, directory, (first, second, third), origin, patch)
         server = make_server("127.0.0.2", 7191, application, threaded=True)
         print("Synthetic unified application ready", flush=True)
         try:

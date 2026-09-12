@@ -27,7 +27,8 @@ from ipaper.tools.agent_tools.translation_worker_client import (
     TranslationWorkerRejected,
     TranslationWorkerUnavailable,
 )
-from ipaper.tools.api_test_utils import test_llm_api
+from ipaper.tools.api_test_utils import test_llm_api  # retained import for legacy test patches
+from ipaper.processing.pipeline import file_digest
 
 CategoryPath = List[str]
 
@@ -58,6 +59,10 @@ def register_agent_translate_routes(
         upload_folder=upload_folder,
         worker_client=worker_client,
     )
+    processing = app.extensions.get("processing")
+    if processing:
+        deps.before_publish = lambda paper_id: processing.pipeline().register_layouts(paper_id, freeze=True)
+        deps.after_publish = lambda job_id,paper_id,path: processing.pipeline().publish_layout_job(job_id,paper_id,path)
     dispatch_event = threading.Event()
     dispatch_stop = threading.Event()
     dispatcher_last_owner: str | None = None
@@ -100,13 +105,13 @@ def register_agent_translate_routes(
             )
         )
 
-    def config_fingerprint(pdf_path: str, model: str, base_url: str) -> str:
+    def config_fingerprint(pdf_path: str, model: str, base_url: str, output_mode: str) -> str:
         digest = hashlib.sha256()
         with open(pdf_path, "rb") as handle:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 digest.update(chunk)
         digest.update(json.dumps(
-            {"model": model, "base_url": base_url, "lang_in": "en", "lang_out": "zh"},
+            {"model": model, "base_url": base_url, "lang_in": "en", "lang_out": "zh", "output_mode": output_mode},
             sort_keys=True,
         ).encode("utf-8"))
         return digest.hexdigest()
@@ -134,6 +139,15 @@ def register_agent_translate_routes(
                 job["job_id"], kind="status", level="error", message=reason,
             )
             return False
+        if processing:
+            pipeline=processing.pipeline()
+            with pipeline.store.connection() as db:
+                row=db.execute("SELECT snapshot_json FROM processing_layout_jobs WHERE job_id=? AND owner_id=?",(job["job_id"],pipeline.store.owner)).fetchone()
+            if row:
+                snapshot=json.loads(row[0])
+                if snapshot["model"]!=model or snapshot["baseUrl"]!=base_url or snapshot["sourceSha256"]!=file_digest(pipeline.paper_file(job["paper_id"])):
+                    TranslationJobDAO.update(job["job_id"],"failed",error="translation_config_or_source_changed",error_code="translation_config_or_source_changed")
+                    return False
         if not worker_client.health():
             return False
         try:
@@ -145,7 +159,7 @@ def register_agent_translate_routes(
                 worker_state = None
             TranslationJobDAO.update(job["job_id"], "dispatching")
             if worker_state is None or worker_state.get("status") in {"paused", "failed"}:
-                worker_client.create(job["job_id"], model, base_url, api_key)
+                worker_client.create(job["job_id"], model, base_url, api_key, **({"output_mode": "mono"} if job.get("output_mode") == "mono" else {}))
             TranslationJobDAO.update(
                 job["job_id"], "running", increment_attempt=True, heartbeat=True,
             )
@@ -200,10 +214,13 @@ def register_agent_translate_routes(
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
             return jsonify({"success": False, "error": "invalid_request"}), 400
-        forbidden = sorted(set(data) - {"paper_id"})
+        forbidden = sorted(set(data) - {"paper_id", "output_mode"})
         if forbidden:
             return jsonify({"success": False, "error": "forbidden_agent_overrides", "fields": forbidden}), 400
         paper_id = data.get("paper_id")
+        output_mode = data.get("output_mode", "dual")
+        if output_mode not in {"mono", "dual"}:
+            return jsonify(error="invalid_output_mode"), 400
         if not isinstance(paper_id, str) or not paper_id.strip():
             return jsonify({"success": False, "error": "Missing required parameters"}), 400
         if credential_store is None or outbound_policy is None:
@@ -223,9 +240,6 @@ def register_agent_translate_routes(
             return jsonify({"success": False, "error": "translation_settings_not_configured"}), 400
         if TranslationJobDAO.has_active_for_paper(paper_id):
             return jsonify({"success": False, "error": "There is already a translation task running for this paper"}), 400
-        llm_success, llm_error = test_llm_api(model, base_url, api_key, outbound_policy)
-        if not llm_success:
-            return jsonify({"success": False, "error": f"LLM API test failed: {llm_error}"}), 400
         paper = find_paper(paper_id)
         if paper is None:
             return jsonify({"success": False, "error": "Paper not found"}), 404
@@ -236,10 +250,17 @@ def register_agent_translate_routes(
 
         task_id = str(uuid.uuid4())
         try:
-            worker_client.stage_input(task_id, pdf_path)
+            source_sha = file_digest(pdf_path)
+            staged = worker_client.stage_input(task_id, pdf_path)
+            if processing and (file_digest(staged) != source_sha or file_digest(pdf_path) != source_sha):
+                raise ValueError("source_changed")
             TranslationJobDAO.create(
                 task_id, paper_id,
-                config_fingerprint=config_fingerprint(pdf_path, model, base_url),
+                config_fingerprint=config_fingerprint(pdf_path, model, base_url, output_mode),
+                output_mode=output_mode,
+                config_snapshot={"model":model,"baseUrl":base_url,"outputMode":output_mode,
+                    "sourceSha256": source_sha,
+                    "sourceLanguage":"en","targetLanguage":"zh-CN","contractVersion":2} if processing else None,
             )
             with translation_tasks_lock:
                 translation_tasks[task_id] = {
@@ -288,6 +309,7 @@ def register_agent_translate_routes(
                         "task_id": item["job_id"],
                         "paper_id": item["paper_id"],
                         "status": item["status"],
+            "output_mode": item.get("output_mode", "dual"),
                         "start_time": item["created_at"],
                     }
                     for item in jobs
@@ -302,6 +324,7 @@ def register_agent_translate_routes(
             "paper_id": item["paper_id"],
             "paper_title": (paper.title or paper.filename) if paper else item["paper_id"],
             "status": item["status"],
+            "output_mode": item.get("output_mode", "dual"),
             "progress": int(item.get("progress") or 0),
             "stage": item.get("stage"),
             "stage_progress": int(item.get("stage_progress") or 0),
@@ -514,7 +537,13 @@ def register_agent_translate_routes(
         try:
             resolve_paper_file(paper, must_exist=False)
             pdf_path = resolve_paper_file(paper)
-            chinese_path = paper_asset_paths(upload_folder, pdf_path).chinese_dual
+            assets = paper_asset_paths(upload_folder, pdf_path)
+            mode = request.args.get("mode", "dual")
+            if mode not in {"mono", "dual"}:
+                return jsonify(error="invalid_output_mode"), 400
+            chinese_path = assets.chinese_mono if mode == "mono" else assets.chinese_dual
+            if "mode" not in request.args and not chinese_path.exists() and assets.chinese_mono.exists():
+                chinese_path = assets.chinese_mono
         except PathSecurityError as exc:
             if str(exc) == "missing_path":
                 return jsonify({"error": "PDF file not found"}), 404

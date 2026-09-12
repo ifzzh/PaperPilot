@@ -6,7 +6,7 @@ test("desktop and mobile unified visual acceptance with bounded PDF rendering", 
   page,
 }) => {
   test.setTimeout(90000);
-  const root = resolve("../.devnotes/p1-evidence/unified");
+  const root = resolve("../.devnotes/dual-translation-existing-ui");
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const errors: string[] = [],
     violations: string[] = [],
@@ -43,7 +43,7 @@ test("desktop and mobile unified visual acceptance with bounded PDF rendering", 
         path: resolve(root, `library-${width}-${theme}.png`),
       });
       const start = Date.now();
-      await page.goto("/?view=reader&paper=a-0");
+      await page.goto("/?view=reader&paper=a-0&document=original");
       await expect(page.locator(".pdf-panel .textLayer").first()).toContainText(
         "Synthetic reader validation",
       );

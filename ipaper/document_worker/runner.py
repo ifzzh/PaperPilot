@@ -23,6 +23,15 @@ def run(job: Path, kind: str) -> None:
         raise RuntimeError("output_exists")
     if kind == "pdf_inspect":
         inspect_pdf(work / "input.pdf", output, limits)
+    elif kind == "pdf_page_text":
+        from .structure import extract_page_text
+        extract_page_text(work / "input.pdf", work / "page.json", output, limits)
+    elif kind == "pdf_split":
+        from .structure import split_pdf
+        split_pdf(work / "input.pdf", output, limits)
+    elif kind == "mineru_structure":
+        from .structure import normalize_mineru
+        normalize_mineru(work / "input.zip", work / "source.pdf", output, limits)
     elif kind in {"metadata_zip", "mineru_zip"}:
         manifest = preflight_archive(work / "input.zip", kind, limits)
         extract_validated_archive(work / "input.zip", output, manifest, limits)

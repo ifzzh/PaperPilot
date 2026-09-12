@@ -3,6 +3,7 @@ from __future__ import annotations
 from ipaper.environment import getenv as brand_getenv
 
 import json
+import re
 import hashlib
 import os
 import shutil
@@ -98,6 +99,9 @@ class DocumentWorkerClient:
         work.mkdir(mode=0o2770)
         maximum = {
             "pdf_inspect": self.limits.max_pdf_bytes,
+            "pdf_split": self.limits.max_pdf_bytes,
+            "pdf_page_text": self.limits.max_pdf_bytes,
+            "mineru_structure": self.limits.max_archive_bytes,
             "metadata_zip": self.limits.max_archive_bytes,
             "mineru_zip": self.limits.max_archive_bytes,
             "zotero_rdf": self.limits.max_rdf_bytes,
@@ -111,6 +115,22 @@ class DocumentWorkerClient:
         bounded_copy(stream, return_path, maximum)
         os.chmod(return_path, 0o640)
         return return_path
+
+    def stage_page_text(self, job_id, pdf_stream, page):
+        if type(page) is not int or not 1 <= page <= self.limits.max_pdf_pages:
+            raise ValueError("invalid_page_request")
+        target = self.stage(job_id, "pdf_page_text", pdf_stream)
+        selection = target.parent / "page.json"
+        selection.write_text(json.dumps({"page": page}), encoding="utf-8")
+        os.chmod(selection, 0o640)
+        return target
+
+    def stage_structure(self, job_id: str, archive_stream, pdf_stream) -> Path:
+        target = self.stage(job_id, "mineru_structure", archive_stream)
+        source = target.parent / "source.pdf"
+        bounded_copy(pdf_stream, source, self.limits.max_pdf_bytes)
+        os.chmod(source, 0o640)
+        return target
 
     def create(self, job_id: str, kind: str) -> dict:
         return self._request("POST", "/v1/jobs", {"job_id": canonical_job_id(job_id), "kind": kind})
@@ -177,6 +197,11 @@ class DocumentWorkerClient:
             path = PurePosixPath(relative)
             if path.is_absolute() or not path.parts or any(part in {"", ".", ".."} for part in path.parts):
                 raise DocumentWorkerRejected("unsafe_worker_output", 409)
+            if expected_kind == "pdf_split" and relative != "result.json" and not re.fullmatch(r"part-[0-9]{6}-[0-9]{6}\.pdf", relative):
+                raise DocumentWorkerRejected("unsafe_worker_output", 409)
+            if expected_kind == "mineru_structure" and relative not in {"blocks.jsonl", "result.json"}:
+                if not relative.startswith("raw/") or path.suffix.lower() not in {".json", ".md", ".png", ".jpg", ".jpeg"}:
+                    raise DocumentWorkerRejected("unsafe_worker_output", 409)
             candidate = output.joinpath(*path.parts)
             if candidate.is_symlink() or not candidate.is_file():
                 raise DocumentWorkerRejected("unsafe_worker_output", 409)
@@ -193,11 +218,13 @@ class DocumentWorkerClient:
                     digest.update(chunk)
             if actual != size or digest.hexdigest() != entry.get("sha256"):
                 raise DocumentWorkerRejected("unsafe_worker_output", 409)
+            if relative in expected:
+                raise DocumentWorkerRejected("unsafe_worker_output", 409)
             expected.add(relative)
         actual_files = {
             path.relative_to(output).as_posix()
             for path in output.rglob("*")
-            if path.is_file() and path.name != "manifest.json"
+            if path.is_file() and path != output / "manifest.json"
         }
         if actual_files != expected:
             raise DocumentWorkerRejected("unsafe_worker_output", 409)

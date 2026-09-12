@@ -32,6 +32,8 @@ class TranslationDependencies:
     upload_folder: str
     worker_client: TranslationWorkerClient
     on_terminal: Callable[[], None] | None = None
+    before_publish: Callable[[str], None] | None = None
+    after_publish: Callable[[str, str, Any], None] | None = None
 
 
 def _task_payload(job: dict) -> dict:
@@ -154,14 +156,20 @@ def monitor_worker_task(
                     raise RuntimeError("paper_not_found")
                 pdf_path = _verified_pdf(paper, deps)
                 assets = paper_asset_paths(deps.upload_folder, pdf_path)
+                row = TranslationJobDAO.get(task_id) or {}
+                destination = assets.chinese_mono if row.get("output_mode") == "mono" else assets.chinese_dual
+                if deps.before_publish:
+                    deps.before_publish(paper_id)
                 deps.worker_client.promote_result(
                     task_id,
                     papers_root=deps.upload_folder,
-                    destination=assets.chinese_dual,
+                    destination=destination,
                     logs=logs,
                     log_destination=assets.translation_log,
                 )
-                paper.mark_chinese_version(str(assets.chinese_dual))
+                if deps.after_publish:
+                    deps.after_publish(task_id, paper_id, destination)
+                paper.mark_chinese_version(str(assets.chinese_dual if assets.chinese_dual.exists() else destination))
                 row = TranslationJobDAO.get(task_id) or {}
                 try:
                     started = datetime.fromisoformat(row.get("created_at", ""))

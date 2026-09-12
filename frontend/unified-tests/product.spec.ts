@@ -94,7 +94,7 @@ test("continuous PDF, strict CSP, positions, translated variant and selection ch
   await page.reload();
   await expect(page.getByLabel("页码", { exact: true })).toHaveValue("5");
   await expect(page.getByLabel("缩放", { exact: true })).toHaveValue("0.75");
-  await page.getByLabel("文档版本").selectOption("translated");
+  await page.getByLabel("阅读内容").selectOption("translated");
   await expect(page.locator(".page-count")).toHaveText("/ 2");
   await expect(page.getByLabel("页码", { exact: true })).toHaveValue("1");
   await expect(text.first()).toContainText("中文");
@@ -114,12 +114,12 @@ test("continuous PDF, strict CSP, positions, translated variant and selection ch
   await page.getByLabel("你的问题").fill("这段文字说明了什么？");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(page.locator(".message.assistant").last()).toContainText(
-    "这是合成回答",
+    "合成来源回答",
   );
   await expect(page.locator(".message img")).toHaveCount(0);
   await page.reload();
   await expect(page.locator(".message.assistant").last()).toContainText(
-    "这是合成回答",
+    "合成来源回答",
   );
   expect(violations).toEqual([]);
 });

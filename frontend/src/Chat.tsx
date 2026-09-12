@@ -15,9 +15,14 @@ export type Excerpt = {
   page: number;
   document: string;
   title: string;
+  sourceId?: string;
 };
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  sources?: { label: string; sourceId: string }[];
+};
 type Session = { id: string; title: string };
 function messagesFrom(value: unknown): Message[] {
   if (!Array.isArray(value)) throw new Error("invalid history");
@@ -28,7 +33,17 @@ function messagesFrom(value: unknown): Message[] {
         ["user", "assistant"].includes(v.role) &&
         typeof v.content === "string",
     )
-    .map((v) => ({ role: v.role, content: v.content }));
+    .map((v) => ({
+      role: v.role,
+      content: v.content,
+      sources: Array.isArray(v.sources)
+        ? v.sources.filter(
+            (s) =>
+              /^S[1-9][0-9]{0,2}$/.test(s.label) &&
+              typeof s.sourceId === "string",
+          )
+        : [],
+    }));
 }
 export function Chat({
   paperId,
@@ -38,6 +53,8 @@ export function Chat({
   excerpt,
   onClearExcerpt,
   drafts,
+  onSource,
+  prepareSources,
 }: {
   paperId: string;
   onExpired: () => void;
@@ -46,6 +63,8 @@ export function Chat({
   excerpt?: Excerpt | null;
   onClearExcerpt?: () => void;
   drafts?: Map<string, string>;
+  onSource?: (id: string) => void;
+  prepareSources?: (signal: AbortSignal) => Promise<string[]>;
 }) {
   const [sessions, setSessions] = useState<Session[]>([]),
     [id, setId] = useState(initialSession);
@@ -68,7 +87,11 @@ export function Chat({
   const [deleting, setDeleting] = useState(false);
   const [away, setAway] = useState(false);
   useEffect(() => {
-    if (restoreScroll.current !== null && messageHost.current && messages.length) {
+    if (
+      restoreScroll.current !== null &&
+      messageHost.current &&
+      messages.length
+    ) {
       messageHost.current.scrollTop = restoreScroll.current;
       restoreScroll.current = null;
     } else if (follow.current && messageHost.current)
@@ -127,9 +150,10 @@ export function Chat({
     return messagesFrom(data.session.messages);
   }
   async function choose(sessionId: string) {
-    if(messageHost.current) scrollPositions.current.set(id,messageHost.current.scrollTop);
-    restoreScroll.current=scrollPositions.current.get(sessionId) ?? null;
-    follow.current=restoreScroll.current === null;
+    if (messageHost.current)
+      scrollPositions.current.set(id, messageHost.current.scrollTop);
+    restoreScroll.current = scrollPositions.current.get(sessionId) ?? null;
+    follow.current = restoreScroll.current === null;
     const { c, seq } = begin();
     setId(sessionId);
     setMessages([]);
@@ -200,11 +224,17 @@ export function Chat({
     const sc = new AbortController();
     stream.current = sc;
     try {
+      const sourceIds = excerpt?.sourceId
+        ? [excerpt.sourceId]
+        : await prepareSources?.(sc.signal);
+      if (sc.signal.aborted || !valid(seq))
+        throw new DOMException("Aborted", "AbortError");
       const response = await postChat(
         {
           paper_id: paperId,
           messages: [...original, userMessage],
           ...(id ? { session_id: id } : {}),
+          ...(sourceIds?.length ? { source_ids: sourceIds } : {}),
         },
         sc.signal,
       );
@@ -324,6 +354,15 @@ export function Chat({
           <div key={i} className={`message ${m.role}`}>
             <strong>{m.role === "user" ? "你" : "助手"}</strong>
             <Markdown text={m.content} />
+            {!!m.sources?.length && (
+              <nav className="source-links" aria-label="回答来源">
+                {m.sources.map((s) => (
+                  <button key={s.label} onClick={() => onSource?.(s.sourceId)}>
+                    [{s.label}] 查看来源
+                  </button>
+                ))}
+              </nav>
+            )}
           </div>
         ))}
         {pending && (
@@ -381,7 +420,17 @@ export function Chat({
               </button>
             </div>
             <p>{excerpt.text}</p>
+            {excerpt.sourceId && (
+              <small>
+                本次将使用已核实的选区及相邻结构段落；回答中只有匹配来源的编号可以跳转。
+              </small>
+            )}
           </div>
+        )}
+        {prepareSources && !excerpt && (
+          <small>
+            未选择文字时，使用当前结构块和相邻段落；不会自动检索或解析全文。
+          </small>
         )}
         <label htmlFor="question">你的问题</label>
         <textarea

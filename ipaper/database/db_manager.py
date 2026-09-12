@@ -1,9 +1,11 @@
 import sqlite3
 
 from .models import SCHEMA_SCRIPT
+from ipaper.processing.schema import SCHEMA as PROCESSING_SCHEMA
 
 
 _TRANSLATION_COLUMNS = {
+    "output_mode": "TEXT NOT NULL DEFAULT 'dual'",
     "error_code": "TEXT",
     "stage": "TEXT",
     "stage_progress": "INTEGER NOT NULL DEFAULT 0",
@@ -51,6 +53,7 @@ def init_db_schema(db_path: str = "db/ipaper.db") -> None:
     """Initialize and verify the SQLite schema before serving requests."""
     with sqlite3.connect(db_path) as connection:
         connection.executescript(SCHEMA_SCRIPT)
+        connection.executescript(PROCESSING_SCHEMA)
         _ensure_translation_columns(connection)
         _ensure_daily_asset_columns(connection)
         connection.execute(

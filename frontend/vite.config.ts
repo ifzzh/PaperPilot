@@ -25,6 +25,7 @@ export default defineConfig({
           "lucide-react",
           "dompurify",
           "marked",
+          "katex",
         ];
         this.emitFile({
           type: "asset",

@@ -64,7 +64,7 @@ Open `http://localhost:7191` through the intended local/HTTPS access path. Verif
 
 Back up SQLite consistently, paper assets, configuration and the settings key. Keep key backups protected separately. Review active jobs before stopping services, follow the target release's migration procedure and retain the previously verified component digests.
 
-A code-only rollback restores images/configuration, not an old database over new user data. Migrating the product name does not rename containers, Python modules, environment variables or data directories.
+A feature rollback restores images/configuration, not an old database over new user data. For 1.2.0, preserve the additive processing tables and immutable artifacts; the older image ignores them until a later upgrade. Follow the [structured backup and rollback guide](structured-backup.md). Branding/path migration is a separate historical operation.
 
 历史迁移说明见 [upgrade-history.md](upgrade-history.md)，具体操作仍以目标 Release 和当前实际配置为准。
 

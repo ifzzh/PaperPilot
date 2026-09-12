@@ -6,7 +6,60 @@ export class ApiError extends Error {
     super(code);
   }
 }
+const processingErrors: Record<string, string> = {
+  empty_source_context:
+    "当前内容没有可引用的文字，请选择正文或表格文字后提问。",
+  document_worker_unavailable: "文档处理服务暂时不可用，请稍后重试。",
+  document_preflight_busy:
+    "文档正在预检，请稍后重试；不会创建云解析或模型请求。",
+  processing_dispatch_interrupted: "本地调度中断，已保存结果保留，请明确继续。",
+  model_request_rejected: "模型服务拒绝了请求，请检查独立模型配置后继续。",
+  model_rate_limited: "模型服务限流，已停止继续请求；请稍后明确继续。",
+  pdf_selection_unverified: "未能在 PDF 页面中核实这段文字，请重新选择正文。",
+  processing_scope_exceeds_budget:
+    "所选范围超过本次预算。已保存解析结果，请缩小页码范围后生成译文。",
+  structured_settings_not_configured: "请先在设置中配置独立的结构化翻译模型。",
+  mineru_cloud_not_configured: "请先在设置中启用 MinerU 云解析并配置密钥。",
+  user_processing_busy: "你已有一个结构处理任务，请在任务中心查看或停止。",
+  processing_queue_full: "处理队列已满，请稍后再提交。",
+  owner_quota_exceeded: "结构产物已达到账号存储配额，请联系管理员调整。",
+  result_quota_exceeded: "此次结果超过存储上限，请缩小处理范围。",
+  source_changed: "PDF 已发生变化，请重新检查处理范围。",
+  source_expired: "原始文件已变化，此来源不能指向当前 PDF。",
+  parse_version_mismatch: "解析版本已变化，请重新选择结果。",
+  translation_config_changed: "翻译配置已改变，请按新配置创建任务。",
+  processing_budget_exceeded:
+    "已达到处理预算，成功结果已保留。请缩小范围后继续。",
+  processing_time_budget: "已达到执行时限，成功结果已保留。",
+  model_result_unknown:
+    "模型请求的最终结果不确定。不会自动重发，请核对后决定是否继续。",
+  mineru_response_unknown:
+    "解析任务提交结果不确定，请核对任务编号；不会重复创建。",
+  mineru_upload_unknown:
+    "文件上传结果不确定，只能查询已创建任务，不会重复上传。",
+  cloud_submission_unknown_no_resubmit:
+    "此前云任务的创建结果不确定，不能自动重复创建。请先核对供应商记录。",
+  mineru_parse_failed: "云解析失败，已有结果保留，请查看任务日志。",
+  mineru_poll_timeout:
+    "云解析仍未获得确定结果，可稍后明确继续查询；不会重新创建任务。",
+  structure_worker_rejected: "解析产物未通过安全或结构校验，已停止处理。",
+  model_output_id_mismatch: "模型返回的块编号不匹配，此批未发布。",
+  model_output_invalid: "模型返回格式不正确，此批未发布。",
+  model_output_incomplete: "模型输出未完整结束，此批未发布。",
+  translation_protected_content_changed:
+    "模型改动了受保护的公式或数字，此批未发布。",
+  processing_storage_failed: "处理状态保存失败，请稍后重试。",
+  processing_failed: "处理未完成，请查看任务日志；已保存结果仍可阅读。",
+  service_restarted: "服务已重启，请确认后继续；不确定的请求不会自动重发。",
+  some_blocks_failed:
+    "部分块翻译失败，已完成内容仍可阅读，可以重试未完成部分。",
+};
 export function errorText(error: unknown): string {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String(error.code)
+      : "";
+  if (processingErrors[code]) return processingErrors[code];
   if (error instanceof ApiError) {
     if (error.status === 404) return "这篇论文不存在或已无法访问。";
     if (error.status === 429) return "请求较多，请稍后重试。";

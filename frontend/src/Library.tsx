@@ -1,3 +1,4 @@
+import { TranslationDialog } from "./Processing";
 import { ResizeHandle } from "./ResizeHandle";
 import { useEffect, useMemo, useState, useRef } from "react";
 import {
@@ -612,7 +613,8 @@ export function Library({
           onSaved={onChanged}
         />
       )}
-      {["translate", "analyze", "bulk-delete", "delete"].includes(action) && (
+      {action === "translate" && paper && <TranslationDialog paper={paper} onClose={()=>setAction("")} onSubmitted={()=>{onChanged();onTasks()}}/>}
+      {["analyze", "bulk-delete", "delete"].includes(action) && (
         <Confirm
           title={
             action.includes("delete")

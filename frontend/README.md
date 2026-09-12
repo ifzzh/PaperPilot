@@ -1,6 +1,6 @@
 # iPaper 统一前端
 
-1.1.3 开发线将文献库、阅读、问答、Daily、任务、设置和登录放入同一个应用。正式入口为 `/`；`/workbench` 和历史 `/viewer` 地址只作兼容跳转。`IPAPER_WORKBENCH_ENABLED` 已退役，不能用于产品版本切换。运维回退使用兼容组件镜像和配置。
+统一产品将文献库、阅读、问答、Daily、任务、设置和登录放入同一个应用。正式入口为 `/`；`/workbench` 和历史 `/viewer` 地址只作兼容跳转。`IPAPER_WORKBENCH_ENABLED` 已退役，不能用于产品版本切换。运维回退使用兼容组件镜像和配置。
 
 ## 开发
 
@@ -17,13 +17,13 @@ Flask 按 `static/workbench/.vite/manifest.json` 加载外部 module script 和 
 
 ## 状态与资源
 
-业务接口复用既有路由。新增的工作区偏好和原文/译文位置通过 owner 隔离的设置存储保存，不新增表或移动论文资产。文件指纹变化会重置不适用的位置。密码只供本次 PDF 解锁，不保存。退出或身份失效清空内存内容、取消请求和销毁 PDF，并通知其他标签；恢复焦点重新校验身份。
+业务接口优先复用既有路由。工作区偏好和原文/译文位置保持既有 owner 隔离的设置存储。1.2.0 另外增加版本化结果、结构位置和可信来源接口及增量表，不移动原始论文。文件指纹变化会重置不适用的位置。密码只供本次 PDF 解锁，不保存。退出或身份失效清空内存内容、取消请求和销毁 PDF，并通知其他标签；恢复焦点重新校验身份。
 
 PDF.js 6.3.289 使用匹配的 legacy display/worker，以覆盖本机 Edge 139 的标准内建函数差异。详见 [故障报告](../docs/development/pdf-browser-compatibility.md)。worker、字体、CMap 和发行 WASM 资源全部自托管；`useWasm: false`，不放宽脚本 CSP。该版本已移除旧字体动态求值实现，不再提供旧 `isEvalSupported` 参数。PDF 文本定位、canvas 尺寸和拖动宽度使用 CSSOM，在严格 style-src 下通过实际浏览器核查。
 
 长文档只渲染可见区域附近的正文和缩略图，切换文献销毁非活动文档。列表每页挂载 50 条，但 API 仍返回全量元数据。阅读时长仅在可见且获得焦点的阅读区累计。
 
-聊天保留首行会话 JSON 加后续原始文本协议。显示经过 DOMPurify 清洗的 Markdown，移除远程图片与危险内容。选区作为现有消息正文的一部分，由用户确认发送；浏览器不接收服务端密钥。流结束核对持久历史，不自动重发；客户端停止接收不确认服务端取消。
+聊天保留首行会话 JSON 加后续原始文本协议。显示经过 DOMPurify 清洗的 Markdown，移除远程图片与危险内容。结构/PDF 选区先由服务端核验，来源仅在用户确认发送后进入上下文；有效编号从持久映射解析。正文流协议不变，浏览器不接收服务端密钥。流结束核对持久历史，不自动重发；客户端停止接收不确认服务端取消。
 
 ## 隔离验收
 
@@ -31,6 +31,7 @@ PDF.js 6.3.289 使用匹配的 legacy display/worker，以覆盖本机 Edge 139 
 PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m pytest -m 'not integration' -q
 cd frontend
 npx playwright test --config playwright.unified.config.ts
+npx playwright test --config playwright.structured.config.ts
 ```
 
 `tests/unified_server.py` 注册完整 Flask 路由图，使用临时 SQLite、合成账号/文件和仅本进程可达的假 OpenAI 服务。监听 127.0.0.2:7191，避开正式端口；禁用 dotenv，不复制生产数据库或密钥，不调用真实模型。测试不应复用未知端口服务。合成样例与许可在 `tests/fixtures/workbench/README.md`。
@@ -42,3 +43,5 @@ npx playwright test --config playwright.unified.config.ts
 详见 [PaperQuay 组件接入与许可记录](../docs/development/paperquay-adaptation.md)。`DEPENDENCIES.json` 记录 npm lockfile 的版本、来源、完整性和许可证，构建同时输出许可证声明。本说明描述实现契约，发布状态与实际通过项以对应发布验收记录为准。
 
 导入进度使用既有 SSE 接口，和聊天原始文本流分别适配；导入任务由 owner 校验并由有界执行器继承身份。
+
+双翻译实现与限制见 [开发说明](../docs/development/dual-translation.md)。结构正文为可变高度窗口化列表、游标分页；KaTeX 仅输出经过清洗的 MathML，不使用内联样式或不可信 HTML。生成前的范围/缓存预估不提交任务。两种版式结果和结构版本分别保存阅读位置与选择。

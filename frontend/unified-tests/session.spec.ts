@@ -22,7 +22,7 @@ test("three paper tabs restore separate document variants and clear across tabs 
   await expect(page.locator(".pdf-panel .textLayer").first()).toContainText(
     "Synthetic reader validation",
   );
-  await page.getByLabel("文档版本").selectOption("translated");
+  await page.getByLabel("阅读内容").selectOption("translated");
   await expect(page.locator(".page-count")).toHaveText("/ 2");
   for (const title of [titles[1], titles[2], titles[0]]) {
     await page.getByRole("tab", { name: title, exact: true }).click();
@@ -31,7 +31,7 @@ test("three paper tabs restore separate document variants and clear across tabs 
       "Synthetic reader validation",
     );
   }
-  await expect(page.getByLabel("文档版本")).toHaveValue("translated");
+  await expect(page.getByLabel("阅读内容")).toHaveValue("translated");
   const other = await context.newPage();
   await other.goto("/?view=reader&paper=a-4");
   await expect(other.locator(".pdf-panel .textLayer").first()).toContainText(

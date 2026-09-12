@@ -266,3 +266,26 @@ class WorkerContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BabelDOCOutputNameTests(unittest.TestCase):
+    def test_only_exact_selected_no_watermark_name_is_normalized(self):
+        from ipaper.translation_worker.babeldoc_runner import normalize_result_name
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'input.no_watermark.zh.mono.pdf').write_bytes(b'%PDF-test')
+            self.assertEqual(normalize_result_name(root,'mono').name,'input.zh.mono.pdf')
+            (root/'unrelated.zh.dual.pdf').write_bytes(b'%PDF-test')
+            with self.assertRaisesRegex(ValueError,'missing'):
+                normalize_result_name(root,'dual')
+            (root/'input.no_watermark.zh.mono.pdf').write_bytes(b'%PDF-new')
+            with self.assertRaisesRegex(ValueError,'ambiguous'):
+                normalize_result_name(root,'mono')
+
+    def test_output_symlinks_are_rejected(self):
+        from ipaper.translation_worker.babeldoc_runner import normalize_result_name
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'input.no_watermark.zh.dual.pdf').symlink_to('/etc/passwd')
+            with self.assertRaisesRegex(ValueError,'unsafe'):
+                normalize_result_name(root,'dual')

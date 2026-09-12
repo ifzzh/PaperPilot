@@ -158,7 +158,7 @@ def scan_papers_in_directory(
 
         assets = paper_asset_paths(directory_path, pdf_path)
         dual_file = assets.chinese_dual
-        paper.mark_chinese_version(str(dual_file) if dual_file.exists() else None)
+        paper.mark_chinese_version(str(dual_file) if dual_file.exists() else str(assets.chinese_mono) if assets.chinese_mono.exists() else None)
         if not paper.has_chinese_version:
             paper.use_chinese_version = False
 

@@ -34,10 +34,22 @@ def fake_openai():
             prompt = data['messages'][-1]['content']
             if prompt == 'startup-failure':
                 self.send_error(400); return
+            if not data.get('stream', False):
+                units = json.loads(prompt)
+                if not isinstance(units, list):
+                    self.send_error(400); return
+                content = {unit['id']: '合成译文：' + unit['text'] for unit in units}
+                payload = {'id':'synthetic','object':'chat.completion','created':0,'model':'fixture',
+                    'choices':[{'index':0,'message':{'role':'assistant','content':json.dumps(content,ensure_ascii=False)},'finish_reason':'stop'}],
+                    'usage':{'prompt_tokens':100,'completion_tokens':100,'total_tokens':200}}
+                encoded=json.dumps(payload,ensure_ascii=False).encode()
+                self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(encoded)));self.end_headers();self.wfile.write(encoded);return
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')
             self.end_headers()
             answer = ['你好，', '这是合成回答。\n', '<img src=x onerror=alert(1)>']
+            if any('VERIFIED_SOURCE_EXCERPTS' in m.get('content','') for m in data.get('messages',[])):
+                answer = ['合成来源回答：实验结果见 [S1]。虚构编号 [S99] 不应成为来源链接。\n<img src=x onerror=alert(1)>']
             if prompt == 'slow':
                 answer = ['开始'] + [' 合成片段'] * 15
             try:
@@ -71,7 +83,7 @@ def install_reader_fixture(application, root, users, monkeypatch, origin, *, reg
     monkeypatch.setattr(agent_chat_route,'paper_store',store)
     monkeypatch.setattr(agent_chat_route,'chat_history_manager',ChatHistoryManager(store))
     monkeypatch.setattr(agent_translate_route,'paper_store',store)
-    key=generate_settings_key(root/'settings.key'); credentials=AgenticCredentialStore.from_key_file(str(key))
+    key=generate_settings_key(root/'settings.key'); monkeypatch.setenv('IPAPER_SETTINGS_KEY_FILE',str(key)); credentials=AgenticCredentialStore.from_key_file(str(key))
     class LoopbackFixturePolicy(OutboundPolicy):
         # Production policy intentionally forbids loopback. This exact-origin test
         # policy exists only in this fixture and can reach only the ephemeral fake.

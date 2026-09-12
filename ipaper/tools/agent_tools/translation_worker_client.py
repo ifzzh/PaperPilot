@@ -98,7 +98,7 @@ class TranslationWorkerClient:
         except requests.RequestException:
             return False
 
-    def create(self, job_id: str, model: str, base_url: str, api_key: str) -> dict:
+    def create(self, job_id: str, model: str, base_url: str, api_key: str, *, output_mode="dual") -> dict:
         return self._request(
             "POST",
             "/v1/jobs",
@@ -107,6 +107,7 @@ class TranslationWorkerClient:
                 "model": model,
                 "base_url": base_url,
                 "api_key": api_key,
+                **({"output_mode": output_mode} if output_mode != "dual" else {}),
             },
         )
 
@@ -159,7 +160,15 @@ class TranslationWorkerClient:
     def validated_result(self, job_id: str) -> tuple[Path, list[str]]:
         job = self.job_directory(job_id)
         work = job / "work"
-        output = work / "input.zh.dual.pdf"
+        status_path = job / "status.json"
+        mode = "dual"
+        if status_path.is_file() and not status_path.is_symlink():
+            if status_path.stat().st_size > 4 * 1024**2:
+                raise PathSecurityError("unsafe_worker_output")
+            mode = json.loads(status_path.read_text("utf-8")).get("output_mode", "dual")
+        if mode not in {"mono", "dual"}:
+            raise PathSecurityError("unsafe_worker_output")
+        output = work / ("input.zh." + mode + ".pdf")
         if work.is_symlink() or output.is_symlink() or not output.is_file():
             raise PathSecurityError("unsafe_worker_output")
         if output.stat().st_size > MAX_OUTPUT_BYTES:

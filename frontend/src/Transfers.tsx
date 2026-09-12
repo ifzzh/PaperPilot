@@ -1,3 +1,4 @@
+import { ProcessingTaskDetails, processingNames } from "./Processing";
 import { useEffect, useState } from "react";
 import {
   Upload,
@@ -183,6 +184,7 @@ export function ImportDialog({
   );
 }
 const names: Record<string, string> = {
+  ...processingNames,
   queued: "排队中",
   pending: "等待中",
   running: "处理中",
@@ -207,17 +209,20 @@ export function Tasks({
   onTask: (t: LocalTask) => void;
 }) {
   const translations = useResource<any>("/api/translations", { tasks: [] }),
+    structured = useResource<any>("/api/processing/jobs", {jobs:[]}),
     analysis = useResource<any>("/api/paper/analyze/active", { tasks: [] }),
     [selected, setSelected] = useState<any>(null),
     [error, setError] = useState("");
   useEffect(() => {
     const timer = setInterval(() => {
       translations.refresh();
+      structured.refresh();
       analysis.refresh();
     }, 5000);
     return () => clearInterval(timer);
   }, []);
   const tasks = [
+    ...structured.data.jobs.map((j:any)=>({...j,kind:"structure",task_id:j.id,paper_id:j.paperId,title:"结构解析与翻译"})),
     ...(translations.data.tasks || []).map((t: any) => ({
       ...t,
       kind: "translation",
@@ -312,7 +317,8 @@ export function Tasks({
           <p>从文献详情开始翻译或分析，进度将在这里显示。</p>
         </div>
       )}
-      {selected && (
+      {selected?.kind === "structure" && <Modal title="结构处理任务" onClose={()=>setSelected(null)} wide><ProcessingTaskDetails id={selected.task_id}/><button onClick={()=>{onRead(selected.paper_id);setSelected(null)}}>阅读处理结果</button></Modal>}
+      {selected && selected.kind !== "structure" && (
         <TaskDetails
           task={selected}
           onClose={() => {
