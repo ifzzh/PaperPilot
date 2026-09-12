@@ -19,16 +19,16 @@ A version number or screen on the development branch does not establish release 
 
 ## Capabilities and direction
 
-| Area | Existing foundation | Integration direction |
+| Area | Available now | Further development |
 | --- | --- | --- |
-| Discovery | Daily arXiv, research topics, filtering, candidates and PDF asset processing | Connect discovery to the unified library and reader |
-| Library | PDF upload, categories, search, favorites, Reading List and Zotero RDF import | PaperQuay-inspired category, list and detail workspace |
-| Reading | PDFs, existing translated files, MinerU analysis and multi-session single-paper chat | Unified reader, reading positions, selection context and sidebar chat |
+| Discovery | Daily arXiv, research topics, filtering, candidates and PDF asset processing | Discovery workflow refinements |
+| Library | PaperQuay-inspired category/list/detail workspace; upload, search, favorites, Reading List and Zotero RDF import | Library-operation agents |
+| Reading | Continuous PDFs, thumbnails, tabs, independent reading positions, selection questions and sidebar history/chat | Linked notes and source navigation |
 | Translation | BabelDOC layout-preserving translation with progress, recovery and retries | Coexisting PDF and structured translation results |
 | Accounts and data | Local accounts, user-scoped data, server-side model settings and persistent tasks | Preserve existing papers, settings and chat history |
 | Research | Papers and analysis results | Notes, library-operation agents, RAG, reviews and graphs |
 
-The intended product has one primary interface, with no requirement to choose between “new” and “old” versions. Experimental entry points in earlier releases are historical transition behavior, not the product goal.
+The current product has one primary interface, with no requirement to choose between “new” and “old” versions. Experimental entry points in earlier releases are historical transition behavior, not the product goal.
 
 ## Two translation workflows
 

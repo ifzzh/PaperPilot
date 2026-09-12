@@ -13,11 +13,11 @@ test('escapes plain text without dropping visible content', () => {
 
 test('normalizes user-facing http URLs and rejects active schemes', () => {
     assert.equal(
-        security.safeHttpUrl('github.com/ifzzh/PaperPilot', { baseUrl: 'http://paperpilot.test' }),
-        'https://github.com/ifzzh/PaperPilot'
+        security.safeHttpUrl('github.com/ifzzh/iPaper', { baseUrl: 'http://ipaper.test' }),
+        'https://github.com/ifzzh/iPaper'
     );
     assert.equal(
-        security.safeHttpUrl('/viewer/paper', { allowRelative: true, baseUrl: 'http://paperpilot.test' }),
+        security.safeHttpUrl('/viewer/paper', { allowRelative: true, baseUrl: 'http://ipaper.test' }),
         '/viewer/paper'
     );
     assert.equal(security.safeHttpUrl('javascript:alert(1)'), null);
@@ -26,8 +26,8 @@ test('normalizes user-facing http URLs and rejects active schemes', () => {
     assert.equal(security.safeHttpUrl('https://example.com/\nattack'), null);
     assert.equal(security.safeHttpUrl('https:\\example.com'), null);
     assert.equal(
-        security.safeHttpUrl('https://paperpilot.test.evil/path', { baseUrl: 'https://paperpilot.test' }),
-        'https://paperpilot.test.evil/path'
+        security.safeHttpUrl('https://ipaper.test.evil/path', { baseUrl: 'https://ipaper.test' }),
+        'https://ipaper.test.evil/path'
     );
 });
 
@@ -38,7 +38,7 @@ test('allows only fixed CSS color syntax', () => {
 });
 
 test('allows only controlled same-origin markdown image routes', () => {
-    const options = { paperId: 'paper-1', baseUrl: 'http://paperpilot.test' };
+    const options = { paperId: 'paper-1', baseUrl: 'http://ipaper.test' };
     assert.equal(
         security.safeInternalImageUrl('/api/paper/paper-1/analysis/image?path=figure.png', options),
         '/api/paper/paper-1/analysis/image?path=figure.png'
