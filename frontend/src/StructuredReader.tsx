@@ -202,7 +202,9 @@ export function Reader(props: ReaderProps) {
           {layoutResults.map((r) => (
             <option key={r.id} value={r.id}>
               {r.kind === "babeldoc_mono" ? "纯译文 PDF" : "双语 PDF"} ·{" "}
-              {timestampText(r.createdAt)}
+              {r.provenance === "historical_config_unknown"
+                ? "历史结果，配置未知"
+                : timestampText(r.createdAt)}
             </option>
           ))}
         </select>

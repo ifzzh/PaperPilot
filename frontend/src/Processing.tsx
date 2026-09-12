@@ -19,6 +19,7 @@ export type ProcessingResult = {
   blockCount: number;
   stale: boolean;
   createdAt: string;
+  provenance?: string | null;
 };
 export const languageLabels: Record<string, string> = {
   "zh-CN": "简体中文",
