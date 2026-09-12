@@ -30,3 +30,7 @@ The existing document staging volume is `deploy_document_jobs`: production expli
 Use the restricted backup's migration-specific rollback script, not an earlier release's hardcoded deployment helper. Stop the new services, reverse directory/database filename changes, restore prior Compose/configuration and previous component digests, then verify the existing database and real PDFs. Keep the current database contents; do not overwrite new user writes with a pre-upgrade backup. Restore the new Web latest channel to the copied prior stable digest if necessary. Never remove volumes as part of rollback.
 
 Actual component digests, completed checks and any exceptions are published with the release; private production evidence and backup paths remain in the maintainer migration record.
+
+## Historical artifacts retained
+
+The dated synthetic PDF fixtures and XSS payloads preserve their original content and hashes. Requirements export comments record the original package provenance. Two unused legacy SVG logos remain compatibility assets referenced only by retired templates; the unified routed application uses iPaper branding. They do not provide a second product interface. Active project configuration uses the new checkout path; an already-open Codex window may retain the old project label until it reloads, while the compatibility symlink remains valid.
