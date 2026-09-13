@@ -67,6 +67,11 @@ def main(test_dependencies=None):
     if test_dependencies: policy=test_dependencies['policy']
     proxy={k:v for k,v in os.environ.items() if k.upper() in ('HTTP_PROXY','HTTPS_PROXY','NO_PROXY')}
     counters={'cloudCreates':0,'chatRequests':0}
+    def stage(name):
+        # Closed, non-sensitive progress survives a rejected/partial real run;
+        # never serialize an exception, request headers or the provider config.
+        (args.root/'stage.json').write_text(json.dumps({'stage':name,**counters}))
+    stage('local_preflight')
     server=None
     with MonkeyPatch.context() as patch:
         app,a,b=make_workbench_fixture(args.root,patch,count=1)
@@ -138,6 +143,7 @@ def main(test_dependencies=None):
             raise RuntimeError('acceptance_timeout_no_resubmit')
         preview=request('/api/paper/a-0/processing/preview',{})
         assert preview['pageCount']==22 and preview['partCount']==1
+        stage('parsing')
         parsed=await_job(request('/api/paper/a-0/processing/jobs',{'kind':'parse','preflightId':preview['preflightId']}))
         parse_id=parsed['resultId']
         all_blocks=[];cursor=-1
@@ -159,11 +165,14 @@ def main(test_dependencies=None):
               'budget':{'requests':8,'inputTokens':20000,'outputTokens':12000}}
         scope=request('/api/paper/a-0/processing/estimate',data)
         (args.root/'scope.json').write_text(json.dumps(scope,ensure_ascii=False))
+        stage('translating')
         translated=await_job(request('/api/paper/a-0/processing/jobs',data))
         result_id=translated['resultId']
         retry_id=next((block['id'] for block in all_blocks if block['id'] in chosen and len(units_for(block))<=8
+                       and request_payload(units_for(block),'zh-CN')[1]<=5000
                        and request_payload(units_for(block),'zh-CN')[2]<=4096),None)
         assert retry_id,'no_approved_retranslation_block'
+        stage('retranslating')
         retranslated=await_job(request('/api/paper/a-0/processing/jobs',{**data,'kind':'retranslate','translationResultId':result_id,
                     'blockIds':[retry_id],'budget':{'requests':1,'inputTokens':5000,'outputTokens':4096}}))
         block=client.get(f'/api/results/{result_id}/blocks/{retry_id}').json['block']
@@ -181,14 +190,18 @@ def main(test_dependencies=None):
         import signal
         previous_alarm=signal.signal(signal.SIGALRM,lambda *_: (_ for _ in ()).throw(TimeoutError('chat_deadline')))
         signal.alarm(120)
+        stage('source_chat')
         try:
             reply=client.post('/api/paper/chat',json={'paper_id':'a-0','messages':[{'role':'user','content':'请简要解释引用内容，并使用提供的来源编号标明依据。'}],
                              'source_ids':[source['id']]},headers=headers)
             content=reply.text
+            (args.root/'chat-response.json').write_text(json.dumps({'status':reply.status_code,
+                'contentType':reply.content_type,'stream':content[:65536]},ensure_ascii=False))
         finally:
             signal.alarm(0);signal.signal(signal.SIGALRM,previous_alarm)
         header,answer=content.split('\n',1);session_id=json.loads(header)['session_id']
         history=client.get('/api/paper/chat/session?paper_id=a-0&session_id='+session_id).json['session']['messages']
+        (args.root/'chat-history.json').write_text(json.dumps(history,ensure_ascii=False))
         assert answer.strip() and history[-1]['content']==answer and history[-1].get('sources'),'answer_not_persisted_or_missing_valid_source'
         fresh=app.test_client();login(fresh)
         assert fresh.get('/api/paper/chat/session?paper_id=a-0&session_id='+session_id).json['session']['messages']==history
@@ -199,6 +212,7 @@ def main(test_dependencies=None):
                 'model':config['translation']['model'],'jobs':[parsed,translated,retranslated],'sessionId':session_id,
                 'history':history,'source':source,'cacheRequests':0}
         (args.root/'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+        stage('completed')
         print(json.dumps({'liveAcceptance':True,'parsedBlocks':len(all_blocks),'translatedBlocks':len(chosen),'requests':counters}),flush=True)
         real_client.close()
         if args.serve_seconds:
@@ -213,5 +227,8 @@ if __name__=='__main__':
     try:main()
     except Exception as error:
         # Do not stringify upstream exceptions: they may contain signed URLs.
-        print(json.dumps({'acceptanceFailed':True,'errorType':type(error).__name__,'automaticRetry':False}))
+        import traceback
+        frames=[{'file':Path(f.filename).name,'line':f.lineno,'function':f.name}
+                for f in traceback.extract_tb(error.__traceback__)]
+        print(json.dumps({'acceptanceFailed':True,'errorType':type(error).__name__,'automaticRetry':False,'frames':frames}))
         raise SystemExit(1)

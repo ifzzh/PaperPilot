@@ -2,6 +2,7 @@
 import io
 import json
 import uuid
+import pytest
 from types import SimpleNamespace
 
 
@@ -13,7 +14,8 @@ def test_live_program_is_offline_by_default(tmp_path,monkeypatch,capsys):
     assert not list(tmp_path.iterdir())
 
 
-def test_complete_live_program_with_fake_suppliers(tmp_path,monkeypatch):
+@pytest.mark.parametrize('relative_root',[False,True])
+def test_complete_live_program_with_fake_suppliers(tmp_path,monkeypatch,relative_root):
     from tests.verify_dual_translation_live import main
     from tests.workbench_reader_support import fake_openai
     from tests.test_structured_document import pdf
@@ -30,7 +32,9 @@ def test_complete_live_program_with_fake_suppliers(tmp_path,monkeypatch):
                 'translation':{'model':'fixture','baseUrl':origin+'/v1','key':'synthetic-model-only','revision':str(uuid.uuid4())},
                 'chat':{'model':'fixture','baseUrl':origin+'/v1','key':'synthetic-chat-only'}}
         monkeypatch.setattr('sys.stdin',SimpleNamespace(buffer=io.BytesIO(json.dumps(config).encode())))
-        monkeypatch.setattr('sys.argv',['verify','--live','--root',str(root),'--original',str(source),'--document-origin','http://unused.invalid',
+        import os
+        root_argument=os.path.relpath(root) if relative_root else str(root)
+        monkeypatch.setattr('sys.argv',['verify','--live','--root',root_argument,'--original',str(source),'--document-origin','http://unused.invalid',
                                       '--document-staging',str(stage),'--document-token',str(tmp_path/'unused-token')])
         class Policy:
             def validate(self,url,**kwargs):assert url==origin+'/v1'
@@ -40,6 +44,10 @@ def test_complete_live_program_with_fake_suppliers(tmp_path,monkeypatch):
     assert result['pages']==22 and result['parsedBlocks']==88 and result['cacheRequests']==0
     assert len(result['translatedBlocks'])<=6
     assert result['history'][-1]['sources']
+    assert json.loads((root/'stage.json').read_text())['stage']=='completed'
+    stream=json.loads((root/'chat-response.json').read_text())
+    assert stream['status']==200 and stream['contentType'].startswith('text/plain')
+    assert json.loads((root/'chat-history.json').read_text())==result['history']
     # Synthetic test key of the fixture may exist; provider keys must not be
     # written even in this controlled rehearsal database or diagnostic files.
     for path in root.rglob('*'):

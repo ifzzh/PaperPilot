@@ -18,7 +18,9 @@ from .common import ProcessingError, encoded, fingerprint, identifier, now
 class ProcessingStore:
     def __init__(self, db_path, papers_root, owner_id):
         self.db_path = str(db_path)
-        self.papers_root = Path(papers_root)
+        # Existing tenant path helpers return canonical absolute paths. Use the
+        # same base for relative file references, including local CLI checkouts.
+        self.papers_root = Path(papers_root).resolve()
         self.owner = identifier(owner_id)
 
     def quotas(self):
