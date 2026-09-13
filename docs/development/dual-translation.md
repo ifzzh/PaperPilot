@@ -48,4 +48,4 @@
 
 ### 已核验模型适配
 
-本轮只读确认 ifzzh 的 BabelDOC/interpret 都为 `qwen3.8-flash`，云解析模式已开启。按 [Model Studio 官方深度思考说明](https://www.alibabacloud.com/help/en/model-studio/deep-thinking)（2026-09-11 更新），明确列出的 Qwen3.8 混合思考型号支持 `extra_body.enable_thinking=false`。结构翻译对精确匹配型号使用直接回答模式，该参数和 temperature=0 均进入结果配置/缓存条件；未知型号不猜测供应商参数。实际供应商是否接受，以本轮真实验收为准，不用离线兼容测试代替。
+本轮实际读取 ifzzh 的 BabelDOC/interpret 均为 `qwen3.8-flash`，云解析模式已开启。按 [Model Studio 官方深度思考说明](https://www.alibabacloud.com/help/en/model-studio/deep-thinking)（2026-09-11 更新），明确列出的 Qwen3.8 混合思考型号支持 `extra_body.enable_thinking=false`。结构翻译对精确匹配型号使用直接回答模式，该参数和 temperature=0 均进入结果配置/缓存条件；未知型号不猜测供应商参数。经单独授权的本轮真实请求已接受这些参数：6 块翻译、一次单块重译及一次来源问答均完成；详细私有产物不作为公开测试夹具。
