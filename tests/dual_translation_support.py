@@ -31,7 +31,7 @@ class SyntheticCloud:
             content.append({"type":"text","text":text.strip().splitlines()[0],"text_level":1 if index==0 else 0,
                 "page_idx":index,"bbox":[75,65,900,145]})
             content.extend([
-                {"type":"text","text":"This synthetic paragraph explains the controlled experiment. Accuracy is 95.2% and the sample contains $n=12$ observations.","page_idx":index,"bbox":[75,185,900,310]},
+                {"type":"text","text":"This synthetic paragraph explains the controlled experiment. Author<sup>\\*</sup> reports H<sub>2</sub>O. Accuracy is 95.2% and the sample contains $n=12$ observations.","page_idx":index,"bbox":[75,185,900,310]},
                 {"type":"equation","text":"$$E = mc^2$$","page_idx":index,"bbox":[100,360,700,430]},
                 {"type":"table","table_body":"<table><tr><th>Method</th><th>Score</th></tr><tr><td>Baseline</td><td>90</td></tr><tr><td>Ours</td><td>95.2</td></tr></table>","table_caption":["Synthetic results, not a production paper."],"page_idx":index,"bbox":[75,520,900,700]},
             ])

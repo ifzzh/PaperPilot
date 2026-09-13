@@ -49,6 +49,20 @@ test("dual translation source workflow with isolated fake suppliers", async ({
     page.locator(".block-language").filter({ hasText: "合成译文" }).first(),
   ).toBeVisible();
   await expect(page.locator("math").first()).toBeVisible();
+  const notation = page.locator(".structure-paragraph sup").first();
+  await expect(notation).toHaveText("*");
+  await expect(page.locator(".structure-paragraph sub").first()).toHaveText("2");
+  await notation.evaluate((node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const selection = getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await notation.dispatchEvent("mouseup");
+  await page.getByRole("button", { name: "带来源提问", exact: true }).click();
+  await expect(page.locator(".excerpt-card sup")).toHaveText("*");
+  await page.getByLabel("移除引用").click();
   await page
     .getByRole("button", { name: "原文对照", exact: true })
     .first()

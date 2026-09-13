@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { errorText, isSessionError, request } from "./api";
 import { postChat, readChatStream } from "./chat-stream";
 import { Markdown, Confirm } from "./ui";
+import { AcademicText } from "./MathFormula";
 import {
   MessageSquare,
   X,
@@ -419,7 +420,7 @@ export function Chat({
                 <X size={14} />
               </button>
             </div>
-            <p>{excerpt.text}</p>
+            <p><AcademicText text={excerpt.text} /></p>
             {excerpt.sourceId && (
               <small>
                 本次将使用已核实的选区及相邻结构段落；回答中只有匹配来源的编号可以跳转。

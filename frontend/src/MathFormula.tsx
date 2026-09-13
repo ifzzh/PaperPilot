@@ -50,13 +50,14 @@ export function MathFormula({
   );
 }
 
-// Source offsets stay in the canonical UTF-16 text, never in generated MathML
-// textContent (which also contains accessibility annotations).
+// Source offsets stay in canonical UTF-16 text, never in generated MathML.
+// MinerU's exact, attribute-free sup/sub notation is rendered with React;
+// arbitrary HTML remains escaped text. Formatted spans are indivisible sources.
 export function AcademicText({ text }: { text: string }) {
   const pieces = useMemo(() => {
     const pattern =
-      /\$\$[\s\S]*?\$\$|\$[^$\n]+\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)/g;
-    const parts: { start: number; end: number; math: boolean; text: string }[] =
+      /\$\$[\s\S]*?\$\$|\$[^$\n]+\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|<(sup|sub)>([^<>]{1,512})<\/\1>/g;
+    const parts: { start: number; end: number; math: boolean; notation?: "sup" | "sub"; text: string }[] =
       [];
     let cursor = 0;
     for (const match of text.matchAll(pattern)) {
@@ -70,7 +71,8 @@ export function AcademicText({ text }: { text: string }) {
       parts.push({
         start: match.index,
         end: match.index + match[0].length,
-        math: true,
+        math: !match[1],
+        notation: match[1] as "sup" | "sub" | undefined,
         text: match[0],
       });
       cursor = match.index + match[0].length;
@@ -91,9 +93,13 @@ export function AcademicText({ text }: { text: string }) {
           key={p.start}
           data-source-start={p.start}
           data-source-end={p.end}
-          data-source-math={p.math || undefined}
+          data-source-math={p.math || !!p.notation || undefined}
         >
-          {p.math ? <MathFormula text={p.text} inline /> : p.text}
+          {p.math ? <MathFormula text={p.text} inline /> : p.notation === "sup" ? (
+            <sup>{p.text.slice(5, -6).replace(/\\\*/g, "*")}</sup>
+          ) : p.notation === "sub" ? (
+            <sub>{p.text.slice(5, -6)}</sub>
+          ) : p.text}
         </span>
       ))}
     </>
