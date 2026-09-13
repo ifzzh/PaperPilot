@@ -110,6 +110,7 @@ def promote(source_root, target_store, target_paper, *, apply=False):
                 row['request_json']=encoded(request);row['reserved_bytes']=0
                 row['idempotency_key']=fingerprint({'paper':target_paper,'kind':row['kind'],'request':request,'budget':json.loads(row['budget_json'])})
     created=[]
+    created_parent=None
     try:
         with target_store.connection(write=True) as db:
             occupied=db.execute('SELECT coalesce(sum(bytes),0) FROM processing_results WHERE owner_id=?',(target_store.owner,)).fetchone()[0]
@@ -117,6 +118,16 @@ def promote(source_root, target_store, target_paper, *, apply=False):
             for result in rows['processing_results']:
                 if db.execute('SELECT 1 FROM processing_results WHERE id=?',(result['id'],)).fetchone() or target_store.artifact_directory(result['id']).exists():raise ValueError('target_result_already_exists')
             if apply:
+                # A root-operated upgrade must not leave a root-only parent
+                # above the correctly owned result directories. Existing
+                # artifact parents belong to the deployment and are untouched.
+                parent=target_store.artifact_directory(next(iter(results))).parent
+                if not parent.exists():
+                    parent.mkdir(mode=0o700)
+                    created_parent=parent
+                    if os.geteuid()==0:
+                        stat=source_file.stat()
+                        os.chown(parent,stat.st_uid,stat.st_gid)
                 for rid in results:
                     target=target_store.artifact_directory(rid,create=True);created.append(target)
                     for (result_id,relative),(source,size,sha) in files.items():
@@ -136,6 +147,7 @@ def promote(source_root, target_store, target_paper, *, apply=False):
                         insert(db,table,row)
     except BaseException:
         for path in created:shutil.rmtree(path)
+        if created_parent is not None:created_parent.rmdir()
         raise
     return {'apply':apply,'results':len(results),'files':len(files),'bytes':total,'chats':len(rows['chats']),
             'jobs':len(jobs),'owner':target_store.owner,'paper':target_paper,'credentialsCopied':False,'oldRowsOverwritten':False}

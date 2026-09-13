@@ -66,6 +66,9 @@ def test_complete_live_program_with_fake_suppliers(tmp_path,monkeypatch,relative
     target_root=tmp_path/'target-papers';target_root.mkdir()
     original=target_root/'.users'/config['ownerId']/'paper.pdf';original.parent.mkdir(parents=True)
     shutil.copyfile(source,original)
+    # The Docker test target runs as root; exercise an operator promoting into
+    # files owned by the actual non-root Web UID, including the new parent.
+    if os.geteuid()==0:os.chown(original,10001,1001)
     target_db=tmp_path/'target.db'
     with sqlite3.connect(target_db) as db:
         db.executescript("""CREATE TABLE papers(id TEXT PRIMARY KEY,owner_id TEXT,file_path TEXT);
@@ -87,6 +90,8 @@ def test_complete_live_program_with_fake_suppliers(tmp_path,monkeypatch,relative
     with pytest.raises(ValueError,match='identity_mismatch'):promote(root,bad,config['paperId'],apply=True)
     report=promote(root,store,config['paperId'],apply=True)
     assert report['apply'] and not report['credentialsCopied'] and not report['oldRowsOverwritten']
+    parent=store.artifact_directory(result['resultId']).parent
+    assert (parent.stat().st_uid,parent.stat().st_gid)==(original.stat().st_uid,original.stat().st_gid)
     blocks=store.blocks(result['resultId'])
     assert any(b.get('translation',{}).get('content') for b in blocks if b.get('translation'))
     reference=Sources(store,lambda _:original).resolve(result['source']['id'])
