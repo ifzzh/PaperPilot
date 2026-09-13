@@ -13,7 +13,7 @@ iPaper continues development from PaperPilot and is adapting PaperQuay's reading
 
 **Discover with Daily arXiv → collect papers → read and translate → ask questions → organize research.**
 
-Existing services provide library management, BabelDOC translation, MinerU parsing and analysis, single-paper chat, Daily arXiv and local accounts. The unified library, continuous PDF reader, reading positions and sidebar chat are available. The 1.2.0 source adds dual translation results and verified source navigation; notes, library-operation agents, cross-paper retrieval, review writing and graphs are staged development work.
+Existing services provide library management, BabelDOC translation, MinerU parsing and analysis, single-paper chat, Daily arXiv and local accounts. The unified library, continuous PDF reader, reading positions and sidebar chat are available. Release 1.2.0 adds dual translation results and verified source navigation; notes, library-operation agents, cross-paper retrieval, review writing and graphs are staged development work.
 
 A version number or screen on the development branch does not establish release availability. Consult the target [Release](https://github.com/ifzzh/iPaper/releases) for shipped capabilities, known issues and verification. Planned features below are not presented as complete.
 
@@ -32,7 +32,7 @@ The current product has one primary interface, with no requirement to choose bet
 
 ## Two translation workflows
 
-The 1.2.0 source implements both workflows in the same reader; the published Release determines deployment availability. [Implementation and limitations](docs/development/dual-translation.md).
+[Release 1.2.0](https://github.com/ifzzh/iPaper/releases/tag/v1.2.0) provides both workflows in the same reader. [Implementation and limitations](docs/development/dual-translation.md).
 
 | Workflow | Process and result | Intended use |
 | --- | --- | --- |

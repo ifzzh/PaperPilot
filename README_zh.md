@@ -13,7 +13,7 @@ iPaper 从 PaperPilot 持续开发而来，正在将 PaperQuay 的阅读工作�
 
 **Daily arXiv 发现 → 加入文献库 → 阅读与翻译 → 论文问答 → 笔记与研究整理。**
 
-已有服务提供文献管理、BabelDOC 翻译、MinerU 解析与分析、单篇论文问答、Daily arXiv 和本地账号。统一文献库、连续 PDF 阅读器、阅读位置恢复和侧栏问答已交付。1.2.0 源码新增双翻译与可信来源定位；笔记、文献操作 Agent、跨论文检索、综述和图谱按阶段建设。
+已有服务提供文献管理、BabelDOC 翻译、MinerU 解析与分析、单篇论文问答、Daily arXiv 和本地账号。统一文献库、连续 PDF 阅读器、阅读位置恢复和侧栏问答已交付。1.2.0 已发布双翻译与可信来源定位；笔记、文献操作 Agent、跨论文检索、综述和图谱按阶段建设。
 
 开发分支中的版本号和页面不等于已发布能力。安装前请查看目标 [Release](https://github.com/ifzzh/iPaper/releases) 的功能范围、已知问题和验证记录；README 不将规划中的功能视为已完成。
 
@@ -32,7 +32,7 @@ iPaper 从 PaperPilot 持续开发而来，正在将 PaperQuay 的阅读工作�
 
 ## 两种翻译方式
 
-1.2.0 源码在同一阅读器实现两种流程；正式可用性以已发布 Release 为准。详见[实现与能力边界](docs/development/dual-translation.md)。
+[1.2.0 正式版](https://github.com/ifzzh/iPaper/releases/tag/v1.2.0) 在同一阅读器提供两种流程。详见[实现与能力边界](docs/development/dual-translation.md)。
 
 | 方式 | 处理流程与结果 | 适用场景 |
 | --- | --- | --- |

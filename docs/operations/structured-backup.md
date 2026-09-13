@@ -39,3 +39,11 @@ sudo -n python3 /PERSISTENT_BACKUP/rollback.py --backup /PERSISTENT_BACKUP --app
 `scripts/promote_processing_acceptance.py` 仅用于操作员把本轮隔离验收的已成功结果提升到匹配论文；不是面向用户的导入格式或公共 API。默认 dry-run，源和目标写入均须停止。它校验验收回执、owner/论文、原文 SHA、配置与凭据修订、所有产物哈希和目标配额，再以只新增事务登记解析、译文版本、已完成任务及已核验会话。已有用户、论文、设置和密钥表不复制、不覆盖；UUID 冲突直接拒绝。失败不留下可见结果。
 
 验收目录含实际论文和模型回答，只能放入受限私有存储；不上传到 Release。真实凭据仅由验收进程内存持有，产物提升不搬运任何密钥或凭据密文。
+
+## 1.2.0 本机运维记录
+
+本机日常入口仍为 `/mnt/raid1/projects/ipaper/automation/backup-ipaper.sh`，现已使用上述 SQLite + 不可变产物逻辑并实际生成 50 文件匹配快照。原备份自动化入口和调度保持，原脚本随发布前备份保存。
+
+本次发布回退基线目录为 `/mnt/raid1/backups/ipaper/releases/1.2.0-20260913T011653Z`，其 `rollback.py` 独立可执行，默认 dry-run。它恢复 Web/Translation/Document 1.1.4 的独立仓库摘要及配置、回退 Web latest，继续使用当前数据库和产物。完整数据/配置备份及工具文件均受限；不要使用早期品牌迁移回退程序。
+
+一次性产物提升容器需要读取私有验收目录并给新文件设置 Web 所有者。本次仅该无网络、非驻留容器增加 `DAC_OVERRIDE`/`CHOWN`，正式三服务仍非 root、`cap_drop: ALL`。正式数据库含容器内 `/data/papers` 绝对引用，提升应使用相同容器挂载映射，不能将宿主路径直接套用。
